@@ -50,12 +50,15 @@
         </activity>
 
         <!--
-          Faz o botão de início do Android voltar para o Terminal. Nasce desligado: só é ligado quando o
-          bloqueio é aplicado (classe Lock), e é desligado de novo quando o bloqueio é removido.
+          Faz o botão de início do Android voltar para o Terminal. Nasce habilitado só como CANDIDATO a tela de
+          início: isto não troca a tela de início sozinho (o papel HOME continua no launcher do aparelho) até que
+          alguém atribua o papel — pelo cabo (cmd role add-role-holder) ou o usuário nas Configurações. Nasce
+          habilitado porque o Android novo recusa habilitá-lo pelo cabo (pm enable). É desligado no app quando o
+          bloqueio leve é removido (disableHomeAlias), e o Lock (dono do aparelho) continua mandando no caso total.
         -->
         <activity-alias
             android:name=".Inicio"
-            android:enabled="false"
+            android:enabled="true"
             android:exported="true"
             android:targetActivity=".MainActivity">
             <intent-filter>

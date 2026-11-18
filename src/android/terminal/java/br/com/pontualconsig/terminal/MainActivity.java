@@ -223,8 +223,9 @@ public class MainActivity extends Activity implements Core.Listener {
     /** Tira o Terminal da lista de telas de início: o Android volta sozinho para a tela de início normal. */
     private void disableHomeAlias() {
         try {
+            // DISABLED (e não DEFAULT) porque o padrão do manifesto agora é "habilitado".
             getPackageManager().setComponentEnabledSetting(homeAlias(),
-                    PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, PackageManager.DONT_KILL_APP);
+                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
         } catch (RuntimeException e) {
             Log.w(Core.TAG, "desativar tela de início", e);
         }

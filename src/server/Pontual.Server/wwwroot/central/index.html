@@ -55,7 +55,33 @@
     <label>Senha<input class="campo" id="login-senha" type="password" autocomplete="current-password" required aria-describedby="login-erro"></label>
     <p class="erro" id="login-erro" role="alert" hidden></p>
     <button type="submit" class="btn">Entrar</button>
+    <button type="button" class="btn claro" id="login-nova-conta"><span data-ic="plus"></span>Adicionar conta</button>
     <p class="rodape-cartao">Terminal Pontual, versão 1.0 de teste</p>
+  </form>
+</main>
+
+<!-- ========================================================= adicionar conta -->
+<main class="entrada" id="tela-conta" hidden>
+  <form class="cartao" id="form-conta" novalidate aria-labelledby="t-conta">
+    <span class="logo" data-logo></span>
+    <h1 id="t-conta">Adicionar conta</h1>
+    <p>Crie uma conta nova para entrar na Central do TI.</p>
+    <label>Nome<input class="campo" id="conta-nome" maxlength="80" autocomplete="off" required aria-describedby="conta-erro"></label>
+    <label>E-mail<input class="campo" id="conta-email" type="email" autocomplete="off" required aria-describedby="conta-erro"></label>
+    <label>Senha<input class="campo" id="conta-senha" type="password" autocomplete="new-password" minlength="10" required aria-describedby="conta-dica conta-erro"><span class="dica" id="conta-dica">No mínimo 10 caracteres.</span></label>
+    <label>Confirme a senha<input class="campo" id="conta-senha2" type="password" autocomplete="new-password" minlength="10" required aria-describedby="conta-erro"></label>
+    <label>Tipo de conta<select class="campo" id="conta-tipo" aria-describedby="conta-tipo-dica">
+      <option value="admin" selected>Admin</option><option value="superadmin">Superadmin</option>
+    </select><span class="dica" id="conta-tipo-dica"></span></label>
+    <fieldset>
+      <legend>Autorização de um superadmin</legend>
+      <span class="dica">Para a conta ser criada, um superadmin que já existe confirma com o e-mail e a senha dele.</span>
+      <label>E-mail do superadmin<input class="campo" id="conta-aut-email" type="email" autocomplete="username" required aria-describedby="conta-erro"></label>
+      <label>Senha do superadmin<input class="campo" id="conta-aut-senha" type="password" autocomplete="current-password" required aria-describedby="conta-erro"></label>
+    </fieldset>
+    <p class="erro" id="conta-erro" role="alert" hidden></p>
+    <button type="submit" class="btn">Criar conta</button>
+    <button type="button" class="btn claro" id="conta-voltar">Voltar para o login</button>
   </form>
 </main>
 

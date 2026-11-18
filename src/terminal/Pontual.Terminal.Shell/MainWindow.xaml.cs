@@ -230,7 +230,11 @@ public partial class MainWindow : Window
         return IntPtr.Zero;
     }
 
-    /// <summary>Atalho do teste: sai da conta bloqueada. O Windows normal está nas outras contas do computador.</summary>
+    /// <summary>
+    /// Atalho do TI (Ctrl+Alt+Espaço+P): REMOVE o bloqueio desta conta e sai para a tela de entrada do Windows.
+    /// Ao entrar de novo, a conta abre a área de trabalho normal (sem o Terminal). É a saída de emergência
+    /// que impede ficar preso no Terminal mesmo quando esta é a única conta de administrador do computador.
+    /// </summary>
     private void ConfirmLeaveTest()
     {
         if (_confirmingExit)
@@ -244,13 +248,26 @@ public partial class MainWindow : Window
             HideToast();
             Activate();
             var answer = MessageBox.Show(this,
-                "Sair do teste?\n\nEsta conta será fechada e o computador volta para a tela de entrada do Windows. " +
-                "Lá, entre na sua conta de sempre: ela funciona normalmente, sem bloqueio.",
+                "Liberar esta conta e sair do Terminal?\n\n" +
+                "O bloqueio será REMOVIDO desta conta. O computador volta para a tela de entrada do Windows e, " +
+                "ao entrar de novo nesta conta, ela abre a área de trabalho normal (sem o Terminal).\n\n" +
+                "Use isto quando precisar administrar o computador.",
                 "Terminal Pontual", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
-            if (answer == MessageBoxResult.Yes)
+            if (answer != MessageBoxResult.Yes)
             {
-                PowerWindow.SignOut();
+                return;
             }
+
+            if (!Unblock.RemoveForCurrentUser())
+            {
+                MessageBox.Show(this,
+                    "Parte do bloqueio não pôde ser removida automaticamente. Vou sair mesmo assim; " +
+                    "se ao entrar a conta ainda abrir o Terminal, chame o TI.",
+                    "Terminal Pontual", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            // Sai da conta: a sessão termina (o vigia também), e o próximo login já cai na área de trabalho normal.
+            PowerWindow.SignOut();
         }
         finally
         {

@@ -77,6 +77,47 @@ public sealed class PanelTests
     }
 
     [Fact]
+    public async Task Conta_pela_tela_de_login_exige_superadministrador()
+    {
+        using var app = new TestApp();
+        var owner = await app.OwnerAsync();
+        await app.AdminAsync(owner, "Bia", "admin");
+        var anonymous = app.Panel();
+
+        object Body(string email, string role, string authEmail, string? authPassword = null) =>
+            new { name = "Nova", email, password = TestApp.Password, role, authEmail, authPassword = authPassword ?? TestApp.Password };
+
+        // Senha errada, autorizador inexistente e administrador comum não criam nada.
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await anonymous.PostAsJsonAsync("/api/v1/auth/register", Body("nova@pontual.test", "admin", TestApp.OwnerEmail, "senha-errada-000"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await anonymous.PostAsJsonAsync("/api/v1/auth/register", Body("nova@pontual.test", "admin", "ninguem@pontual.test"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await anonymous.PostAsJsonAsync("/api/v1/auth/register", Body("nova@pontual.test", "admin", "bia@pontual.test"))).StatusCode);
+
+        // Só os dois tipos da tela de login.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await anonymous.PostAsJsonAsync("/api/v1/auth/register", Body("nova@pontual.test", "auditor", TestApp.OwnerEmail))).StatusCode);
+
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await anonymous.PostAsJsonAsync("/api/v1/auth/register", Body("nova@pontual.test", "admin", TestApp.OwnerEmail))).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await anonymous.PostAsJsonAsync("/api/v1/auth/register", Body("chefe@pontual.test", "superadmin", TestApp.OwnerEmail))).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await anonymous.PostAsJsonAsync("/api/v1/auth/register", Body("nova@pontual.test", "admin", TestApp.OwnerEmail))).StatusCode);
+
+        // Criar a conta não abre sessão; as contas novas entram com a própria senha e a função certa.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/v1/auth/me")).StatusCode);
+        var admins = (await owner.GetAsync("/api/v1/admins").Json()).EnumerateArray().ToList();
+        Assert.Equal("admin", admins.Single(a => a.GetProperty("email").GetString() == "nova@pontual.test").GetProperty("role").GetString());
+        Assert.Equal("superadmin", admins.Single(a => a.GetProperty("email").GetString() == "chefe@pontual.test").GetProperty("role").GetString());
+        await TestApp.LoginAsync(app.Panel(), "chefe@pontual.test");
+
+        var audit = await owner.GetAsync("/api/v1/audit").Json();
+        Assert.Contains("pela tela de login", audit.GetRawText());
+    }
+
+    [Fact]
     public async Task Sem_cookie_devolve_401()
     {
         using var app = new TestApp();

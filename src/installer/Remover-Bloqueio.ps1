@@ -11,7 +11,8 @@ GarantirAdmin $MyInvocation.MyCommand.Path
 try {
     $marca = LerMarca
     $conta = if ($marca) { $marca.Conta } else { $null }
-    $sid = if ($conta) { SidDaConta $conta } else { $null }
+    # Prefere o SID gravado na marca (vale para conta existente, inclusive conta Microsoft cujo nome o SidDaConta nao resolve).
+    $sid = if ($marca -and $marca.Sid) { $marca.Sid } elseif ($conta) { SidDaConta $conta } else { $null }
 
     $pergunta = if ($sid) { "Remover o $Nome deste computador e tirar o bloqueio da conta `"$conta`"?" } else { "Remover o $Nome deste computador?" }
     if ((Mensagem $pergunta 'Question' 'YesNo') -ne 'Yes') { exit 0 }

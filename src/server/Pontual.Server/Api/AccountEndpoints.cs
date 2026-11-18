@@ -22,6 +22,7 @@ public static class AccountEndpoints
     private sealed record SetupBody(string? Name, string? Email, string? Password);
     private sealed record LoginBody(string? Email, string? Password);
     private sealed record NewAdminBody(string? Name, string? Email, string? Password, string? Role);
+    private sealed record RegisterBody(string? Name, string? Email, string? Password, string? Role, string? AuthEmail, string? AuthPassword);
 
     public static void Map(RouteGroupBuilder api)
     {
@@ -30,6 +31,7 @@ public static class AccountEndpoints
 
         api.MapPost("/setup", SetupAsync).PanelPublic().RequireRateLimiting(LoginRateLimit);
         api.MapPost("/auth/login", LoginAsync).PanelPublic().RequireRateLimiting(LoginRateLimit);
+        api.MapPost("/auth/register", RegisterAsync).PanelPublic().RequireRateLimiting(LoginRateLimit);
         api.MapPost("/auth/logout", LogoutAsync).PanelPublic();
         api.MapGet("/auth/me", (HttpContext context) => Results.Ok(MeDto.From(context.Admin()))).PanelLoggedIn();
 
@@ -159,6 +161,53 @@ public static class AccountEndpoints
         var password = Input.Password(body.Password);
         var role = Roles.Parse(body.Role);
 
+        return Results.Ok(AdminDto.From(await AddAdminAsync(db, audit, hasher, time, actor, name, email, password, role, "", ct)));
+    }
+
+    /// <summary>
+    /// Conta criada pela tela de login, sem sessão: quem autoriza é um superadministrador, que informa
+    /// o próprio e-mail e senha no mesmo pedido. Só cria as funções administrador e superadministrador.
+    /// </summary>
+    private static async Task<IResult> RegisterAsync(
+        HttpContext context, PontualDb db, AuditWriter audit, IPasswordHasher<Admin> hasher, TimeProvider time, CancellationToken ct)
+    {
+        var body = await context.ReadBodyAsync<RegisterBody>();
+        var name = Input.Required(body.Name, "o nome", 80);
+        var email = Input.Email(body.Email);
+        var password = Input.Password(body.Password);
+        var role = body.Role switch
+        {
+            "admin" => Role.Admin,
+            "superadmin" => Role.SuperAdmin,
+            _ => throw ApiError.BadRequest("Tipo de conta inválido. Use admin ou superadmin."),
+        };
+
+        var authEmail = Input.Clean(body.AuthEmail).ToLowerInvariant();
+        var authPassword = body.AuthPassword is { Length: <= 128 } ? body.AuthPassword : "";
+
+        var authorizer = authEmail.Length is > 0 and <= 254
+            ? await db.Admins.FirstOrDefaultAsync(a => a.Email == authEmail, ct)
+            : null;
+
+        var result = hasher.VerifyHashedPassword(authorizer!, authorizer?.PasswordHash ?? DummyHash.Value, authPassword);
+        if (authorizer is null || !authorizer.Active || result == PasswordVerificationResult.Failed)
+        {
+            throw new ApiError(StatusCodes.Status401Unauthorized, "E-mail ou senha do superadministrador incorretos.");
+        }
+
+        if (!PermissionMatrix.IsAllowed(authorizer.Role, Permission.AdminsManage))
+        {
+            throw ApiError.Forbidden("Só um superadministrador pode autorizar a criação de contas.");
+        }
+
+        await AddAdminAsync(db, audit, hasher, time, authorizer, name, email, password, role, " pela tela de login", ct);
+        return Results.NoContent();
+    }
+
+    private static async Task<Admin> AddAdminAsync(
+        PontualDb db, AuditWriter audit, IPasswordHasher<Admin> hasher, TimeProvider time,
+        Admin actor, string name, string email, string password, Role role, string how, CancellationToken ct)
+    {
         if (await db.Admins.AnyAsync(a => a.Email == email, ct))
         {
             throw ApiError.Conflict("Já existe um administrador com este e-mail.");
@@ -176,8 +225,8 @@ public static class AccountEndpoints
         db.Admins.Add(admin);
 
         await audit.SaveAsync(db, AuditInfo.By(actor, "admins.create",
-            $"{actor.Name} criou o administrador {admin.Name} ({admin.Email}) com a função {Roles.Label(role)}", "admin", admin.Id), cancellationToken: ct);
+            $"{actor.Name} criou o administrador {admin.Name} ({admin.Email}) com a função {Roles.Label(role)}{how}", "admin", admin.Id), cancellationToken: ct);
 
-        return Results.Ok(AdminDto.From(admin));
+        return admin;
     }
 }

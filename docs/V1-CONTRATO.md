@@ -35,6 +35,7 @@ Fora: bloqueio do Windows, serviços Windows (Service e Broker), suporte remoto,
 | `GET /setup/status` | — | `{ needsSetup }` (verdadeiro se não existe administrador) |
 | `POST /setup` | `{ name, email, password }` | 204. Cria o primeiro administrador como `superadmin`. Só funciona sem administradores; depois, 409 |
 | `POST /auth/login` | `{ email, password }` | `{ id, name, email, role }` e o cookie. 401 se inválido |
+| `POST /auth/register` | `{ name, email, password, role, authEmail, authPassword }` | 204. Cria uma conta pela tela de login, sem sessão. `role`: `admin` ou `superadmin`. `authEmail`/`authPassword` são de um superadministrador que autoriza: 401 se incorretos, 403 se não for superadministrador, 409 se o e-mail já existe |
 | `POST /auth/logout` | — | 204 |
 | `GET /auth/me` | — | `{ id, name, email, role, permissions: [códigos] }` ou 401 |
 | `GET /admins` [admins.manage] | — | `[{ id, name, email, role, active }]` |

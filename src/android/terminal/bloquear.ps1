@@ -42,7 +42,8 @@ if ($Fraco) {
         Set-Content -Encoding ascii (Join-Path $PSScriptRoot 'tela-inicio-anterior.txt') $anterior
     }
 
-    & $adb shell pm enable "$pacote/.Inicio" | Out-Null
+    # O atalho .Inicio ja nasce habilitado no manifesto (o Android novo recusa 'pm enable' pelo cabo), entao
+    # basta atribuir o papel de tela de inicio (HOME) ao Terminal.
     & $adb shell cmd role add-role-holder android.app.role.HOME $pacote
     if ($LASTEXITCODE -ne 0) { Write-Host 'O Android recusou trocar a tela de inicio.' -ForegroundColor Red; exit 1 }
     & $adb shell input keyevent KEYCODE_HOME

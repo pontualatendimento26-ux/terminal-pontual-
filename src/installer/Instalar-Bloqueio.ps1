@@ -98,6 +98,58 @@ function LerProgramas([string]$Texto) {
     return @($Texto -split '[,;\r\n]+' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 }
 
+# Lista as contas de pessoas que ja existem neste computador (perfis reais, S-1-5-21-...),
+# para aplicar o bloqueio numa delas em vez de criar uma conta nova.
+function ContasExistentes {
+    $contas = @()
+    try { $perfis = @(Get-CimInstance -ClassName Win32_UserProfile -ErrorAction Stop | Where-Object { -not $_.Special -and $_.SID -like 'S-1-5-21-*' }) }
+    catch { $perfis = @() }
+    foreach ($p in $perfis) {
+        $nome = $null
+        try { $nome = (New-Object Security.Principal.SecurityIdentifier($p.SID)).Translate([Security.Principal.NTAccount]).Value } catch { }
+        if (-not $nome) { $nome = Split-Path $p.LocalPath -Leaf }
+        $contas += @{ Sid = $p.SID; Nome = $nome; Pasta = $p.LocalPath; Aberta = [bool]$p.Loaded }
+    }
+    return @($contas | Sort-Object { $_.Nome })
+}
+
+# Janela para escolher uma conta existente e os programas extras. Devolve @{Conta;Sid;Programas} ou $null.
+function EscolherConta($Contas) {
+    $janela = New-Object System.Windows.Forms.Form
+    $janela.Text = "Instalação do $Nome 2.0"
+    $janela.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+    $janela.ClientSize = New-Object System.Drawing.Size(500, 400)
+    $janela.FormBorderStyle = 'FixedDialog'; $janela.StartPosition = 'CenterScreen'
+    $janela.MaximizeBox = $false; $janela.MinimizeBox = $false; $janela.TopMost = $true
+
+    $rotulo = New-Object System.Windows.Forms.Label
+    $rotulo.Text = 'Escolha a conta que a atendente JÁ usa. O bloqueio é aplicado nela, mantendo e-mails, logins e arquivos. As outras contas deste computador não mudam.'
+    $rotulo.SetBounds(20, 14, 460, 58); $janela.Controls.Add($rotulo)
+
+    $lista = New-Object System.Windows.Forms.ListBox
+    $lista.SetBounds(20, 76, 460, 170)
+    foreach ($c in $Contas) { [void]$lista.Items.Add($c.Nome + $(if ($c.Aberta) { '   (aberta agora)' } else { '' })) }
+    if ($lista.Items.Count) { $lista.SelectedIndex = 0 }
+    $janela.Controls.Add($lista)
+
+    $rotuloP = New-Object System.Windows.Forms.Label
+    $rotuloP.Text = 'Outros programas que podem abrir arquivos (opcional). PDF e planilhas já liberados. Ex.: WINWORD.EXE'
+    $rotuloP.SetBounds(20, 254, 460, 40); $janela.Controls.Add($rotuloP)
+    $campoProgramas = New-Object System.Windows.Forms.TextBox
+    $campoProgramas.SetBounds(20, 296, 460, 26); $janela.Controls.Add($campoProgramas)
+
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = 'Aplicar bloqueio'; $ok.SetBounds(236, 344, 134, 34); $ok.DialogResult = 'OK'
+    $cancelar = New-Object System.Windows.Forms.Button
+    $cancelar.Text = 'Cancelar'; $cancelar.SetBounds(380, 344, 100, 34); $cancelar.DialogResult = 'Cancel'
+    $janela.Controls.AddRange(@($ok, $cancelar))
+    $janela.AcceptButton = $ok; $janela.CancelButton = $cancelar
+
+    if ($janela.ShowDialog() -ne 'OK' -or $lista.SelectedIndex -lt 0) { return $null }
+    $escolhida = $Contas[$lista.SelectedIndex]
+    return @{ Conta = $escolhida.Nome; Sid = $escolhida.Sid; Aberta = $escolhida.Aberta; Programas = $campoProgramas.Text }
+}
+
 function CriarConta([string]$Conta, [string]$Senha) {
     $computador = [ADSI]"WinNT://$env:COMPUTERNAME,computer"
     $usuario = $computador.Create('user', $Conta)
@@ -135,12 +187,12 @@ try {
     $anterior = LerMarca
     $programas = @()
     $senha = ''
-    if ($anterior -and (SidDaConta $anterior.Conta)) {
+    if ($anterior -and ($anterior.Sid -or (SidDaConta $anterior.Conta))) {
         # Reinstalacao ou atualizacao: a conta ja existe e e mantida.
         $resposta = Mensagem "O $Nome já está instalado neste computador, com a conta `"$($anterior.Conta)`".`n`nAtualizar o programa e manter essa conta?" 'Question' 'YesNo'
         if ($resposta -ne 'Yes') { exit 0 }
         $conta = $anterior.Conta
-        $sid = SidDaConta $conta
+        $sid = if ($anterior.Sid) { $anterior.Sid } else { SidDaConta $conta }
         $programas = $anterior.Programas
         if (ContaAberta $sid) {
             Mensagem "A conta `"$conta`" está aberta neste computador.`n`nEntre nela, use `"Desligar ou sair`" > `"Sair da conta`" e rode este instalador de novo." 'Warning' | Out-Null
@@ -148,24 +200,54 @@ try {
         }
     }
     else {
-        $sugestao = 'Atendente'
-        $textoProgramas = ''
-        while ($true) {
-            $dados = PedirDados $sugestao $textoProgramas
-            if (-not $dados) { exit 0 }
-            $sugestao = $dados.Conta
-            $textoProgramas = $dados.Programas
-            $programas = LerProgramas $dados.Programas
-            $invalidos = @($programas | Where-Object { $_ -notmatch $PadraoDePrograma })
+        $modo = Mensagem ("Como aplicar o bloqueio?`n`n" +
+            "SIM  = usar uma conta que a atendente JÁ usa neste computador (mantém e-mails, logins e arquivos).`n" +
+            "NÃO  = criar uma conta nova para a atendente.`n" +
+            "CANCELAR = sair.") 'Question' 'YesNoCancel'
+        if ($modo -eq 'Cancel') { exit 0 }
 
-            if ($dados.Conta -notmatch $PadraoDeConta) { Mensagem 'O nome da conta deve ter de 1 a 20 caracteres: letras sem acento, números, espaço, ponto, hífen ou sublinhado, começando por letra ou número.' 'Warning' | Out-Null; continue }
-            if (SidDaConta $dados.Conta) { Mensagem "Já existe uma conta ou um grupo chamado `"$($dados.Conta)`" neste computador.`n`nO bloqueio só é aplicado a uma conta nova, para não atingir quem já usa o computador. Escolha outro nome." 'Warning' | Out-Null; continue }
-            if ($dados.Senha -cne $dados.Confirma) { Mensagem 'As duas senhas não são iguais.' 'Warning' | Out-Null; continue }
-            if ($invalidos.Count -gt 0) { Mensagem "Nome de programa inválido: $($invalidos -join ', ').`n`nInforme só o nome do arquivo, terminado em .exe. Exemplo: EXCEL.EXE" 'Warning' | Out-Null; continue }
-            break
+        if ($modo -eq 'Yes') {
+            # Conta existente: aplica o bloqueio nela, sem criar conta. ContaCriada fica 0 (a remocao nao apaga a conta).
+            $contas = ContasExistentes
+            if (-not $contas -or @($contas).Count -eq 0) {
+                Mensagem 'Não encontrei contas de pessoas já criadas neste computador. Rode de novo e escolha "Não" para criar uma conta nova para a atendente.' 'Warning' | Out-Null
+                exit 1
+            }
+            while ($true) {
+                $sel = EscolherConta $contas
+                if (-not $sel) { exit 0 }
+                $programas = LerProgramas $sel.Programas
+                $invalidos = @($programas | Where-Object { $_ -notmatch $PadraoDePrograma })
+                if ($invalidos.Count -gt 0) { Mensagem "Nome de programa inválido: $($invalidos -join ', ').`n`nInforme só o nome do arquivo, terminado em .exe. Exemplo: EXCEL.EXE" 'Warning' | Out-Null; continue }
+                break
+            }
+            $conta = $sel.Conta
+            $sid = $sel.Sid
+            $confirmar = Mensagem ("Aplicar o bloqueio na conta `"$conta`"?`n`n" +
+                "Ao entrar nela, o computador abre direto o Terminal Pontual, sem área de trabalho, e só os programas liberados abrem. Os e-mails e arquivos dessa conta continuam lá." +
+                $(if ($sel.Aberta) { "`n`nEssa conta está aberta agora: o bloqueio passa a valer quando ela for aberta de novo (ou após reiniciar)." } else { '' })) 'Question' 'YesNo'
+            if ($confirmar -ne 'Yes') { exit 0 }
         }
-        $conta = $dados.Conta
-        $senha = $dados.Senha
+        else {
+            $sugestao = 'Atendente'
+            $textoProgramas = ''
+            while ($true) {
+                $dados = PedirDados $sugestao $textoProgramas
+                if (-not $dados) { exit 0 }
+                $sugestao = $dados.Conta
+                $textoProgramas = $dados.Programas
+                $programas = LerProgramas $dados.Programas
+                $invalidos = @($programas | Where-Object { $_ -notmatch $PadraoDePrograma })
+
+                if ($dados.Conta -notmatch $PadraoDeConta) { Mensagem 'O nome da conta deve ter de 1 a 20 caracteres: letras sem acento, números, espaço, ponto, hífen ou sublinhado, começando por letra ou número.' 'Warning' | Out-Null; continue }
+                if (SidDaConta $dados.Conta) { Mensagem "Já existe uma conta ou um grupo chamado `"$($dados.Conta)`" neste computador.`n`nO bloqueio só é aplicado a uma conta nova, para não atingir quem já usa o computador. Escolha outro nome." 'Warning' | Out-Null; continue }
+                if ($dados.Senha -cne $dados.Confirma) { Mensagem 'As duas senhas não são iguais.' 'Warning' | Out-Null; continue }
+                if ($invalidos.Count -gt 0) { Mensagem "Nome de programa inválido: $($invalidos -join ', ').`n`nInforme só o nome do arquivo, terminado em .exe. Exemplo: EXCEL.EXE" 'Warning' | Out-Null; continue }
+                break
+            }
+            $conta = $dados.Conta
+            $senha = $dados.Senha
+        }
     }
 
     # 1. Programa
@@ -237,11 +319,18 @@ try {
     New-Item -ItemType Directory -Force -Path $inicio | Out-Null
     Atalho (Join-Path $inicio "Remover o $Nome (bloqueio).lnk") $PowerShellExe "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $Destino 'Remover-Bloqueio.ps1')`"" 'Remove o Terminal Pontual e o bloqueio da conta da atendente'
 
-    Mensagem ("Instalação concluída.`n`n" +
-        "COMO USAR`n" +
+    $comoUsar = if ($contaCriadaAgora) {
         "1. Saia desta conta do Windows (ou reinicie o computador).`n" +
         "2. Na tela de entrada, escolha a conta `"$conta`".`n" +
-        "3. Na primeira vez o Windows prepara a conta (1 a 2 minutos) e o Terminal pede o endereço da Central do TI e o código de cadastro.`n`n" +
+        "3. Na primeira vez o Windows prepara a conta (1 a 2 minutos) e o Terminal pede o endereço da Central do TI e o código de cadastro."
+    } else {
+        "1. Saia da conta `"$conta`" (ou reinicie o computador) e entre nela de novo.`n" +
+        "2. Ela abre direto o Terminal, com os e-mails e arquivos que já estavam na conta.`n" +
+        "3. Na primeira vez o Terminal pede o endereço da Central do TI e o código de cadastro."
+    }
+    Mensagem ("Instalação concluída.`n`n" +
+        "COMO USAR`n" +
+        "$comoUsar`n`n" +
         "PARA SAIR DA CONTA BLOQUEADA`n" +
         "Atalho Ctrl + Alt + Espaço + P, ou botão `"Desligar ou sair`" do Terminal, ou Ctrl + Alt + Del > Sair. Depois entre na sua conta de sempre.`n`n" +
         "PARA REMOVER`n" +

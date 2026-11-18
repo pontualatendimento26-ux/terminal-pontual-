@@ -258,7 +258,7 @@ async function agir(botao, fazer, { recarregar = [], ok = '' } = {}) {
 
 // ======================================================== telas de entrada
 function mostrarTela(nome) {
-  for (const id of ['carga', 'rede', 'setup', 'login']) $(`tela-${id}`).hidden = id !== nome;
+  for (const id of ['carga', 'rede', 'setup', 'login', 'conta']) $(`tela-${id}`).hidden = id !== nome;
   $('app-ad').hidden = nome !== 'app';
 }
 let novaTentativa = null;
@@ -329,6 +329,42 @@ $('form-login').addEventListener('submit', async (e) => {
   } catch (erro) {
     falharEm('login-erro', erro.status === 401 && erro.message === ERRO_PADRAO[401] ? 'E-mail ou senha incorretos.' : erro.message);
     $('login-senha').select();
+  } finally { botao.disabled = false; }
+});
+
+// Adicionar conta pela tela de login: um superadministrador autoriza com o e-mail e a senha dele.
+const CAMPOS_CONTA = ['conta-nome', 'conta-email', 'conta-senha', 'conta-senha2', 'conta-aut-email', 'conta-aut-senha'];
+function dicaTipoConta() { $('conta-tipo-dica').textContent = FUNCAO_DICA[$('conta-tipo').value] || ''; }
+$('conta-tipo').onchange = dicaTipoConta;
+$('login-nova-conta').onclick = () => {
+  for (const id of CAMPOS_CONTA) $(id).value = '';
+  $('conta-tipo').value = 'admin'; dicaTipoConta();
+  $('conta-erro').hidden = true;
+  mostrarTela('conta');
+  $('conta-nome').focus();
+};
+$('conta-voltar').onclick = () => { for (const id of CAMPOS_CONTA) $(id).value = ''; mostrarLogin(); };
+
+$('form-conta').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const nome = $('conta-nome').value.trim(), email = $('conta-email').value.trim(), senha = $('conta-senha').value;
+  const autEmail = $('conta-aut-email').value.trim(), autSenha = $('conta-aut-senha').value;
+  $('conta-erro').hidden = true;
+  if (!nome) return falharEm('conta-erro', 'Informe o nome de quem vai usar a conta.');
+  if (!/^\S+@\S+\.\S+$/.test(email)) return falharEm('conta-erro', 'Informe um e-mail válido para a conta nova.');
+  if (senha.length < 10) return falharEm('conta-erro', 'A senha precisa ter no mínimo 10 caracteres.');
+  if (senha !== $('conta-senha2').value) return falharEm('conta-erro', 'As duas senhas não são iguais.');
+  if (!autEmail || !autSenha) return falharEm('conta-erro', 'Informe o e-mail e a senha de um superadmin para autorizar.');
+  const botao = e.target.querySelector('[type="submit"]');
+  botao.disabled = true;
+  try {
+    await api('POST', '/auth/register', { name: nome, email, password: senha, role: $('conta-tipo').value, authEmail: autEmail, authPassword: autSenha });
+    for (const id of CAMPOS_CONTA) $(id).value = '';
+    $('login-email').value = email;
+    mostrarLogin('Conta criada. Entre com o e-mail e a senha definidos.');
+  } catch (erro) {
+    falharEm('conta-erro', erro.message);
+    if (erro.status === 401 || erro.status === 403) $('conta-aut-senha').select();
   } finally { botao.disabled = false; }
 });
 
