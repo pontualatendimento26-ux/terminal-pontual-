@@ -3,6 +3,7 @@ package br.com.pontualconsig.terminal;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -15,6 +16,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.text.InputType;
 import android.text.TextUtils;
 import android.util.Log;
@@ -191,6 +193,146 @@ public class MainActivity extends Activity implements Core.Listener {
                 .show();
     }
 
+    // ---------------------------------------------- permissões do bloqueio leve (sem cabo)
+
+    /** Passo guiado que liga as permissões do vigia; nulo quando não está na tela. */
+    private AlertDialog setupDialog;
+
+    private boolean needsUsageAccess() {
+        return !AppGuard.hasUsageAccess(this);
+    }
+
+    private boolean needsOverlay() {
+        return Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this);
+    }
+
+    private ComponentName homeAlias() {
+        return new ComponentName(getPackageName(), getPackageName() + ".Inicio");
+    }
+
+    /** Faz o Terminal aparecer como opção de tela de início do Android (para o passo 3 do setup). */
+    private void enableHomeAlias() {
+        try {
+            getPackageManager().setComponentEnabledSetting(homeAlias(),
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
+        } catch (RuntimeException e) {
+            Log.w(Core.TAG, "ativar tela de início", e);
+        }
+    }
+
+    /** Tira o Terminal da lista de telas de início: o Android volta sozinho para a tela de início normal. */
+    private void disableHomeAlias() {
+        try {
+            getPackageManager().setComponentEnabledSetting(homeAlias(),
+                    PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, PackageManager.DONT_KILL_APP);
+        } catch (RuntimeException e) {
+            Log.w(Core.TAG, "desativar tela de início", e);
+        }
+    }
+
+    private void startGuardService() {
+        try {
+            Intent service = new Intent(this, KeepAliveService.class);
+            if (Build.VERSION.SDK_INT >= 26) {
+                startForegroundService(service);
+            } else {
+                startService(service);
+            }
+        } catch (RuntimeException e) {
+            Log.w(Core.TAG, "serviço do vigia", e);
+        }
+    }
+
+    /**
+     * Sem cabo, o bloqueio leve depende de três ajustes que o Android só deixa ligar na mão: "Acesso aos dados
+     * de uso" e "Sobrepor a outros apps" (para o vigia avisar e trazer o Terminal de volta) e deixar o Terminal
+     * como "tela de início" (para o botão de início voltar sempre a ele). Enquanto faltar algum, mostra um passo
+     * que abre a tela certa. Com os três, os botões de baixo deixam de levar a atendente a outro lugar. Some em
+     * manutenção (o TI precisa do aparelho livre).
+     */
+    private void showSetupIfNeeded() {
+        if (!core.isEnrolled() || isFinishing() || Core.STATE_MAINTENANCE.equals(core.state)) {
+            return;
+        }
+
+        boolean usage = needsUsageAccess();
+        boolean overlay = needsOverlay();
+        boolean home = !terminalIsHome();
+        if (!usage && !overlay && !home) {
+            if (setupDialog != null && setupDialog.isShowing()) {
+                setupDialog.dismiss();
+            }
+
+            setupDialog = null;
+            if (Core.STATE_ACTIVE.equals(core.state)) {
+                startGuardService();
+            }
+
+            return;
+        }
+
+        if (setupDialog != null && setupDialog.isShowing()) {
+            return;
+        }
+
+        // Ordem fixa: 1 dados de uso, 2 sobrepor, 3 tela de início. Mostra o primeiro que falta.
+        final int step = usage ? 1 : (overlay ? 2 : 3);
+        String texto;
+        if (step < 3) {
+            String nome = step == 1 ? "Acesso aos dados de uso" : "Sobrepor a outros apps";
+            texto = "Para o bloqueio funcionar neste celular, ligue três ajustes nas Configurações do Android.\n\n"
+                    + "Passo " + step + " de 3: ligue \"" + nome + "\" para o Terminal Pontual.\n\n"
+                    + "Toque em Abrir, ligue a chave e volte para esta tela.";
+        } else {
+            texto = "Passo 3 de 3: deixe o Terminal Pontual como a TELA DE INÍCIO do celular. Assim o botão de "
+                    + "início volta sempre para o Terminal, e os botões de baixo não levam a atendente para fora.\n\n"
+                    + "Toque em Abrir, escolha \"Terminal Pontual\" e marque \"Sempre\". Depois volte para esta tela.";
+            enableHomeAlias();
+        }
+
+        setupDialog = new AlertDialog.Builder(this)
+                .setTitle("Falta ligar o bloqueio")
+                .setMessage(texto)
+                .setCancelable(false)
+                .setPositiveButton("Abrir", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        openSetupStep(step);
+                    }
+                })
+                .setNegativeButton("Agora não", null)
+                .show();
+    }
+
+    private void openSetupStep(int step) {
+        Intent intent;
+        if (step == 1) {
+            intent = new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS);
+        } else if (step == 2) {
+            intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()));
+        } else {
+            intent = new Intent(Settings.ACTION_HOME_SETTINGS);
+        }
+
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            startActivity(intent);
+        } catch (RuntimeException e) {
+            // Alguns aparelhos não abrem a tela específica: cai na página do app ou nas Configurações.
+            try {
+                Intent fallback = step == 3
+                        ? new Intent(Settings.ACTION_SETTINGS)
+                        : new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));
+                startActivity(fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                toast(step == 3
+                        ? "Abra Aplicativos > Escolher apps padrão > Tela de início e marque o Terminal Pontual."
+                        : "Abra Aplicativos > Terminal Pontual e ligue a permissão.");
+            } catch (RuntimeException ignored) {
+                toast("Abra as Configurações do Android para concluir o passo.");
+            }
+        }
+    }
+
     private static boolean isHomeIntent(Intent intent) {
         return intent != null && intent.hasCategory(Intent.CATEGORY_HOME);
     }
@@ -267,6 +409,10 @@ public class MainActivity extends Activity implements Core.Listener {
         resumed = true;
         if (!redirected && core.isEnrolled()) {
             Lock.apply(this, hasWhatsAppItem());
+            // Sem o bloqueio total (dono do aparelho), confere as permissões do vigia e orienta a ligá-las.
+            if (!Lock.isOwner(this)) {
+                showSetupIfNeeded();
+            }
         }
     }
 
@@ -577,6 +723,11 @@ public class MainActivity extends Activity implements Core.Listener {
 
         // Sem cadastro não há bloqueio: o TI precisa do aparelho livre para configurar.
         Lock.release(this);
+        // No bloqueio leve, devolve a tela de início normal do Android (o dono do aparelho é tratado pelo Lock).
+        if (!Lock.isOwner(this)) {
+            disableHomeAlias();
+        }
+
         stopService(new Intent(this, KeepAliveService.class));
     }
 
@@ -702,6 +853,10 @@ public class MainActivity extends Activity implements Core.Listener {
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             askedNotifications = true;
             requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, 1);
+        }
+
+        if (!Lock.isOwner(this)) {
+            showSetupIfNeeded();
         }
 
         updateLayout();
@@ -982,6 +1137,10 @@ public class MainActivity extends Activity implements Core.Listener {
         }
 
         sendStatus();
+        if (!Lock.isOwner(this)) {
+            showSetupIfNeeded();
+        }
+
         updateLayout();
     }
 
