@@ -162,16 +162,22 @@ Módulo independente e parte importante do produto. É **diferente da interface 
 
 ### Antes ou durante a Fase 0
 
-1. **Edição e versão do Windows** das máquinas das atendentes.
-2. **Domínio (Active Directory)** ou grupo de trabalho; existe alguma ferramenta de gerenciamento de máquinas?
+1. **Edição e versão do Windows** das máquinas das atendentes. *Respondido em 16/11/2026: Windows 10 e 11, todas Pro. Falta a versão exata de cada máquina (`winver`).*
+2. **Domínio (Active Directory)** ou grupo de trabalho; existe alguma ferramenta de gerenciamento de máquinas? *Respondido: grupo de trabalho.*
 3. **Onde fica o servidor** de produção.
-4. **Modelo de conta da atendente**: máquina fixa ou revezamento; conta Windows individual ou compartilhada.
-5. **Lista real de aplicativos e sites**, e se algum exige privilégio de administrador.
+4. **Modelo de conta da atendente**: máquina fixa ou revezamento; conta Windows individual ou compartilhada. *Respondido: máquina fixa por pessoa (ver ADR 0003). Falta definir as substituições.*
+5. **Lista real de aplicativos e sites**, e se algum exige privilégio de administrador. *Respondido em 16/11/2026: ver [APLICATIVOS-E-SITES.md](APLICATIVOS-E-SITES.md). Restam as perguntas da seção 4 daquele documento.*
 6. **DNS ou proxy** disponível para limitar os sites.
 7. **Servidor de horário** na rede local.
 8. **Atualizações do Windows e do navegador embutido**: por onde chegam, se a rede for fechada.
 9. **Quem são os dois administradores** exigidos para executáveis, e quem guarda o acesso de emergência.
 10. **Destinatário da âncora de auditoria** fora do TI (RH ou jurídico).
+
+### Fase futura: celulares das atendentes
+
+Pedido da Pontual em 16/11/2026: levar a mesma ideia aos celulares, ligados à mesma Central do TI. Informado: os aparelhos são **de uso profissional** e **todos Android**. Nada foi pesquisado nem construído ainda.
+
+A confirmar antes de planejar: se os aparelhos são de propriedade da empresa; quantos são, marca, modelo e versão do Android; para que são usados (só WhatsApp, ou também os portais); se o objetivo é bloquear ou só acompanhar; se podem ser restaurados de fábrica para a configuração. Exige pesquisa própria (modo de dispositivo dedicado do Android, construir contra adotar uma ferramenta de gerenciamento) e validação de RH e jurídico.
 
 ### Durante o projeto
 

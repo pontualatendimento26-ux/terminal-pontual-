@@ -1,0 +1,65 @@
+<Window x:Class="Pontual.Terminal.Shell.EnrollWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Terminal Pontual - Primeira configuração"
+        Width="640" SizeToContent="Height" ResizeMode="NoResize" WindowStartupLocation="CenterScreen"
+        Background="White" FontFamily="{StaticResource FonteMarca}" FontSize="15" Foreground="{StaticResource Texto}"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+    <StackPanel Margin="32,22,32,22">
+        <StackPanel Orientation="Horizontal">
+            <TextBlock FontSize="24" FontWeight="Bold" Foreground="{StaticResource Azul700}" Text="Pontual" />
+            <TextBlock FontSize="24" FontWeight="Bold" Foreground="{StaticResource Verde500}" Text="Consig" />
+            <Border BorderBrush="{StaticResource LinhaForte}" BorderThickness="1,0,0,0" Margin="14,4,0,4" Padding="14,0,0,0">
+                <TextBlock VerticalAlignment="Center" FontSize="13" Foreground="{StaticResource Suave}" Text="Terminal" />
+            </Border>
+        </StackPanel>
+
+        <TextBlock Margin="0,16,0,0" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource Tinta}" Text="Configurar este computador" />
+        <TextBlock Margin="0,4,0,0" Foreground="{StaticResource Suave}" TextWrapping="Wrap">
+            <Run Text="Computador:" /> <Run x:Name="HostnameRun" FontWeight="SemiBold" Foreground="{StaticResource Tinta}" /><Run Text=". Escolha como o Terminal vai funcionar aqui." />
+        </TextBlock>
+
+        <!-- Opção 1: sem servidor -->
+        <Border Margin="0,16,0,0" Padding="18,14" CornerRadius="16" Background="{StaticResource Azul50}" BorderBrush="{StaticResource Azul100}" BorderThickness="1">
+            <StackPanel>
+                <TextBlock FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource Tinta}" Text="Usar sem servidor (teste)" />
+                <TextBlock Margin="0,2,0,10" FontSize="14" Foreground="{StaticResource Suave}" TextWrapping="Wrap"
+                           Text="A lista de sites vem do arquivo config-local.json, que fica na pasta do programa. O que for aberto ou bloqueado é anotado num arquivo deste computador." />
+                <Button x:Name="LocalButton" Style="{StaticResource BotaoPilula}" HorizontalAlignment="Left" Click="OnUseLocal" Content="Usar sem servidor" />
+            </StackPanel>
+        </Border>
+
+        <!-- Opção 2: com servidor -->
+        <Border Margin="0,12,0,0" Padding="18,14" CornerRadius="16" BorderBrush="{StaticResource Linha}" BorderThickness="1">
+            <StackPanel>
+                <TextBlock FontSize="17" FontWeight="SemiBold" Foreground="{StaticResource Tinta}" Text="Conectar a um servidor" />
+                <TextBlock Margin="0,2,0,10" FontSize="14" Foreground="{StaticResource Suave}" TextWrapping="Wrap"
+                           Text="Peça ao TI um código de cadastro na Central do TI. O código vale por 30 minutos e só pode ser usado uma vez." />
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="190" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <Label Target="{Binding ElementName=ServerBox}" Padding="0" Margin="0,0,0,4" FontSize="14" FontWeight="Medium" Foreground="{StaticResource Tinta}" Content="Endereço do servidor" />
+                        <TextBox x:Name="ServerBox" Style="{StaticResource Campo}" MaxLength="200" />
+                        <TextBlock Margin="0,4,0,0" FontSize="12.5" Foreground="{StaticResource Suave}" Text="Exemplo: http://192.168.0.10:5080" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <Label Target="{Binding ElementName=CodeBox}" Padding="0" Margin="0,0,0,4" FontSize="14" FontWeight="Medium" Foreground="{StaticResource Tinta}" Content="Código de cadastro" />
+                        <TextBox x:Name="CodeBox" Style="{StaticResource Campo}" MaxLength="12" CharacterCasing="Upper" FontSize="17" />
+                        <TextBlock Margin="0,4,0,0" FontSize="12.5" Foreground="{StaticResource Suave}" Text="Formato: XXXX-XXXX" />
+                    </StackPanel>
+                </Grid>
+                <Button x:Name="EnrollButton" Style="{StaticResource BotaoClaro}" HorizontalAlignment="Left" IsDefault="True" Click="OnEnroll" Content="Conectar e cadastrar" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock x:Name="ErrorText" Margin="0,12,0,0" FontSize="14" FontWeight="Medium" Foreground="{StaticResource Rubi700}" TextWrapping="Wrap" Visibility="Collapsed" />
+        <TextBlock Margin="0,12,0,0" FontSize="12.5" Foreground="{StaticResource Suave}" TextWrapping="Wrap"
+                   Text="Para trocar esta escolha depois, abra o programa com a opção --reconfigurar." />
+    </StackPanel>
+    </ScrollViewer>
+</Window>

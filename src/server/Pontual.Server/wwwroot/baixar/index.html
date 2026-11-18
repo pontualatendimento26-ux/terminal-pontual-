@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Instalar o Terminal Pontual</title>
+<style>
+  :root { --azul-700: #0d47a1; --azul-900: #0a2f6b; --azul-50: #f3f8fe; --azul-100: #e3effc; --verde-700: #1f7a45; --verde-500: #2e9e5b; --tinta: #0f172a; --texto: #334155; --suave: #64748b; --linha: #e6ebf2; --fundo: #f7f9fc; --branco: #fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --azul-700: #1f6fd6; --azul-900: #1557b0; --azul-50: #17263f; --azul-100: #1b3154; --verde-700: #6fdb9f; --verde-500: #34b36b; --tinta: #f1f5f9; --texto: #cbd5e1; --suave: #94a3b8; --linha: #243044; --fundo: #0b1220; --branco: #131c2e; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; padding: 24px 16px; background: var(--fundo); color: var(--texto); font: 16px/1.6 "Segoe UI", system-ui, sans-serif; }
+  main { width: 100%; max-width: 760px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 28px; line-height: 1.25; color: var(--tinta); text-wrap: balance; }
+  .sub { color: var(--suave); margin: 0 0 20px; }
+  .end { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin: 0 0 24px; padding: 14px 16px; border-radius: 12px; background: var(--azul-50); border: 1px solid var(--azul-100); }
+  .end b { color: var(--tinta); font-size: 18px; }
+  .cartao { background: var(--branco); border: 1px solid var(--linha); border-radius: 18px; padding: 24px; margin-bottom: 18px; }
+  .cartao h2 { margin: 0 0 4px; font-size: 20px; color: var(--tinta); }
+  .cartao .para { color: var(--suave); margin: 0 0 14px; font-size: 14.5px; }
+  a.btn { display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 26px; border-radius: 999px; color: #fff; font-weight: 600; font-size: 17px; text-decoration: none; }
+  a.pc { background: var(--azul-700); } a.pc:hover { background: var(--azul-900); }
+  a.cel { background: var(--verde-500); } a.cel:hover { background: var(--verde-700); }
+  ol { margin: 14px 0 0; padding-left: 22px; } li { margin-bottom: 7px; }
+  b { color: var(--tinta); }
+  .nota { margin-top: 10px; font-size: 13.5px; color: var(--suave); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Instalar o Terminal Pontual</h1>
+  <p class="sub">Esta página é para o TI. Abra-a no aparelho em que vai instalar.</p>
+
+  <p class="end"><span>Endereço desta Central:</span> <b id="endereco">—</b></p>
+
+  <div class="cartao">
+    <h2>Computador da atendente</h2>
+    <p class="para">Windows 10 ou 11. Precisa da senha de um administrador do computador.</p>
+    <a class="btn pc" href="Instalar-Terminal-Pontual.exe" download>Baixar para o computador</a>
+    <ol>
+      <li>Abra o arquivo baixado. Se aparecer "O Windows protegeu o computador", clique em <b>Mais informações</b> e em <b>Executar assim mesmo</b>.</li>
+      <li>Confirme a permissão de <b>administrador</b>.</li>
+      <li>Escolha o nome e a senha da <b>conta da atendente</b> (o instalador cria essa conta).</li>
+      <li>Saia da sua conta e entre na conta da atendente: ela abre direto o Terminal.</li>
+      <li>Na primeira vez, informe o <b>endereço desta Central</b> (acima) e o código de <b>Cadastrar nova máquina</b>.</li>
+    </ol>
+    <p class="nota">O bloqueio vale só para a conta da atendente. Para remover: numa conta de administrador, menu Iniciar &gt; Terminal Pontual &gt; Remover.</p>
+  </div>
+
+  <div class="cartao">
+    <h2>Celular de trabalho (Android)</h2>
+    <p class="para">O celular precisa estar no <b>Wi-Fi da empresa</b> (a mesma rede desta Central). Não precisa de cabo.</p>
+    <a class="btn cel" href="Terminal-Pontual-Android.apk" download>Baixar para o celular</a>
+    <ol>
+      <li>No celular, confira que ele está no <b>Wi-Fi da empresa</b>.</li>
+      <li>Abra esta página no navegador do celular e toque em <b>Baixar para o celular</b>.</li>
+      <li>Ao abrir o arquivo, o Android pede para <b>permitir instalar deste navegador</b>. Permita e conclua a instalação.</li>
+      <li>Abra o <b>Terminal Pontual</b>, informe o <b>endereço desta Central</b> (acima) e o código de <b>Cadastrar nova máquina</b>.</li>
+      <li>Na Central, aprove o celular em "Máquinas aguardando aprovação".</li>
+    </ol>
+    <p class="nota">Se o endereço acima aparecer como "localhost", abra esta página pelo endereço de rede da Central (algo como http://192.168.0.X:5080/baixar/), senão o celular não encontra a Central.</p>
+  </div>
+</main>
+<script>
+  // Mostra o endereço pelo qual esta página foi aberta: é o mesmo que a atendente deve digitar.
+  (function () {
+    var host = location.host || 'localhost:5080';
+    document.getElementById('endereco').textContent = 'http://' + host;
+  })();
+</script>
+</body>
+</html>

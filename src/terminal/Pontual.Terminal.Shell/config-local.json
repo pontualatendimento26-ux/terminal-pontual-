@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "attendantName": "",
+  "observationMode": true,
+  "items": [
+    { "id": "safra", "name": "Safra", "kind": "site", "target": "https://epfweb.safra.com.br/Home/Login", "group": "Bancos e promotoras", "hosts": ["epfweb.safra.com.br"] },
+    { "id": "quero-mais", "name": "Quero Mais Consignado", "kind": "site", "target": "https://portaldecredito.queromaisconsignado.com.br/login", "group": "Bancos e promotoras", "hosts": ["portaldecredito.queromaisconsignado.com.br"] },
+    { "id": "teddy", "name": "Teddy Consig360", "kind": "site", "target": "https://teddy.consig360.com.br/", "group": "Bancos e promotoras", "hosts": ["teddy.consig360.com.br"] },
+    { "id": "nossa-fintech", "name": "Nossa Fintech", "kind": "site", "target": "https://fintechdocorban.nossafintech.com.br/home/overview", "group": "Bancos e promotoras", "hosts": ["fintechdocorban.nossafintech.com.br"] },
+    { "id": "digio", "name": "Digio", "kind": "site", "target": "https://funcaoconsig.digio.com.br/FIMENU/Login/AC.UI.LOGIN.aspx", "group": "Bancos e promotoras", "hosts": ["funcaoconsig.digio.com.br"] },
+    { "id": "c6", "name": "C6 Consig", "kind": "site", "target": "https://c6.c6consig.com.br/WebAutorizador/Login/AC.UI.LOGIN.aspx", "group": "Bancos e promotoras", "hosts": ["c6.c6consig.com.br"] },
+    { "id": "santander", "name": "Parceiro Santander", "kind": "site", "target": "https://www.parceirosantander.com.br/spa-base/landing-page", "group": "Bancos e promotoras", "hosts": ["www.parceirosantander.com.br"] },
+    { "id": "red-consig", "name": "Red Consig", "kind": "site", "target": "https://esteira.redconsig.com.br/solicitacao-saldo-aprovadas", "group": "Bancos e promotoras", "hosts": ["esteira.redconsig.com.br"] },
+    { "id": "bem-promotora", "name": "Bem Promotora", "kind": "site", "target": "https://bemweb.bempromotora.com.br/autenticacao/login", "group": "Bancos e promotoras", "hosts": ["bemweb.bempromotora.com.br"] },
+    { "id": "meu-cashcard", "name": "Meu CashCard", "kind": "site", "target": "https://front.meucashcard.com.br/WebAppBPOCartao/", "group": "Bancos e promotoras", "hosts": ["front.meucashcard.com.br"] },
+    { "id": "aki", "name": "Aki Promotora", "kind": "site", "target": "https://akipromotora.app/WebFIMenuMVC/Login/AC.UI.LOGIN.aspx", "group": "Bancos e promotoras", "hosts": ["akipromotora.app"] },
+    { "id": "pan", "name": "Pan Consig", "kind": "site", "target": "https://panconsig.pansolucoes.com.br/WebAutorizador/", "group": "Bancos e promotoras", "hosts": ["panconsig.pansolucoes.com.br"] },
+    { "id": "bb", "name": "Banco do Brasil", "kind": "site", "target": "https://correspondente.bb.com.br/cbo-portal-acesso/", "group": "Bancos e promotoras", "hosts": ["correspondente.bb.com.br"] },
+    { "id": "parana-banco", "name": "Paraná Banco", "kind": "site", "target": "https://front.paranabanco.b.br/login", "group": "Bancos e promotoras", "hosts": ["front.paranabanco.b.br"] },
+    { "id": "joinbank", "name": "JoinBank Finanto", "kind": "site", "target": "https://finanto.joinbank.com.br/", "group": "Bancos e promotoras", "hosts": ["finanto.joinbank.com.br"] },
+    { "id": "daycoval-consignado", "name": "Daycoval Consignado", "kind": "site", "target": "https://consignado.daycoval.com.br/Autorizador/", "group": "Bancos e promotoras", "hosts": ["consignado.daycoval.com.br"] },
+    { "id": "daycoval-portal", "name": "Daycoval Portal de Crédito", "kind": "site", "target": "https://portaldecredito.daycoval.com.br/login", "group": "Bancos e promotoras", "hosts": ["portaldecredito.daycoval.com.br"] },
+
+    { "id": "whatsapp", "name": "WhatsApp Web", "kind": "site", "target": "https://web.whatsapp.com/", "group": "Comunicação", "hosts": ["web.whatsapp.com"] },
+    { "id": "teams", "name": "Teams", "kind": "site", "target": "https://teams.microsoft.com/", "group": "Comunicação", "hosts": ["teams.microsoft.com", "login.microsoftonline.com", "login.live.com"] },
+    { "id": "gmail", "name": "Gmail", "kind": "site", "target": "https://mail.google.com/", "group": "Comunicação", "hosts": ["mail.google.com", "accounts.google.com"] },
+
+    { "id": "site-pontual", "name": "Site da Pontual", "kind": "site", "target": "https://www.pontualconsig.com.br/index.html", "group": "Pontual e ferramentas", "hosts": ["www.pontualconsig.com.br"] },
+    { "id": "sistema-interno", "name": "Sistema interno", "kind": "site", "target": "http://192.168.0.243:3000/html/login.html", "group": "Pontual e ferramentas", "hosts": ["192.168.0.243"] }
+  ]
+}

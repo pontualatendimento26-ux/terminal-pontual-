@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Terminal Pontual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<div class="app" id="app-at">
+  <header class="topo"><div class="caixa-pagina">
+    <span class="logo" data-logo></span>
+    <div class="fim">
+      <span class="ligado" id="ligacao" role="status">Conectando</span>
+      <span class="hora"><b data-hora>--:--</b><span data-data></span></span>
+      <!-- Só no modo bloqueado (programa instalado com bloqueio): fazem a vez do menu Iniciar. -->
+      <button type="button" class="btn claro topo-btn" id="at-arquivos" hidden><span data-ic="folder"></span>Arquivos</button>
+      <button type="button" class="btn claro topo-btn" id="at-energia" hidden><span data-ic="power"></span>Desligar ou sair</button>
+      <span class="eu" id="eu" hidden><span class="avatar" id="eu-avatar"></span><span><b id="eu-nome"></b><small id="eu-pc"></small></span></span>
+    </div>
+  </div></header>
+
+  <!-- Carregando, aguardando aprovação, cadastro inválido -->
+  <main id="at-estado" class="estado">
+    <div>
+      <i id="estado-icone"></i>
+      <h1 id="estado-titulo">Carregando</h1>
+      <p id="estado-texto">Buscando o que está liberado para você.</p>
+    </div>
+  </main>
+
+  <main id="at-inicio" hidden>
+    <section class="heroi"><div class="caixa-pagina">
+      <h1 id="saudacao"></h1>
+      <p id="saudacao-sub"></p>
+      <div class="procura">
+        <span data-ic="search" data-tam="22"></span>
+        <input id="busca" type="search" autocomplete="off" spellcheck="false" placeholder="Digite o nome do banco ou da ferramenta" aria-label="Buscar banco ou ferramenta">
+        <kbd>Enter</kbd>
+      </div>
+    </div></section>
+    <div class="caixa-pagina">
+      <section class="bloco" id="sec-abertos" hidden><h2>Abertos agora</h2><div class="abertos" id="abertos"></div></section>
+      <section class="bloco" id="sec-destaques" hidden><h2>Mais usados por você</h2><div class="destaques" id="destaques"></div></section>
+      <section class="bloco" style="padding-bottom:56px">
+        <div class="todos-topo"><h2 id="todos-titulo"></h2><div class="guias" id="guias-grupo" role="tablist" aria-label="Grupo"></div></div>
+        <div class="lista-sites" id="lista-sites"></div>
+        <p class="vazio" id="nada" hidden></p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="rodape" id="rodape"><div class="caixa-pagina">
+    <button type="button" class="btn verde" id="at-chamar"><span data-ic="headset"></span>Chamar o TI</button>
+    <span>O uso deste computador é registrado pela Pontual.</span>
+    <button type="button" class="elo" id="at-ver-aviso">Ver o que é registrado</button>
+    <span class="fim num" id="at-config"></span>
+  </div></footer>
+
+  <div class="manut" id="at-manut" role="alertdialog" aria-modal="true" aria-labelledby="at-manut-titulo" aria-describedby="at-manut-texto" tabindex="-1" hidden>
+    <div><i data-ic="wrench" data-tam="44"></i><h2 id="at-manut-titulo">Computador em manutenção</h2><p id="at-manut-texto"></p></div>
+  </div>
+  <div class="veu" id="at-veu" hidden><div class="folha" id="at-folha" role="dialog" aria-modal="true"></div></div>
+</div>
+
+<div class="avisos" id="avisos" aria-live="polite"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

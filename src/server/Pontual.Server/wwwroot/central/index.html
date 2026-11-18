@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Central do TI — Terminal Pontual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="data:,">
+<script src="/central/tema.js"></script>
+<link href="/central/app.css" rel="stylesheet">
+</head>
+<body>
+
+<!-- Nas telas de entrada (login, primeiro uso, carregando) o botão do tema fica solto no canto. -->
+<button type="button" class="redondo tema-solto" id="tema-entrada" aria-label="Ativar o modo escuro" title="Modo escuro"></button>
+
+<!-- ============================================== carregando e sem conexão -->
+<div class="entrada" id="tela-carga">
+  <div class="estado-tela" role="status"><span class="girando" aria-hidden="true"></span><p>Carregando a Central do TI…</p></div>
+</div>
+<div class="entrada" id="tela-rede" hidden>
+  <div class="estado-tela falha" role="alert">
+    <i data-ic="offline" data-tam="36"></i>
+    <h1>Sem conexão com o servidor</h1>
+    <p id="rede-texto">Não foi possível falar com o servidor do Terminal Pontual. Uma nova tentativa é feita sozinha a cada poucos segundos.</p>
+    <button type="button" class="btn" id="rede-tentar">Tentar agora</button>
+  </div>
+</div>
+
+<!-- ============================================================ primeiro uso -->
+<main class="entrada" id="tela-setup" hidden>
+  <form class="cartao" id="form-setup" novalidate aria-labelledby="t-setup">
+    <span class="logo" data-logo></span>
+    <h1 id="t-setup">Criar o primeiro administrador</h1>
+    <p>Este é o primeiro acesso à Central do TI. A conta criada aqui pode cadastrar os outros administradores.</p>
+    <label>Nome<input class="campo" id="setup-nome" autocomplete="name" required aria-describedby="setup-erro"></label>
+    <label>E-mail<input class="campo" id="setup-email" type="email" autocomplete="username" required aria-describedby="setup-erro"></label>
+    <label>Senha<input class="campo" id="setup-senha" type="password" autocomplete="new-password" minlength="10" required aria-describedby="setup-dica setup-erro"><span class="dica" id="setup-dica">No mínimo 10 caracteres.</span></label>
+    <label>Confirme a senha<input class="campo" id="setup-senha2" type="password" autocomplete="new-password" minlength="10" required aria-describedby="setup-erro"></label>
+    <p class="erro" id="setup-erro" role="alert" hidden></p>
+    <button type="submit" class="btn">Criar administrador e entrar</button>
+  </form>
+</main>
+
+<!-- ================================================================== login -->
+<main class="entrada" id="tela-login" hidden>
+  <form class="cartao" id="form-login" novalidate aria-labelledby="t-login">
+    <span class="logo" data-logo></span>
+    <h1 id="t-login">Central do TI</h1>
+    <p>Entre com a sua conta de administrador.</p>
+    <p class="recado-entrada" id="login-recado" role="status" hidden></p>
+    <label>E-mail<input class="campo" id="login-email" type="email" autocomplete="username" required aria-describedby="login-erro"></label>
+    <label>Senha<input class="campo" id="login-senha" type="password" autocomplete="current-password" required aria-describedby="login-erro"></label>
+    <p class="erro" id="login-erro" role="alert" hidden></p>
+    <button type="submit" class="btn">Entrar</button>
+    <p class="rodape-cartao">Terminal Pontual, versão 1.0 de teste</p>
+  </form>
+</main>
+
+<!-- ==================================================== CENTRAL DO TI -->
+<div class="app ad" id="app-ad" hidden>
+  <header class="topo"><div class="caixa-pagina">
+    <span class="logo" data-logo></span>
+    <span class="produto">Central do TI</span>
+    <nav class="menu" aria-label="Seções">
+      <button type="button" data-secao="visao" aria-current="page">Visão geral</button>
+      <button type="button" data-secao="apps">Sites e programas</button>
+      <button type="button" data-secao="alertas">Alertas<span class="conta" id="conta-alertas" hidden></span></button>
+      <button type="button" data-secao="notificacoes">Notificações<span class="conta azul" id="conta-notif" hidden></span></button>
+      <button type="button" data-secao="auditoria">Auditoria</button>
+    </nav>
+    <div class="fim">
+      <button type="button" class="redondo" id="tema" aria-label="Ativar o modo escuro" title="Modo escuro"></button>
+      <button type="button" class="redondo" id="sino" aria-label="Ver notificações"><span data-ic="bell" data-tam="20"></span><i class="pingo" id="sino-ponto" hidden></i></button>
+      <div class="eu-caixa">
+        <button type="button" class="eu" id="eu" aria-haspopup="true" aria-expanded="false" aria-controls="menu-eu">
+          <span class="avatar" id="eu-avatar" aria-hidden="true"></span><span><b id="eu-nome"></b><small id="eu-funcao"></small></span>
+        </button>
+        <div class="menu-eu" id="menu-eu" hidden>
+          <button type="button" id="ir-admins"><span data-ic="users"></span>Administradores</button>
+          <button type="button" id="sair"><span data-ic="logout"></span>Sair</button>
+        </div>
+      </div>
+    </div>
+  </div></header>
+
+  <div class="faixa-rede" id="faixa-rede" role="alert" hidden><div class="caixa-pagina">
+    <span data-ic="offline"></span><span>Sem conexão com o servidor. Os dados na tela podem estar desatualizados; uma nova tentativa é feita sozinha.</span>
+  </div></div>
+  <div class="recado" id="recado" role="status" hidden><div class="caixa-pagina">
+    <span id="recado-icone"></span><span id="recado-texto"></span>
+    <button type="button" class="redondo" id="recado-fechar" aria-label="Dispensar a mensagem"><span data-ic="x" data-tam="16"></span></button>
+  </div></div>
+
+  <main><div class="caixa-pagina">
+    <section data-painel="visao" aria-labelledby="ad-saudacao">
+      <div class="abertura"><h1 id="ad-saudacao"></h1><p id="ad-frase"></p></div>
+      <div class="numeros" id="numeros"></div>
+      <div id="maquinas-pendentes"></div>
+      <div class="quadro">
+        <div class="quadro-topo">
+          <div><h2>Atendentes</h2><p>Clique em uma atendente para ver os detalhes e a lista dela.</p></div>
+          <div class="fim">
+            <div class="segmento" role="group" aria-label="Modo de exibição">
+              <button type="button" data-visao="lista" aria-pressed="true">Lista</button>
+              <button type="button" data-visao="sala" aria-pressed="false">Escritório</button>
+            </div>
+            <button type="button" class="btn" id="nova-maquina"><span data-ic="plus"></span>Cadastrar nova máquina</button>
+          </div>
+        </div>
+        <ul class="linhas" id="linhas"></ul>
+        <div id="sala-area" hidden>
+          <div class="sala-caixa"><div class="sala" id="sala"><canvas id="canvas" width="400" height="224" aria-hidden="true"></canvas><span class="placa">Pontual <em>Consig</em></span></div></div>
+          <p class="nota-sala" id="sala-nota" hidden></p>
+        </div>
+      </div>
+    </section>
+
+    <section data-painel="apps" hidden aria-labelledby="t-apps">
+      <div class="abertura baixa"><h1 id="t-apps">Sites e programas</h1><p>Cada atendente tem a sua própria lista. Sites são liberados por um administrador; programas precisam de dois.</p></div>
+      <div id="pendencias"></div>
+      <div class="quadro">
+        <div class="quadro-topo">
+          <div class="segmento" id="f-tipo" role="group" aria-label="Tipo"></div>
+          <div class="fim">
+            <button type="button" class="btn claro" id="novo-prog"><span data-ic="plus"></span>Adicionar programa</button>
+            <button type="button" class="btn" id="novo-site"><span data-ic="plus"></span>Adicionar site</button>
+          </div>
+        </div>
+        <div class="ferramentas"><label class="busca"><span data-ic="search"></span><input class="campo" id="f-app" type="search" placeholder="Buscar por nome ou endereço" aria-label="Buscar site ou programa"></label></div>
+        <div class="rolagem-x"><table id="tb-apps"></table></div>
+      </div>
+      <div class="quadro depois" id="quadro-observados">
+        <div class="quadro-topo"><div><h2>Domínios observados</h2><p>Endereços fora da lista que as atendentes acessaram com o modo de observação ligado. Permita os que fazem parte do trabalho.</p></div></div>
+        <div class="rolagem-x"><table id="tb-observados"></table></div>
+      </div>
+    </section>
+
+    <section data-painel="alertas" hidden aria-labelledby="t-alertas">
+      <div class="abertura baixa"><h1 id="t-alertas">Alertas</h1><p id="alertas-frase"></p></div>
+      <div class="quadro"><ul class="registros alto" id="ls-alertas"></ul></div>
+    </section>
+
+    <section data-painel="notificacoes" hidden aria-labelledby="t-notif">
+      <div class="abertura baixa"><h1 id="t-notif">Notificações</h1><p>Tudo o que acontece nos computadores e na Central aparece aqui. Só a tentativa de abrir um site não permitido salta na tela na hora.</p></div>
+      <div class="quadro"><ul class="registros alto" id="ls-notif"></ul></div>
+    </section>
+
+    <section data-painel="auditoria" hidden aria-labelledby="t-aud">
+      <div class="abertura baixa"><h1 id="t-aud">Auditoria</h1><p>Toda ação do TI fica registrada, com quem fez, quando e por quê. Ninguém do TI consegue editar este registro pelo painel.</p></div>
+      <div class="quadro">
+        <div class="quadro-topo">
+          <div><h2>Registro de ações</h2><p>Os 200 registros mais recentes. Cada um é encadeado ao anterior.</p></div>
+          <div class="fim"><button type="button" class="btn claro" id="aud-verificar"><span data-ic="shield"></span>Verificar integridade</button></div>
+        </div>
+        <div id="aud-resultado" role="status"></div>
+        <ul class="registros" id="ls-auditoria"></ul>
+      </div>
+    </section>
+
+    <section data-painel="admins" hidden aria-labelledby="t-adm">
+      <div class="abertura baixa"><h1 id="t-adm">Administradores</h1><p>Quem pode entrar na Central do TI e o que cada função permite fazer.</p></div>
+      <div class="quadro">
+        <div class="quadro-topo">
+          <div><h2>Contas</h2><p id="adm-frase"></p></div>
+          <div class="fim"><button type="button" class="btn" id="novo-admin"><span data-ic="plus"></span>Novo administrador</button></div>
+        </div>
+        <div class="rolagem-x"><table id="tb-admins"></table></div>
+      </div>
+    </section>
+  </div></main>
+
+  <div class="veu" id="gaveta-veu" hidden></div>
+  <aside class="gaveta" id="gaveta" hidden role="dialog" aria-modal="false" aria-labelledby="gaveta-nome">
+    <div class="gaveta-topo" id="gaveta-topo"></div>
+    <div class="guias" id="gaveta-guias" role="tablist" aria-label="Detalhes da máquina"></div>
+    <p class="recado-gaveta" id="gaveta-recado" role="status" hidden></p>
+    <div class="gaveta-corpo" id="gaveta-corpo" role="tabpanel"></div>
+  </aside>
+</div>
+
+<!-- ============================================================== diálogos -->
+<dialog id="dlg-manut" aria-labelledby="t-man"><form class="dlg" novalidate>
+  <h2 id="t-man">Colocar em manutenção</h2><p id="man-texto"></p>
+  <label>Motivo<input class="campo" id="man-motivo" maxlength="300" placeholder="Ex.: troca do teclado" aria-describedby="man-erro"></label>
+  <label>Prazo<select class="campo" id="man-prazo">
+    <option value="15">15 minutos</option><option value="30">30 minutos</option><option value="60" selected>1 hora</option>
+    <option value="120">2 horas</option><option value="240">4 horas</option><option value="480">8 horas</option>
+  </select></label>
+  <p class="erro" role="alert" id="man-erro" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Confirmar</button></div>
+</form></dialog>
+
+<dialog id="dlg-renomear" aria-labelledby="t-ren"><form class="dlg" novalidate>
+  <h2 id="t-ren">Renomear atendente</h2><p id="ren-texto"></p>
+  <label>Nome da atendente<input class="campo" id="ren-nome" maxlength="80" autocomplete="off" aria-describedby="ren-erro"></label>
+  <p class="erro" role="alert" id="ren-erro" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Salvar</button></div>
+</form></dialog>
+
+<dialog id="dlg-site" aria-labelledby="t-site"><form class="dlg" novalidate>
+  <h2 id="t-site">Adicionar site</h2><p>O site aparece na hora para as atendentes escolhidas.</p>
+  <label>Nome que a atendente vê<input class="campo" id="site-nome" maxlength="60" placeholder="Ex.: Banco Exemplo" aria-describedby="site-erro"></label>
+  <label>Endereço<input class="campo" id="site-end" inputmode="url" autocomplete="off" placeholder="Ex.: portal.bancoexemplo.com.br/login" aria-describedby="site-erro"></label>
+  <label>Grupo<select class="campo" id="site-grupo"><option>Bancos e promotoras</option><option>Comunicação</option><option>Pontual e ferramentas</option></select></label>
+  <label>Domínios adicionais (opcional)<textarea class="campo" id="site-extras" spellcheck="false" placeholder="Um por linha. Ex.: login.bancoexemplo.com.br" aria-describedby="site-extras-dica site-erro"></textarea><span class="dica" id="site-extras-dica">Outros endereços que o site usa, como a página de login.</span></label>
+  <div class="quem-box" id="site-quem"></div>
+  <p class="erro" id="site-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Adicionar e liberar</button></div>
+</form></dialog>
+
+<dialog id="dlg-editar" aria-labelledby="t-editar"><form class="dlg" novalidate>
+  <h2 id="t-editar">Editar site</h2><p id="editar-texto"></p>
+  <label>Nome que a atendente vê<input class="campo" id="editar-nome" maxlength="60" aria-describedby="editar-erro"></label>
+  <label>Grupo<select class="campo" id="editar-grupo"><option>Bancos e promotoras</option><option>Comunicação</option><option>Pontual e ferramentas</option></select></label>
+  <label>Domínios adicionais<textarea class="campo" id="editar-extras" spellcheck="false" placeholder="Um por linha. Ex.: login.bancoexemplo.com.br" aria-describedby="editar-dica editar-erro"></textarea><span class="dica" id="editar-dica">Outros endereços que o site usa, como a página de login. Um por linha, sem "https://".</span></label>
+  <p class="erro" id="editar-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Salvar</button></div>
+</form></dialog>
+
+<dialog id="dlg-prog" aria-labelledby="t-prog"><form class="dlg" novalidate>
+  <h2 id="t-prog">Adicionar programa</h2><p>Programas do Windows exigem duas pessoas: você propõe e outro administrador aprova.</p>
+  <label>Nome do programa<input class="campo" id="prog-nome" maxlength="60" placeholder="Ex.: Leitor de PDF" aria-describedby="prog-erro"></label>
+  <label>Caminho do executável<input class="campo" id="prog-caminho" autocomplete="off" spellcheck="false" placeholder="Ex.: C:\Program Files\Leitor\leitor.exe" aria-describedby="prog-erro"></label>
+  <label>Justificativa<input class="campo" id="prog-motivo" maxlength="300" placeholder="Por que as atendentes precisam dele" aria-describedby="prog-erro"></label>
+  <div class="quem-box" id="prog-quem"></div>
+  <p class="erro" id="prog-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Enviar proposta</button></div>
+</form></dialog>
+
+<dialog id="dlg-acesso" aria-labelledby="acesso-titulo"><form class="dlg" novalidate>
+  <h2 id="acesso-titulo"></h2><p>Escolha quais atendentes veem este item no computador delas.</p>
+  <div class="quem-box" id="acesso-quem"></div>
+  <p class="erro" id="acesso-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Salvar</button></div>
+</form></dialog>
+
+<dialog id="dlg-codigo" aria-labelledby="t-codigo"><div class="dlg">
+  <h2 id="t-codigo">Cadastrar nova máquina</h2><p>Use este código no computador da atendente. Ele vale para uma única máquina.</p>
+  <div class="codigo" id="codigo-valor" aria-live="polite"></div>
+  <p class="validade" id="codigo-validade"></p>
+  <ol class="passos">
+    <li>Abra o Terminal Pontual no computador da atendente.</li>
+    <li>Digite o código acima na tela de cadastro.</li>
+    <li>Volte aqui: a máquina aparece em "Máquinas aguardando aprovação".</li>
+  </ol>
+  <p class="erro" id="codigo-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" id="codigo-outro">Gerar outro código</button><button type="button" class="btn" data-fechar>Concluir</button></div>
+</div></dialog>
+
+<dialog id="dlg-tela" aria-labelledby="t-tela"><div class="dlg">
+  <h2 id="t-tela">Tela da atendente</h2><p id="tela-sub"></p>
+  <div class="tela-quadro"><img id="tela-img" alt="Tela do computador da atendente, ao vivo" hidden><p id="tela-estado" role="status"></p></div>
+  <div class="acoes"><button type="button" class="btn" data-fechar>Fechar</button></div>
+</div></dialog>
+
+<dialog id="dlg-admin" aria-labelledby="t-admin"><form class="dlg" novalidate>
+  <h2 id="t-admin">Novo administrador</h2><p>A pessoa entra na Central com o e-mail e a senha definidos aqui.</p>
+  <label>Nome<input class="campo" id="adm-nome" maxlength="80" autocomplete="off" aria-describedby="adm-erro"></label>
+  <label>E-mail<input class="campo" id="adm-email" type="email" autocomplete="off" aria-describedby="adm-erro"></label>
+  <label>Senha<input class="campo" id="adm-senha" type="password" autocomplete="new-password" minlength="10" aria-describedby="adm-dica adm-erro"><span class="dica" id="adm-dica">No mínimo 10 caracteres.</span></label>
+  <label>Função<select class="campo" id="adm-funcao" aria-describedby="adm-funcao-dica">
+    <option value="admin" selected>Administrador</option><option value="support">Suporte</option><option value="auditor">Auditor</option><option value="superadmin">Superadministrador</option>
+  </select><span class="dica" id="adm-funcao-dica"></span></label>
+  <p class="erro" id="adm-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Criar administrador</button></div>
+</form></dialog>
+
+<dialog id="dlg-confirmar" aria-labelledby="conf-titulo" aria-describedby="conf-texto"><form class="dlg" novalidate>
+  <h2 id="conf-titulo"></h2><p id="conf-texto"></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn rubi" id="conf-ok"></button></div>
+</form></dialog>
+
+<!-- Só notificações urgentes que ainda não foram vistas aparecem aqui. -->
+<div class="avisos" id="avisos" aria-live="assertive"></div>
+
+<script src="/central/escritorio.js"></script>
+<script src="/central/app.js"></script>
+</body>
+</html>

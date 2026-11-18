@@ -1,0 +1,31 @@
+node_modules/
+dist/
+.playwright-mcp/
+
+# Central dos Agentes: histórico de eventos e chave local de ingestão
+src/agenthub/data/
+
+# Fila local do encaminhador de hooks
+tools/agent-events/.queue.jsonl*
+
+# .NET
+bin/
+obj/
+*.user
+
+# Android: arquivos gerados pela compilacao (apk, dex, classes)
+src/android/terminal/build/
+
+# Bancos de dados, chaves e certificados nunca vao para o repositorio
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.key
+*.pfx
+*.p12
+*.pem
+*.jks
+*.keystore
+.env
+.env.*

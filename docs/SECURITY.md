@@ -4,6 +4,8 @@ Status: **revisão 2**. Incorpora a revisão do agente `ecc:architect` e as deci
 
 Este documento **não promete segurança absoluta**. Ele descreve os controles, o que cada um impede, o que apenas detecta e o risco que permanece. Itens marcados com **[H-xx]** são hipóteses ainda não comprovadas, listadas em [ARCHITECTURE.md](ARCHITECTURE.md), seção 10.
 
+**Natureza do bloqueio.** Todas as máquinas são Windows Pro. Nessa edição, o bloqueio contém uma usuária comum, não um atacante determinado: a Microsoft classifica o AppLocker como defesa em profundidade e não como barreira de segurança; Ctrl+Alt+Del não pode ser suprimido; e o bloqueio não protege contra acesso físico sem disco cifrado, contra o administrador local, nem contra falha de escalada em sistema sem correção. Ver [ADR 0001](adr/0001-bloqueio-do-windows.md) e o [modelo de ameaças](THREAT-MODEL.md), que lista as lacunas N-01 a N-21 ainda não incorporadas a este documento.
+
 Os pontos de LGPD e de relação de trabalho precisam de validação do RH e do jurídico da Pontual; este texto não substitui parecer jurídico.
 
 ## 1. Princípios
@@ -28,13 +30,15 @@ Os pontos de LGPD e de relação de trabalho precisam de validação do RH e do 
 
 | O atacante **não** consegue | Por quê |
 |---|---|
-| Executar comando ou script arbitrário pelo protocolo | Não existe essa mensagem; interpretadores estão na lista fixa |
+| Executar comando ou script arbitrário **pelo protocolo de configuração** | Não existe essa mensagem. A lista fixa de interpretadores é uma camada a mais, não uma garantia de que nada execute |
 | Instalar software ou atualizar o terminal | Exige a chave de release, que fica fora do servidor |
-| Obter privilégio de administrador na máquina por configuração | O Broker só executa um conjunto fechado de operações |
+| Obter privilégio de administrador na máquina **por configuração** | O Broker só executa um conjunto fechado de operações |
 | Remover a lista de bloqueio fixa | Ela só muda por atualização assinada |
 | Iniciar suporte sem que apareça na tela | O aviso é local e independente do Shell **[H-06]** |
 
-**Decisão em aberto:** manter a chave do catálogo de executáveis fora do servidor eliminaria a segunda linha da primeira tabela, ao custo de uma etapa manual a cada mudança de executável. Fica para o modelo de ameaças da Fase 0.
+**Exceção importante: o suporte remoto.** A ferramenta de suporte avaliada no [ADR 0002](adr/0002-suporte-remoto.md) oferece terminal, arquivos e execução de comandos. Um servidor comprometido que consiga abrir uma sessão de suporte, em especial no modo formal, chega a controle da máquina por esse caminho, mesmo com o aviso na tela. As duas tabelas acima **não cobrem** esse caso; ele é a lacuna N-04 do [modelo de ameaças](THREAT-MODEL.md) e precisa ser fechado antes de o suporte remoto existir.
+
+**Decisão em aberto:** o modelo de ameaças recomenda manter a chave do catálogo de executáveis **fora do servidor**, com o servidor podendo apenas desativar itens. Isso eliminaria a segunda linha da primeira tabela, ao custo de uma assinatura manual a cada mudança de executável. Aguarda decisão da Pontual, antes da Fase 1.
 
 ## 3. Matriz de permissões
 
@@ -109,7 +113,7 @@ Um cadastro com nome de máquina já existente não substitui o anterior: entra 
 - **Aplicativos** são abertos pelo Shell, com a conta da atendente.
 - **Lista de bloqueio fixa** de interpretadores e ferramentas de sistema, embutida no binário assinado.
 - **Políticas por usuário**, só na conta da atendente **[H-03]**.
-- **WebView2 endurecido** (ARCHITECTURE, seção 6). Com conta Windows compartilhada, o perfil do navegador é apagado a cada troca de atendente.
+- **WebView2 endurecido** (ARCHITECTURE, seção 6). Com uma conta Windows por atendente ([ADR 0003](adr/0003-identificacao-da-atendente.md)), o perfil do navegador já fica isolado por pessoa.
 - **Manutenção** não desbloqueia a conta da atendente; tem prazo aplicado localmente e aviso na tela.
 - **Reversão** local pelo TI, disponível desde a primeira versão que aplica bloqueio.
 - **Senha da conta do TI** diferente por máquina, com gestão automática se disponível **[H-10]**.
@@ -238,7 +242,13 @@ Mesmo com tudo implementado como descrito:
 6. Aplicativos liberados podem ter recursos próprios (macros, diálogos) que servem de saída.
 7. Sem DNS ou proxy, o controle de sites é parcial.
 8. A ausência de acesso remoto oculto depende da ferramenta escolhida.
-9. Um administrador local na máquina (o TI) está fora do modelo: ele pode desfazer qualquer controle.
+9. Um administrador local na máquina (o TI) está fora do modelo: ele pode desfazer qualquer controle, inclusive o registro dos próprios logons.
+10. O AppLocker não é barreira de segurança, e Ctrl+Alt+Del continua abrindo a tela de segurança.
+11. As máquinas com Windows 10 não recebem correções sem o programa de atualizações estendidas; uma falha de escalada conhecida anula o bloqueio.
+12. Sem disco cifrado e senha de firmware, o acesso físico à máquina contorna tudo.
+13. A ferramenta de suporte remoto tem capacidades (terminal, arquivos) que vão além de ver e controlar a tela.
+14. Dados de clientes podem sair por canais permitidos: área de transferência, impressão, captura de tela ou foto.
+15. O cofre de senhas do TI concentra o acesso de administrador a todas as máquinas.
 
 ## 13. Desenvolvimento seguro
 

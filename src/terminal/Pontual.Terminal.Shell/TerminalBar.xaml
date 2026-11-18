@@ -1,0 +1,130 @@
+<UserControl x:Class="Pontual.Terminal.Shell.TerminalBar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="{StaticResource FonteMarca}" FontSize="15" Foreground="{StaticResource Texto}">
+    <!-- Barra do rodapé, uma em cada monitor: páginas abertas, janelas de outros programas, relógio e botões. Não há barra de endereço. -->
+    <Border Height="60" Background="White" BorderBrush="{StaticResource Linha}" BorderThickness="0,1,0,0">
+        <DockPanel Margin="16,0" LastChildFill="True">
+            <Button x:Name="HomeButton" DockPanel.Dock="Left" Style="{StaticResource BotaoClaro}" MinHeight="38" Padding="16,0" FontSize="14"
+                    VerticalAlignment="Center" Click="OnHome" AutomationProperties.Name="Início">
+                <StackPanel Orientation="Horizontal">
+                    <Viewbox Width="18" Height="18" Margin="0,0,8,0">
+                        <Canvas Width="24" Height="24">
+                            <Path Data="M4 11l8-7 8 7M6 10v9h12v-9" Stroke="{StaticResource Tinta}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                        </Canvas>
+                    </Viewbox>
+                    <TextBlock Text="Início" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+
+            <!-- Aviso fixo e discreto, sempre visível, no canto da barra. -->
+            <TextBlock DockPanel.Dock="Left" Text="As atividades serão monitoradas" VerticalAlignment="Center" Margin="14,0,0,0"
+                       FontSize="11" Foreground="{StaticResource Apagado}" />
+
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock x:Name="ClockText" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource Tinta}" VerticalAlignment="Center" Margin="0,0,10,0" Text="--:--" />
+                <Button x:Name="HelpButton" Style="{StaticResource BotaoLimpo}" Width="44" Height="44" Click="OnHelp"
+                        AutomationProperties.Name="Chamar o TI" ToolTip="Chamar o TI">
+                    <Viewbox Width="20" Height="20">
+                        <Canvas Width="24" Height="24">
+                            <Path Data="M4 14v-2a8 8 0 0 1 16 0v2" Stroke="{StaticResource Suave}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                            <Rectangle Canvas.Left="3" Canvas.Top="13" Width="4" Height="6" RadiusX="1.5" RadiusY="1.5" Stroke="{StaticResource Suave}" StrokeThickness="2" />
+                            <Rectangle Canvas.Left="17" Canvas.Top="13" Width="4" Height="6" RadiusX="1.5" RadiusY="1.5" Stroke="{StaticResource Suave}" StrokeThickness="2" />
+                            <Path Data="M19 19c0 1.5-2 2-5 2" Stroke="{StaticResource Suave}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                        </Canvas>
+                    </Viewbox>
+                </Button>
+                <!-- Só no modo bloqueado: arquivos do computador e desligar/sair. -->
+                <Button x:Name="FilesButton" Style="{StaticResource BotaoLimpo}" Width="44" Height="44" Click="OnFiles" Visibility="Collapsed"
+                        AutomationProperties.Name="Arquivos do computador" ToolTip="Arquivos do computador">
+                    <Viewbox Width="20" Height="20">
+                        <Canvas Width="24" Height="24">
+                            <Path Data="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" Stroke="{StaticResource Suave}" StrokeThickness="2" StrokeLineJoin="Round" />
+                        </Canvas>
+                    </Viewbox>
+                </Button>
+                <Button x:Name="PowerButton" Style="{StaticResource BotaoLimpo}" Width="44" Height="44" Click="OnPower" Visibility="Collapsed"
+                        AutomationProperties.Name="Desligar ou sair" ToolTip="Desligar ou sair">
+                    <Viewbox Width="20" Height="20">
+                        <Canvas Width="24" Height="24">
+                            <Path Data="M12 4v8" Stroke="{StaticResource Suave}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                            <Path Data="M7 7a7 7 0 1 0 10 0" Stroke="{StaticResource Suave}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                        </Canvas>
+                    </Viewbox>
+                </Button>
+                <Border x:Name="AttendantAvatar" Width="36" Height="36" CornerRadius="18" Margin="10,0,0,0" Background="{StaticResource Verde500}">
+                    <TextBlock x:Name="AttendantInitials" Foreground="White" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+            </StackPanel>
+
+            <ScrollViewer Margin="12,0" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Focusable="False">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Páginas abertas no Terminal. Clicar mostra a página neste monitor. -->
+                    <ItemsControl x:Name="TabsList" Focusable="False" AutomationProperties.Name="Páginas abertas">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border x:Name="Pilula" Height="42" CornerRadius="21" Margin="0,0,6,0" Background="Transparent" BorderBrush="{StaticResource Linha}" BorderThickness="1">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Style="{StaticResource BotaoLimpo}" Padding="6,0,4,0" Height="40" Click="OnTab" AutomationProperties.Name="{Binding Name}" ToolTip="{Binding Name}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Border Width="28" Height="28" CornerRadius="9" Background="{Binding Color}">
+                                                    <TextBlock Text="{Binding Initials}" Foreground="White" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                                <TextBlock x:Name="Rotulo" Text="{Binding Name}" Margin="8,0,0,0" MaxWidth="170" TextTrimming="CharacterEllipsis" FontWeight="Medium" Foreground="{StaticResource Suave}" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Style="{StaticResource BotaoLimpo}" Padding="4,0,12,0" Height="40" Click="OnTabClose" AutomationProperties.Name="{Binding CloseLabel}" ToolTip="{Binding CloseLabel}">
+                                            <Viewbox Width="16" Height="16">
+                                                <Canvas Width="24" Height="24">
+                                                    <Path Data="M6 6l12 12M18 6 6 18" Stroke="{StaticResource Apagado}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                        <Setter TargetName="Pilula" Property="Background" Value="{StaticResource Azul50}" />
+                                        <Setter TargetName="Pilula" Property="BorderBrush" Value="{StaticResource Azul100}" />
+                                        <Setter TargetName="Rotulo" Property="Foreground" Value="{StaticResource Azul900}" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Janelas de outros programas (explorador de arquivos, planilha, PDF). Só no modo bloqueado. -->
+                    <ItemsControl x:Name="WindowsList" Focusable="False" AutomationProperties.Name="Outras janelas abertas">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Height="42" CornerRadius="21" Margin="0,0,6,0" Background="{StaticResource Fundo}" BorderBrush="{StaticResource Linha}" BorderThickness="1">
+                                    <Button Style="{StaticResource BotaoLimpo}" Padding="12,0,14,0" Height="40" Click="OnWindow" AutomationProperties.Name="{Binding Title}" ToolTip="{Binding Title}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Viewbox Width="18" Height="18">
+                                                <Canvas Width="24" Height="24">
+                                                    <Rectangle Canvas.Left="3" Canvas.Top="5" Width="18" Height="14" RadiusX="2" RadiusY="2" Stroke="{StaticResource Suave}" StrokeThickness="2" />
+                                                    <Path Data="M3 9h18" Stroke="{StaticResource Suave}" StrokeThickness="2" />
+                                                </Canvas>
+                                            </Viewbox>
+                                            <TextBlock Text="{Binding Title}" Margin="8,0,0,0" MaxWidth="170" TextTrimming="CharacterEllipsis" FontWeight="Medium" Foreground="{StaticResource Texto}" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+        </DockPanel>
+    </Border>
+</UserControl>

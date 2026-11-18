@@ -1,0 +1,70 @@
+﻿<Window x:Class="Pontual.Terminal.Shell.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Pontual.Terminal.Shell"
+        Title="Terminal Pontual" Width="1280" Height="800" MinWidth="800" MinHeight="560"
+        Background="White" FontFamily="{StaticResource FonteMarca}" FontSize="15" Foreground="{StaticResource Texto}"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Os WebView2 (tela inicial e uma por site) entram aqui pelo código. Só um fica visível por vez. -->
+        <Grid x:Name="ContentHost" Grid.Row="0" />
+
+        <!-- Aviso de navegação bloqueada. Fica no lugar do site (um WebView2 não aceita nada desenhado por cima). -->
+        <Grid x:Name="BlockedPanel" Grid.Row="0" Background="{StaticResource Fundo}" Visibility="Collapsed">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="560">
+                <Border Width="96" Height="96" CornerRadius="48" Background="{StaticResource Rubi100}" HorizontalAlignment="Center">
+                    <Viewbox Width="44" Height="44">
+                        <Canvas Width="24" Height="24">
+                            <Ellipse Canvas.Left="3" Canvas.Top="3" Width="18" Height="18" Stroke="{StaticResource Rubi700}" StrokeThickness="2" />
+                            <Path Data="M6 6l12 12" Stroke="{StaticResource Rubi700}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                        </Canvas>
+                    </Viewbox>
+                </Border>
+                <TextBlock Margin="0,20,0,0" FontSize="30" FontWeight="SemiBold" Foreground="{StaticResource Tinta}" TextAlignment="Center" Text="Este site não é permitido" />
+                <TextBlock x:Name="BlockedText" Margin="0,10,0,0" FontSize="17" Foreground="{StaticResource Suave}" TextAlignment="Center" TextWrapping="Wrap" />
+                <Button x:Name="BlockedBackButton" Margin="0,24,0,0" Style="{StaticResource BotaoPilula}" HorizontalAlignment="Center" Click="OnBlockedBackClick" Content="Voltar" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Aviso de tela cheia: manutenção, sem conexão na partida, arquivo local inválido. Cobre o conteúdo; a barra continua. -->
+        <Grid x:Name="Overlay" Grid.Row="0" Background="White" Visibility="Collapsed">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="640" Margin="32">
+                <Border Width="96" Height="96" CornerRadius="28" Background="{StaticResource Azul50}" HorizontalAlignment="Center">
+                    <Grid>
+                        <Viewbox x:Name="OverlayWrench" Width="44" Height="44">
+                            <Canvas Width="24" Height="24">
+                                <Path Data="M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.6 2.6-2-2 2.6-2.6Z" Stroke="{StaticResource Azul700}" StrokeThickness="2" StrokeLineJoin="Round" />
+                            </Canvas>
+                        </Viewbox>
+                        <Viewbox x:Name="OverlayAlert" Width="44" Height="44" Visibility="Collapsed">
+                            <Canvas Width="24" Height="24">
+                                <Path Data="M12 4 3 20h18L12 4Z" Stroke="{StaticResource Azul700}" StrokeThickness="2" StrokeLineJoin="Round" />
+                                <Path Data="M12 10v4M12 17h.01" Stroke="{StaticResource Azul700}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                            </Canvas>
+                        </Viewbox>
+                    </Grid>
+                </Border>
+                <TextBlock x:Name="OverlayTitle" Margin="0,24,0,0" FontSize="36" FontWeight="SemiBold" Foreground="{StaticResource Tinta}" TextAlignment="Center" TextWrapping="Wrap" />
+                <TextBlock x:Name="OverlayText" Margin="0,10,0,0" FontSize="17" Foreground="{StaticResource Suave}" TextAlignment="Center" TextWrapping="Wrap" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Barra do rodapé, sempre visível (como a barra de tarefas do Windows). A mesma barra aparece nos outros monitores. -->
+        <local:TerminalBar x:Name="Bar" Grid.Row="1" />
+
+        <!-- Aviso rápido. É um Popup porque precisa aparecer por cima do WebView2. -->
+        <Popup x:Name="Toast" PlacementTarget="{Binding ElementName=Root}" Placement="Relative" AllowsTransparency="True" StaysOpen="True" PopupAnimation="Fade" Focusable="False">
+            <Border Width="380" Margin="14" Padding="16" CornerRadius="14" Background="White" BorderBrush="{StaticResource LinhaForte}" BorderThickness="1">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="18" ShadowDepth="4" Direction="270" Opacity="0.18" Color="#0F172A" />
+                </Border.Effect>
+                <TextBlock x:Name="ToastText" FontFamily="{StaticResource FonteMarca}" FontSize="14" Foreground="{StaticResource Tinta}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+            </Border>
+        </Popup>
+    </Grid>
+</Window>

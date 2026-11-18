@@ -1,0 +1,1182 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terminal Pontual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Demonstração do Terminal Pontual. Não é o produto: as outras nove máquinas
+   e as pessoas são simuladas. As duas telas compartilham o mesmo estado.
+   Cores, fonte e logo vêm do site da Pontual. */
+:root {
+  --azul-900: #0a2f6b; --azul-700: #0d47a1; --azul-500: #1976d2; --azul-100: #e3effc; --azul-50: #f3f8fe;
+  --verde-700: #1f7a45; --verde-500: #2e9e5b; --verde-400: #10b981; --verde-100: #def6e9;
+  --tinta: #0f172a; --texto: #334155; --suave: #64748b; --apagado: #94a3b8;
+  --linha: #e6ebf2; --linha-forte: #cfd8e3; --fundo: #f7f9fc; --branco: #fff;
+  --ambar-700: #b45309; --ambar-100: #fef3c7; --rubi-700: #b91c1c; --rubi-100: #fee2e2; --ciano-700: #0369a1; --ciano-100: #e0f2fe; --indigo-700: #3730a3; --indigo-100: #e0e7ff;
+  --marca: linear-gradient(100deg, var(--azul-700), var(--azul-500) 55%, var(--verde-400));
+  --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-xl: 28px;
+  --s-1: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --s-2: 0 2px 6px rgba(15, 23, 42, 0.04), 0 12px 32px rgba(15, 23, 42, 0.07);
+  --s-3: 0 8px 20px rgba(15, 23, 42, 0.08), 0 32px 72px rgba(15, 23, 42, 0.18);
+  --t: 160ms ease-out;
+}
+* { box-sizing: border-box; }
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+html, body { margin: 0; }
+body { font-family: 'Poppins', 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.55; color: var(--texto); background: var(--branco); }
+h1, h2, h3, h4, p { margin: 0; }
+h1, h2, h3, h4 { color: var(--tinta); font-weight: 600; line-height: 1.15; text-wrap: balance; }
+p { text-wrap: pretty; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--azul-500); outline-offset: 3px; border-radius: 6px; }
+[hidden] { display: none !important; }
+svg { flex: none; display: block; }
+.num { font-variant-numeric: tabular-nums; }
+.caixa-pagina { width: min(1160px, calc(100% - 48px)); margin: 0 auto; }
+
+/* ---------------------------------------------------------- componentes */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 20px; border-radius: 999px; border: 1px solid transparent; background: var(--azul-700); color: var(--branco); font-weight: 500; white-space: nowrap; transition: background-color var(--t), border-color var(--t), transform var(--t), box-shadow var(--t); }
+.btn:hover { background: var(--azul-900); box-shadow: 0 6px 16px rgba(13, 71, 161, 0.25); }
+.btn:active { transform: scale(0.97); }
+.btn.claro { background: var(--branco); color: var(--tinta); border-color: var(--linha-forte); }
+.btn.claro:hover { background: var(--fundo); border-color: var(--apagado); box-shadow: none; }
+.btn.verde { background: var(--verde-500); } .btn.verde:hover { background: var(--verde-700); box-shadow: 0 6px 16px rgba(46, 158, 91, 0.25); }
+.btn.rubi { background: var(--rubi-700); } .btn.rubi:hover { background: #991b1b; box-shadow: none; }
+.btn.p { min-height: 38px; padding: 0 16px; font-size: 14px; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+.redondo { width: 44px; height: 44px; border-radius: 50%; border: none; background: none; color: var(--suave); display: grid; place-items: center; position: relative; transition: background-color var(--t), color var(--t); }
+.redondo:hover { background: var(--fundo); color: var(--tinta); }
+.campo { width: 100%; min-height: 46px; padding: 0 14px; border: 1px solid var(--linha-forte); border-radius: var(--r-sm); background: var(--branco); color: var(--tinta); transition: border-color var(--t), box-shadow var(--t); }
+.campo:hover { border-color: var(--apagado); }
+.campo:focus { outline: none; border-color: var(--azul-500); box-shadow: 0 0 0 4px rgba(25, 118, 210, 0.16); }
+.avatar { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--branco); font-size: 13px; font-weight: 600; }
+.avatar.g { width: 48px; height: 48px; font-size: 16px; } .avatar.gg { width: 56px; height: 56px; font-size: 18px; border-radius: 16px; }
+.avatar.q { border-radius: 12px; } .avatar.m { width: 28px; height: 28px; font-size: 11px; }
+.pilha { display: flex; } .pilha .avatar { margin-left: -8px; box-shadow: 0 0 0 2px var(--branco); } .pilha .avatar:first-child { margin-left: 0; }
+.selo { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px; border-radius: 999px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+.s-online { background: var(--verde-100); color: var(--verde-700); } .s-offline { background: #eef1f5; color: var(--suave); }
+.s-alerta, .s-pendente { background: var(--ambar-100); color: var(--ambar-700); } .s-manutencao { background: var(--indigo-100); color: var(--indigo-700); }
+.s-suporte { background: var(--ciano-100); color: var(--ciano-700); } .s-bloqueado { background: var(--rubi-100); color: var(--rubi-700); } .s-neutro { background: #eef1f5; color: var(--texto); }
+.guias { display: flex; gap: 4px; border-bottom: 1px solid var(--linha); }
+.guias button { min-height: 44px; padding: 0 14px; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; color: var(--suave); font-weight: 500; transition: color var(--t), border-color var(--t); }
+.guias button:hover { color: var(--tinta); }
+.guias button[aria-selected="true"] { color: var(--azul-700); border-bottom-color: var(--azul-700); }
+.segmento { display: inline-flex; padding: 4px; border-radius: 999px; background: #eef1f5; gap: 2px; }
+.segmento button { min-height: 36px; padding: 0 16px; border: none; border-radius: 999px; background: none; color: var(--suave); font-weight: 500; font-size: 14px; transition: background-color var(--t), color var(--t), box-shadow var(--t); }
+.segmento button[aria-pressed="true"] { background: var(--branco); color: var(--tinta); box-shadow: var(--s-1); }
+.interruptor { width: 46px; height: 28px; border-radius: 999px; border: none; background: var(--linha-forte); position: relative; transition: background-color var(--t); }
+.interruptor::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--branco); box-shadow: var(--s-1); transition: transform var(--t); }
+.interruptor[aria-checked="true"] { background: var(--verde-400); } .interruptor[aria-checked="true"]::after { transform: translateX(18px); }
+.interruptor:disabled { opacity: 0.4; cursor: not-allowed; }
+.vazio { padding: 40px 16px; text-align: center; color: var(--suave); }
+.aviso-linha { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r-sm); background: var(--fundo); color: var(--suave); font-size: 13px; }
+
+/* ----------------------------------------------------------------- topo */
+.topo { position: sticky; top: 0; z-index: 20; background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--linha); }
+.topo > div { display: flex; align-items: center; gap: 24px; min-height: 72px; }
+/* O arquivo da logo é quadrado, com muita margem; a moldura corta a margem. */
+.logo { display: inline-flex; align-items: center; justify-content: center; width: 168px; height: 44px; overflow: hidden; flex: none; }
+.logo img { width: 184px; height: 184px; flex: none; }
+.logo-texto { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; color: var(--azul-700); } .logo-texto em { font-style: normal; color: var(--verde-500); }
+.produto { font-size: 13px; color: var(--suave); padding-left: 16px; border-left: 1px solid var(--linha-forte); white-space: nowrap; }
+.topo .fim { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+.ligado { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--verde-700); }
+.ligado::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--verde-400); box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.18); }
+.hora { font-size: 13px; color: var(--suave); text-align: right; line-height: 1.3; } .hora b { display: block; font-size: 17px; font-weight: 600; color: var(--tinta); }
+.eu { display: flex; align-items: center; gap: 10px; } .eu b { display: block; color: var(--tinta); font-weight: 600; font-size: 14px; line-height: 1.3; } .eu small { color: var(--suave); font-size: 12px; }
+.menu { display: flex; gap: 4px; margin-left: 12px; }
+.menu button { white-space: nowrap; min-height: 44px; padding: 0 14px; border: none; border-radius: 999px; background: none; color: var(--suave); font-weight: 500; display: inline-flex; align-items: center; gap: 8px; transition: background-color var(--t), color var(--t); }
+.menu button:hover { color: var(--tinta); background: var(--fundo); }
+.menu button[aria-current="page"] { color: var(--azul-700); background: var(--azul-50); }
+.conta { min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px; background: var(--ambar-700); color: var(--branco); font-size: 12px; font-weight: 600; display: grid; place-items: center; }
+.pingo { position: absolute; top: 10px; right: 10px; width: 10px; height: 10px; border-radius: 50%; background: var(--ambar-700); box-shadow: 0 0 0 2px var(--branco); }
+
+/* ------------------------------------------------------------ atendente */
+/* O espaço embaixo é do seletor flutuante da demonstração, para ele não cobrir o rodapé. */
+.app { min-height: 100vh; display: flex; flex-direction: column; background: var(--branco); position: relative; padding-bottom: 88px; }
+.sessao { background: var(--rubi-700); color: var(--branco); }
+.sessao > div { display: flex; align-items: center; gap: 12px; min-height: 52px; font-weight: 500; }
+.sessao .btn { margin-left: auto; background: var(--branco); color: var(--rubi-700); }
+.heroi { padding: 72px 0 40px; text-align: center; background: radial-gradient(900px 320px at 50% -80px, var(--azul-50), transparent 70%); }
+.heroi h1 { font-size: clamp(34px, 4.4vw, 52px); letter-spacing: -0.035em; font-weight: 600; }
+.heroi h1 span { background: var(--marca); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.heroi > div > p { margin-top: 10px; font-size: 17px; color: var(--suave); }
+.procura { position: relative; width: min(640px, 100%); margin: 32px auto 0; }
+.procura input { width: 100%; height: 64px; padding: 0 76px 0 58px; border-radius: 999px; border: 1px solid var(--linha-forte); background: var(--branco); font-size: 18px; color: var(--tinta); box-shadow: var(--s-2); transition: border-color var(--t), box-shadow var(--t); }
+.procura input::placeholder { color: var(--apagado); }
+.procura input:focus { outline: none; border-color: var(--azul-500); box-shadow: 0 0 0 5px rgba(25, 118, 210, 0.14), var(--s-2); }
+.procura > svg { position: absolute; left: 22px; top: 21px; color: var(--azul-700); }
+.procura kbd { position: absolute; right: 20px; top: 19px; height: 26px; padding: 0 10px; border-radius: 8px; background: #eef1f5; color: var(--suave); font: 500 12px 'Poppins', sans-serif; display: grid; place-items: center; }
+.bloco { padding: 20px 0; }
+.bloco > h2 { font-size: 15px; font-weight: 600; color: var(--suave); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.abertos { display: flex; gap: 10px; flex-wrap: wrap; }
+.aberto { display: inline-flex; align-items: center; height: 48px; border-radius: 999px; border: 1px solid var(--azul-100); background: var(--azul-50); transition: border-color var(--t), box-shadow var(--t); }
+.aberto:hover { border-color: var(--azul-500); box-shadow: var(--s-1); }
+.aberto button { border: none; background: none; height: 100%; display: inline-flex; align-items: center; gap: 10px; padding: 0 6px 0 8px; color: var(--azul-900); font-weight: 500; }
+.aberto .x { padding: 0 14px 0 6px; color: var(--apagado); } .aberto .x:hover { color: var(--rubi-700); }
+.destaques { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; }
+.destaque { display: grid; gap: 18px; justify-items: start; text-align: left; padding: 22px; border-radius: var(--r-lg); border: 1px solid var(--linha); background: var(--branco); transition: transform var(--t), box-shadow var(--t), border-color var(--t); }
+.destaque:hover { transform: translateY(-4px); box-shadow: var(--s-2); border-color: transparent; }
+.destaque:active { transform: scale(0.98); }
+.destaque b { display: block; color: var(--tinta); font-weight: 600; font-size: 16px; line-height: 1.25; }
+.destaque small { color: var(--suave); font-size: 13px; }
+.todos-topo { display: flex; align-items: end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+.todos-topo h2 { font-size: 22px; letter-spacing: -0.01em; }
+.lista-sites { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); column-gap: 32px; margin-top: 8px; }
+.item { display: grid; grid-template-columns: 40px 1fr 20px; gap: 14px; align-items: center; text-align: left; padding: 12px 10px; margin: 0 -10px; border: none; border-bottom: 1px solid var(--linha); background: none; border-radius: var(--r-sm); transition: background-color var(--t); }
+.item:hover { background: var(--fundo); }
+.item > span { min-width: 0; }
+.item b { display: block; color: var(--tinta); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item small { display: block; color: var(--apagado); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item > svg { color: var(--linha-forte); transition: color var(--t), transform var(--t); } .item:hover > svg { color: var(--azul-500); transform: translateX(3px); }
+.rodape { margin-top: auto; border-top: 1px solid var(--linha); background: var(--fundo); }
+.rodape > div { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; min-height: 76px; padding: 14px 0; font-size: 13px; color: var(--suave); }
+.rodape .elo { border: none; background: none; padding: 0; min-height: 44px; color: var(--azul-700); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+.rodape .fim { margin-left: auto; text-align: right; }
+.so-demo { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px dashed var(--apagado); background: none; color: var(--suave); font-size: 13px; transition: border-color var(--t), color var(--t), background-color var(--t); }
+.so-demo:hover { border-color: var(--rubi-700); color: var(--rubi-700); background: var(--rubi-100); }
+/* Site aberto: ocupa a tela inteira, com só uma barra fina em cima. */
+.app.aberta { padding-bottom: 0; height: 100vh; }
+.app.aberta > .topo, .app.aberta > .rodape { display: none; }
+#at-pagina { flex: 1; min-height: 0; display: flex; flex-direction: column; animation: abre 260ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes abre { from { opacity: 0; transform: scale(0.97); } }
+.barra-app { display: flex; align-items: center; gap: 12px; height: 60px; padding: 0 16px; background: var(--branco); border-bottom: 1px solid var(--linha); flex: none; }
+.abas-app { display: flex; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; align-self: stretch; align-items: center; }
+.aba-app { display: inline-flex; align-items: center; height: 42px; border-radius: 999px; border: 1px solid transparent; color: var(--suave); flex: none; transition: background-color var(--t), border-color var(--t), color var(--t); }
+.aba-app:hover { background: var(--fundo); }
+.aba-app[aria-selected="true"] { background: var(--azul-50); border-color: var(--azul-100); color: var(--azul-900); }
+.aba-app button { border: none; background: none; height: 100%; display: inline-flex; align-items: center; gap: 8px; padding: 0 4px 0 6px; font-weight: 500; color: inherit; }
+.aba-app .x { padding: 0 12px 0 4px; color: var(--apagado); } .aba-app .x:hover { color: var(--rubi-700); }
+.barra-app .fim { display: flex; align-items: center; gap: 10px; flex: none; }
+.barra-app .hora b { font-size: 16px; }
+.tela-site { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--fundo); overflow: auto; }
+.portal-topo { display: flex; align-items: center; gap: 14px; padding: 0 32px; height: 68px; color: var(--branco); flex: none; }
+.portal-topo b { font-size: 20px; font-weight: 600; } .portal-topo small { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; opacity: 0.9; font-size: 14px; }
+.portal-corpo { flex: 1; display: grid; grid-template-columns: 1.1fr 1fr; min-height: 420px; }
+.portal-lado { padding: 72px 64px; color: var(--branco); display: grid; align-content: center; gap: 18px; }
+.portal-lado h2 { color: var(--branco); font-size: clamp(30px, 3.4vw, 46px); letter-spacing: -0.03em; }
+.portal-lado p { font-size: 18px; opacity: 0.88; max-width: 34ch; }
+.portal-form { display: grid; place-items: center; padding: 48px 32px; background: var(--branco); }
+.portal-form > div { width: min(400px, 100%); display: grid; gap: 16px; }
+.portal-form h3 { font-size: 24px; }
+.falso-campo { height: 52px; border-radius: var(--r-sm); border: 1px solid var(--linha-forte); background: var(--fundo); display: flex; align-items: center; padding: 0 16px; color: var(--apagado); }
+.falso-botao { height: 52px; border-radius: 999px; display: grid; place-items: center; color: var(--branco); font-weight: 600; }
+.planilha { flex: 1; display: grid; grid-template-columns: 48px repeat(8, minmax(90px, 1fr)); grid-auto-rows: 34px; background: var(--branco); overflow: hidden; }
+.planilha span { border-right: 1px solid var(--linha); border-bottom: 1px solid var(--linha); display: flex; align-items: center; padding: 0 10px; font-size: 13px; color: var(--texto); white-space: nowrap; overflow: hidden; }
+.planilha .cab { background: var(--fundo); color: var(--suave); justify-content: center; font-weight: 500; }
+.nota-demo { display: flex; align-items: center; gap: 10px; padding: 10px 32px; background: var(--azul-50); color: var(--azul-900); font-size: 14px; flex: none; }
+.tela-site .bloqueio { margin: auto; padding: 40px 24px; } .tela-site .bloqueio i { width: 96px; height: 96px; } .tela-site .bloqueio h3 { font-size: 30px; letter-spacing: -0.02em; } .tela-site .bloqueio p { font-size: 17px; }
+@media (max-width: 900px) { .portal-corpo { grid-template-columns: 1fr; } .portal-lado { padding: 40px 28px; } .barra-app .hora { display: none; } }
+.pagina-topo { display: flex; align-items: center; gap: 16px; padding: 20px 0 16px; }
+.pagina-topo h2 { font-size: 22px; } .pagina-topo small { color: var(--suave); }
+.site { border: 1px solid var(--linha); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--s-2); margin-bottom: 32px; }
+.site-barra { display: flex; align-items: center; gap: 12px; padding: 14px 20px; color: var(--branco); font-weight: 500; }
+.site-corpo { padding: 32px; display: grid; gap: 16px; min-height: 380px; align-content: start; }
+.esq { height: 14px; border-radius: 7px; background: #eef1f5; } .esq.t { height: 28px; width: 40%; } .esq.c { height: 120px; border-radius: var(--r-md); }
+.bloqueio { place-self: center; text-align: center; max-width: 44ch; display: grid; gap: 10px; justify-items: center; padding: 40px 0; }
+.bloqueio i { width: 72px; height: 72px; border-radius: 50%; background: var(--rubi-100); color: var(--rubi-700); display: grid; place-items: center; }
+.bloqueio h3 { font-size: 22px; }
+.manut { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; text-align: center; padding: 32px; background: var(--branco); }
+.manut i { width: 96px; height: 96px; border-radius: 28px; background: var(--azul-50); color: var(--azul-700); display: grid; place-items: center; margin: 0 auto 24px; }
+.manut h2 { font-size: 36px; letter-spacing: -0.02em; margin-bottom: 10px; } .manut p { max-width: 44ch; margin: 0 auto; font-size: 17px; color: var(--suave); }
+.veu { position: fixed; inset: 0; z-index: 45; display: grid; place-items: center; padding: 20px; background: rgba(15, 23, 42, 0.45); backdrop-filter: blur(3px); animation: surge 160ms ease-out; }
+.folha { width: min(520px, 100%); background: var(--branco); border-radius: var(--r-xl); padding: 32px; box-shadow: var(--s-3); animation: sobe 220ms ease-out; }
+.folha h2 { font-size: 24px; letter-spacing: -0.01em; margin-bottom: 8px; }
+.folha h3 { font-size: 13px; color: var(--suave); margin: 18px 0 6px; font-weight: 500; }
+.folha ul { margin: 0; padding-left: 18px; }
+.pedido { display: flex; gap: 14px; align-items: center; margin: 18px 0; padding: 16px; border-radius: var(--r-md); background: var(--azul-50); }
+.pedido strong { color: var(--tinta); }
+.acoes { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
+@keyframes surge { from { opacity: 0; } } @keyframes sobe { from { opacity: 0; transform: translateY(10px); } } @keyframes desliza { from { transform: translateX(32px); opacity: 0; } }
+
+/* -------------------------------------------------------- central do TI */
+.ad { background: var(--fundo); }
+.ad main { padding: 48px 0 120px; }
+.abertura h1 { font-size: clamp(30px, 3.6vw, 42px); letter-spacing: -0.03em; }
+.abertura p { margin-top: 8px; font-size: 18px; color: var(--suave); max-width: 60ch; } .abertura p strong { color: var(--tinta); font-weight: 600; }
+.numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 36px 0; }
+.numero { padding: 24px; border-radius: var(--r-lg); background: var(--branco); border: 1px solid var(--linha); display: grid; gap: 14px; }
+.numero i { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; }
+.numero b { display: block; font-size: 40px; font-weight: 600; line-height: 1; color: var(--tinta); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.numero span { color: var(--suave); }
+.quadro { background: var(--branco); border: 1px solid var(--linha); border-radius: var(--r-lg); }
+.quadro-topo { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 22px 24px; }
+.quadro-topo h2 { font-size: 20px; } .quadro-topo p { color: var(--suave); font-size: 14px; }
+.quadro-topo .fim { margin-left: auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.linhas { list-style: none; margin: 0; padding: 0 12px 12px; }
+.pessoa { width: 100%; display: grid; grid-template-columns: 48px minmax(150px, 1.1fr) 150px minmax(0, 1.6fr) 110px 20px; gap: 16px; align-items: center; text-align: left; padding: 14px 12px; border: none; border-top: 1px solid var(--linha); background: none; border-radius: var(--r-sm); transition: background-color var(--t); }
+.pessoa:hover { background: var(--azul-50); }
+.pessoa b { display: block; color: var(--tinta); font-weight: 600; line-height: 1.3; } .pessoa small { color: var(--suave); font-size: 13px; }
+.pessoa .uso { color: var(--texto); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pessoa > svg { color: var(--linha-forte); transition: color var(--t), transform var(--t); } .pessoa:hover > svg { color: var(--azul-500); transform: translateX(3px); }
+.sala-caixa { padding: 0 24px 24px; }
+.sala { position: relative; max-width: 860px; margin: 0 auto; border-radius: var(--r-md); overflow: hidden; border: 5px solid #3b2a1c; background: #c9a273; }
+.sala canvas { display: block; width: 100%; image-rendering: pixelated; }
+.mesa { position: absolute; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 0; border: 2px solid transparent; border-radius: 8px; background: none; transition: border-color var(--t), background-color var(--t); }
+.mesa:hover { border-color: rgba(255, 255, 255, 0.9); background: rgba(255, 255, 255, 0.12); }
+.mesa b { font-size: 11px; font-weight: 600; line-height: 1.5; padding: 0 7px; border-radius: 6px; background: rgba(255, 255, 255, 0.94); color: var(--tinta); }
+.mesa small { font-size: 10px; font-weight: 600; line-height: 1.5; padding: 0 7px; border-radius: 6px; margin: 2px 0 3px; color: var(--branco); }
+.placa { position: absolute; left: 50%; top: 3.5%; transform: translateX(-50%); padding: 1px 10px; border-radius: 6px; background: var(--branco); color: var(--azul-700); font-weight: 700; font-size: 12px; white-space: nowrap; }
+.placa em { font-style: normal; color: var(--verde-500); }
+.ferramentas { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 0 24px 16px; }
+.ferramentas .busca { position: relative; width: min(320px, 100%); } .ferramentas .busca svg { position: absolute; left: 14px; top: 14px; color: var(--apagado); } .ferramentas .busca .campo { padding-left: 42px; border-radius: 999px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 14px 24px; text-align: left; border-top: 1px solid var(--linha); vertical-align: middle; }
+th { font-size: 12.5px; font-weight: 500; color: var(--suave); white-space: nowrap; }
+tbody tr { transition: background-color var(--t); } tbody tr:hover { background: var(--azul-50); }
+.celula { display: flex; align-items: center; gap: 14px; min-width: 0; } .celula b { display: block; color: var(--tinta); font-weight: 600; line-height: 1.3; } .celula small { color: var(--suave); font-size: 13px; }
+.elo-quem { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px 0 6px; margin-left: -6px; border: none; border-radius: 999px; background: none; color: var(--texto); transition: background-color var(--t); }
+.elo-quem:hover { background: #eef1f5; }
+.pendencia { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 20px 24px; margin-bottom: 20px; border-radius: var(--r-lg); background: #fffaf0; border: 1px solid #f6dfa6; }
+.pendencia i { width: 48px; height: 48px; border-radius: 16px; background: var(--ambar-100); color: var(--ambar-700); display: grid; place-items: center; }
+.pendencia > div { flex: 1; min-width: 260px; } .pendencia h3 { font-size: 16px; margin-bottom: 2px; }
+.registros { list-style: none; margin: 0; padding: 0 12px 12px; }
+.registros li { display: flex; align-items: center; gap: 16px; padding: 16px 12px; border-top: 1px solid var(--linha); }
+.registros li > div { flex: 1; min-width: 0; color: var(--tinta); } .registros time { display: block; font-size: 13px; color: var(--suave); }
+.registros i { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; flex: none; }
+
+.gaveta { position: fixed; top: 0; right: 0; bottom: 0; z-index: 46; width: min(460px, 100vw); background: var(--branco); box-shadow: var(--s-3); display: flex; flex-direction: column; animation: desliza 220ms ease-out; }
+.gaveta-topo { display: flex; align-items: center; gap: 16px; padding: 24px 24px 20px; }
+.gaveta-topo h2 { font-size: 20px; } .gaveta-topo p { color: var(--suave); font-size: 14px; }
+.gaveta-topo .redondo { margin-left: auto; }
+.gaveta .guias { padding: 0 16px; }
+.gaveta-corpo { flex: 1; overflow-y: auto; padding: 24px; display: grid; gap: 20px; align-content: start; }
+.dados { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.dados .larga { grid-column: 1 / -1; } .dados dt { font-size: 13px; color: var(--suave); margin-bottom: 2px; } .dados dd { margin: 0; color: var(--tinta); font-weight: 500; }
+.tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.espelho { border-radius: var(--r-md); overflow: hidden; border: 2px solid var(--ciano-700); }
+.espelho p { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--ciano-700); color: var(--branco); font-size: 13px; font-weight: 500; }
+.espelho .mini { height: 232px; overflow: hidden; pointer-events: none; background: var(--branco); } .espelho .mini > div { zoom: 0.32; width: 1280px; } .espelho .app { min-height: 760px; }
+.lista-acesso { list-style: none; margin: 0; padding: 0; }
+.lista-acesso li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--linha); }
+.lista-acesso span.n { flex: 1; min-width: 0; color: var(--tinta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tempo { list-style: none; margin: 0; padding: 0; }
+.tempo li { display: grid; grid-template-columns: 52px 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--linha); }
+.tempo time { color: var(--suave); font-variant-numeric: tabular-nums; } .tempo span { color: var(--tinta); }
+
+dialog { width: min(540px, calc(100vw - 32px)); padding: 0; border: none; border-radius: var(--r-xl); color: var(--texto); box-shadow: var(--s-3); }
+dialog[open] { animation: sobe 220ms ease-out; }
+dialog::backdrop { background: rgba(15, 23, 42, 0.45); backdrop-filter: blur(3px); }
+.dlg { padding: 32px; display: grid; gap: 18px; }
+.dlg h2 { font-size: 24px; letter-spacing: -0.01em; } .dlg > p { color: var(--suave); margin-top: -10px; }
+.dlg label { display: grid; gap: 6px; font-size: 14px; font-weight: 500; color: var(--tinta); }
+.dlg .acoes { justify-content: flex-end; margin-top: 6px; }
+.erro { color: var(--rubi-700); font-size: 14px; font-weight: 500; }
+.quem-box { border: 1px solid var(--linha); border-radius: var(--r-md); padding: 16px; display: grid; gap: 12px; }
+.quem-box > strong { font-size: 14px; font-weight: 500; color: var(--tinta); }
+.opcoes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 999px; background: #eef1f5; }
+.opcoes label { display: grid; place-items: center; min-height: 38px; border-radius: 999px; cursor: pointer; color: var(--suave); font-weight: 500; transition: background-color var(--t), color var(--t); }
+.opcoes input { position: absolute; opacity: 0; pointer-events: none; }
+.opcoes label:has(input:checked) { background: var(--branco); color: var(--tinta); box-shadow: var(--s-1); }
+.opcoes label:has(input:focus-visible) { outline: 3px solid var(--azul-500); outline-offset: 2px; }
+.pessoas { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.pessoas label { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 8px; border-radius: var(--r-sm); cursor: pointer; font-weight: 400; transition: background-color var(--t); }
+.pessoas label:hover { background: var(--fundo); }
+.pessoas input, .lista-acesso input { width: 20px; height: 20px; accent-color: var(--azul-700); flex: none; }
+
+/* -------------------------------------------- controles da demonstração */
+.troca { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 4px; padding: 5px; border-radius: 999px; background: rgba(15, 23, 42, 0.92); box-shadow: var(--s-3); backdrop-filter: blur(8px); }
+.troca span { color: #94a3b8; font-size: 12px; padding: 0 10px 0 14px; white-space: nowrap; }
+.troca button { min-height: 40px; padding: 0 18px; border: none; border-radius: 999px; background: none; color: #cbd5e1; font-weight: 500; font-size: 14px; white-space: nowrap; transition: background-color var(--t), color var(--t); }
+.troca button:hover { color: var(--branco); }
+.troca button[aria-pressed="true"] { background: var(--branco); color: var(--tinta); }
+.troca .guia { width: 40px; padding: 0; display: grid; place-items: center; }
+.roteiro { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); z-index: 60; width: min(440px, calc(100vw - 32px)); padding: 24px; border-radius: var(--r-lg); background: var(--branco); box-shadow: var(--s-3); animation: sobe 200ms ease-out; }
+.roteiro h2 { font-size: 18px; margin-bottom: 4px; } .roteiro > p { color: var(--suave); font-size: 14px; margin-bottom: 12px; }
+.roteiro ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; counter-reset: passo; }
+.roteiro li button { width: 100%; display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; text-align: left; padding: 10px; border: none; border-radius: var(--r-sm); background: none; color: var(--texto); font-size: 14px; transition: background-color var(--t); }
+.roteiro li button:hover { background: var(--azul-50); }
+.roteiro li button::before { counter-increment: passo; content: counter(passo); width: 28px; height: 28px; border-radius: 50%; background: var(--azul-700); color: var(--branco); font-size: 13px; font-weight: 600; display: grid; place-items: center; }
+.avisos { position: fixed; right: 20px; top: 92px; z-index: 70; display: grid; gap: 10px; width: min(360px, calc(100vw - 40px)); }
+.toast { display: grid; grid-template-columns: 22px 1fr; gap: 12px; padding: 16px; border-radius: var(--r-md); background: var(--branco); border: 1px solid var(--linha); box-shadow: var(--s-3); color: var(--tinta); font-size: 14px; animation: desliza 240ms ease-out; }
+.toast svg { color: var(--verde-500); margin-top: 1px; }
+.toast.urgente { border-color: #f5b5b5; border-left: 5px solid var(--rubi-700); } .toast.urgente svg { color: var(--rubi-700); }
+.conta.azul { background: var(--azul-700); }
+.toast button { margin-top: 10px; min-height: 34px; padding: 0 14px; border: none; border-radius: 999px; background: var(--azul-50); color: var(--azul-700); font-weight: 500; font-size: 13px; }
+.toast button:hover { background: var(--azul-100); }
+
+@media (max-width: 900px) {
+  .menu { order: 3; width: 100%; margin: 0; overflow-x: auto; } .topo > div { flex-wrap: wrap; padding: 10px 0; }
+  .produto, .hora { display: none; }
+  .pessoa { grid-template-columns: 48px 1fr 20px; } .pessoa .col-2, .pessoa .uso, .pessoa .col-4 { display: none; }
+  .heroi { padding: 44px 0 24px; } th:nth-child(2), td:nth-child(2) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<!-- ======================================================== ATENDENTE -->
+<div class="app" id="app-at">
+  <header class="topo"><div class="caixa-pagina">
+    <span class="logo" data-logo></span>
+    <div class="fim">
+      <span class="ligado">Conectado</span>
+      <span class="hora"><b data-hora>--:--</b><span data-data></span></span>
+      <span class="eu"><span class="avatar" style="background:#2e9e5b">MA</span><span><b>Marina Alves</b><small>PC-04</small></span></span>
+    </div>
+  </div></header>
+
+  <div class="sessao" id="faixa-sessao" hidden><div class="caixa-pagina">
+    <span data-ic="link"></span><span>Paulo, do TI, está vendo e controlando esta tela.</span>
+    <button type="button" class="btn p" id="at-encerrar">Encerrar sessão</button>
+  </div></div>
+
+  <main id="at-inicio">
+    <section class="heroi"><div class="caixa-pagina">
+      <h1 id="saudacao"></h1>
+      <p id="saudacao-sub"></p>
+      <div class="procura">
+        <span data-ic="search" data-tam="22"></span>
+        <input id="busca" type="search" autocomplete="off" placeholder="Digite o nome do banco ou da ferramenta" aria-label="Buscar banco ou ferramenta">
+        <kbd>Enter</kbd>
+      </div>
+    </div></section>
+    <div class="caixa-pagina">
+      <section class="bloco" id="sec-abertos" hidden><h2>Abertos agora</h2><div class="abertos" id="abertos"></div></section>
+      <section class="bloco" id="sec-destaques"><h2>Mais usados por você</h2><div class="destaques" id="destaques"></div></section>
+      <section class="bloco" style="padding-bottom:56px">
+        <div class="todos-topo"><h2 id="todos-titulo"></h2><div class="guias" id="guias-grupo" role="tablist" aria-label="Grupo"></div></div>
+        <div class="lista-sites" id="lista-sites"></div>
+        <p class="vazio" id="nada" hidden>Nada encontrado com esse nome. Se precisar de um site que não está aqui, chame o TI.</p>
+      </section>
+    </div>
+  </main>
+
+  <main id="at-pagina" hidden>
+    <div class="barra-app">
+      <button type="button" class="btn claro p" id="at-voltar"><span data-ic="back"></span>Início</button>
+      <div class="abas-app" id="abas-app" role="tablist" aria-label="Páginas abertas"></div>
+      <div class="fim">
+        <span class="hora"><b data-hora>--:--</b></span>
+        <button type="button" class="redondo" id="at-chamar-2" aria-label="Chamar o TI"><span data-ic="headset" data-tam="20"></span></button>
+        <span class="avatar" style="background:#2e9e5b" title="Marina Alves">MA</span>
+      </div>
+    </div>
+    <div class="tela-site" id="site"></div>
+  </main>
+
+  <footer class="rodape"><div class="caixa-pagina">
+    <button type="button" class="btn verde" id="at-chamar"><span data-ic="headset"></span>Chamar o TI</button>
+    <span>O uso deste computador é registrado pela Pontual.</span>
+    <button type="button" class="elo" id="at-ver-aviso">Ver o que é registrado</button>
+    <button type="button" class="so-demo" id="at-bloqueado"><span data-ic="ban" data-tam="16"></span>Tentar abrir um site não permitido</button>
+    <span class="fim num" id="at-config"></span>
+  </div></footer>
+
+  <div class="manut" id="at-manut" hidden><div><i data-ic="wrench" data-tam="44"></i><h2>Computador em manutenção</h2><p id="at-manut-texto"></p></div></div>
+  <div class="veu" id="at-veu" hidden><div class="folha" id="at-folha" role="dialog" aria-modal="true"></div></div>
+</div>
+
+<!-- ==================================================== CENTRAL DO TI -->
+<div class="app ad" id="app-ad" hidden>
+  <header class="topo"><div class="caixa-pagina">
+    <span class="logo" data-logo></span>
+    <span class="produto">Central do TI</span>
+    <nav class="menu" aria-label="Seções">
+      <button type="button" data-secao="visao" aria-current="page">Visão geral</button>
+      <button type="button" data-secao="apps">Sites e programas</button>
+      <button type="button" data-secao="alertas">Alertas<span class="conta" id="conta-alertas" hidden></span></button>
+      <button type="button" data-secao="notificacoes">Notificações<span class="conta azul" id="conta-notif" hidden></span></button>
+      <button type="button" data-secao="auditoria">Auditoria</button>
+    </nav>
+    <div class="fim">
+      <button type="button" class="redondo" id="sino" aria-label="Ver alertas"><span data-ic="bell" data-tam="20"></span><i class="pingo" id="sino-ponto" hidden></i></button>
+      <span class="eu"><span class="avatar" style="background:#1976d2">PA</span><span><b>Paulo</b><small>Administrador</small></span></span>
+    </div>
+  </div></header>
+
+  <main><div class="caixa-pagina">
+    <section data-painel="visao">
+      <div class="abertura"><h1 id="ad-saudacao"></h1><p id="ad-frase"></p></div>
+      <div class="numeros" id="numeros"></div>
+      <div class="quadro">
+        <div class="quadro-topo">
+          <div><h2>Atendentes</h2><p>Clique em uma atendente para ver os detalhes e a lista dela.</p></div>
+          <div class="fim"><div class="segmento" role="group" aria-label="Modo de exibição">
+            <button type="button" data-visao="lista" aria-pressed="true">Lista</button>
+            <button type="button" data-visao="sala" aria-pressed="false">Escritório</button>
+          </div></div>
+        </div>
+        <ul class="linhas" id="linhas"></ul>
+        <div class="sala-caixa" id="sala-caixa" hidden><div class="sala" id="sala"><canvas id="canvas" width="400" height="224" aria-hidden="true"></canvas><span class="placa">Pontual <em>Consig</em></span></div></div>
+      </div>
+    </section>
+
+    <section data-painel="apps" hidden>
+      <div class="abertura" style="margin-bottom:32px"><h1>Sites e programas</h1><p>Cada atendente tem a sua própria lista. Sites são liberados por um administrador; programas precisam de dois.</p></div>
+      <div id="pendencias"></div>
+      <div class="quadro">
+        <div class="quadro-topo">
+          <div class="segmento" id="f-tipo" role="group" aria-label="Tipo"></div>
+          <div class="fim">
+            <button type="button" class="btn claro" id="novo-prog"><span data-ic="plus"></span>Adicionar programa</button>
+            <button type="button" class="btn" id="novo-site"><span data-ic="plus"></span>Adicionar site</button>
+          </div>
+        </div>
+        <div class="ferramentas"><label class="busca"><span data-ic="search"></span><input class="campo" id="f-app" type="search" placeholder="Buscar por nome ou endereço" aria-label="Buscar site ou programa"></label></div>
+        <div style="overflow-x:auto"><table id="tb-apps"></table></div>
+      </div>
+    </section>
+
+    <section data-painel="alertas" hidden>
+      <div class="abertura" style="margin-bottom:32px"><h1>Alertas</h1><p id="alertas-frase"></p></div>
+      <div class="quadro"><ul class="registros" id="ls-alertas" style="padding-top:12px"></ul></div>
+    </section>
+
+    <section data-painel="notificacoes" hidden>
+      <div class="abertura" style="margin-bottom:32px"><h1>Notificações</h1><p>Tudo o que acontece nos computadores e na Central aparece aqui. Só a tentativa de abrir um site não permitido salta na tela na hora.</p></div>
+      <div class="quadro"><ul class="registros" id="ls-notif" style="padding-top:12px"></ul></div>
+    </section>
+
+    <section data-painel="auditoria" hidden>
+      <div class="abertura" style="margin-bottom:32px"><h1>Auditoria</h1><p>Toda ação do TI fica registrada, com quem fez, quando e por quê. Ninguém do TI consegue editar este registro pelo painel.</p></div>
+      <div class="quadro"><ul class="registros" id="ls-auditoria" style="padding-top:12px"></ul></div>
+    </section>
+  </div></main>
+
+  <div class="veu" id="gaveta-veu" hidden></div>
+  <aside class="gaveta" id="gaveta" hidden aria-label="Detalhes da atendente"></aside>
+</div>
+
+<!-- ================================================== diálogos (TI) -->
+<dialog id="dlg-suporte" aria-labelledby="t-sup"><div class="dlg">
+  <h2 id="t-sup">Pedir suporte remoto</h2><p>A Marina vê o seu nome, o motivo e o prazo, e precisa permitir.</p>
+  <label>Motivo<input class="campo" id="sup-motivo" value="O portal não está abrindo"></label>
+  <label>A sessão termina sozinha em<select class="campo" id="sup-prazo"><option>15 minutos</option><option selected>30 minutos</option><option>1 hora</option></select></label>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="button" class="btn" id="sup-enviar">Enviar pedido</button></div>
+</div></dialog>
+<dialog id="dlg-manut" aria-labelledby="t-man"><div class="dlg">
+  <h2 id="t-man">Colocar em manutenção</h2><p>A Marina vê uma tela de manutenção até o prazo terminar. O bloqueio da conta dela continua valendo.</p>
+  <label>Motivo<input class="campo" id="man-motivo" value="Troca do teclado"></label>
+  <label>Prazo<select class="campo" id="man-prazo"><option>30 minutos</option><option selected>1 hora</option><option>2 horas</option></select></label>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="button" class="btn" id="man-enviar">Confirmar</button></div>
+</div></dialog>
+<dialog id="dlg-site" aria-labelledby="t-site"><div class="dlg">
+  <h2 id="t-site">Adicionar site</h2><p>O site aparece na hora para as atendentes escolhidas.</p>
+  <label>Nome que a atendente vê<input class="campo" id="site-nome" placeholder="Ex.: Banco Exemplo" aria-describedby="site-erro"></label>
+  <label>Endereço<input class="campo" id="site-end" placeholder="Ex.: portal.bancoexemplo.com.br/login" aria-describedby="site-erro"></label>
+  <label>Grupo<select class="campo" id="site-grupo"><option>Bancos e promotoras</option><option>Comunicação</option><option>Pontual e ferramentas</option></select></label>
+  <div class="quem-box" id="site-quem"></div>
+  <p class="erro" id="site-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="button" class="btn" id="site-salvar">Adicionar e liberar</button></div>
+</div></dialog>
+<dialog id="dlg-prog" aria-labelledby="t-prog"><div class="dlg">
+  <h2 id="t-prog">Adicionar programa</h2><p>Programas do Windows exigem duas pessoas: você propõe e outro administrador aprova.</p>
+  <label>Nome do programa<input class="campo" id="prog-nome" placeholder="Ex.: Leitor de PDF" aria-describedby="prog-erro"></label>
+  <label>Caminho do executável<input class="campo" id="prog-caminho" placeholder="Ex.: C:\Program Files\Leitor\leitor.exe" aria-describedby="prog-erro"></label>
+  <label>Justificativa<input class="campo" id="prog-motivo" placeholder="Por que as atendentes precisam dele" aria-describedby="prog-erro"></label>
+  <div class="quem-box" id="prog-quem"></div>
+  <p class="erro" id="prog-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="button" class="btn" id="prog-salvar">Enviar proposta</button></div>
+</div></dialog>
+<dialog id="dlg-acesso" aria-labelledby="acesso-titulo"><div class="dlg">
+  <h2 id="acesso-titulo"></h2><p>Escolha quais atendentes veem este item no computador delas.</p>
+  <div class="quem-box" id="acesso-quem"></div>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="button" class="btn" id="acesso-salvar">Salvar</button></div>
+</div></dialog>
+
+<!-- ===================================== controles da demonstração -->
+<div class="roteiro" id="roteiro" hidden>
+  <h2>Experimente</h2><p>As duas telas estão ligadas. As outras nove máquinas são simuladas.</p>
+  <ol>
+    <li><button type="button" data-passo="1">Como atendente, abra um banco. Depois veja a Marina na Central do TI.</button></li>
+    <li><button type="button" data-passo="2">Na Central do TI, peça suporte remoto. A atendente recebe o pedido e decide.</button></li>
+    <li><button type="button" data-passo="3">Adicione um site só para uma atendente.</button></li>
+    <li><button type="button" data-passo="4">Coloque a máquina em manutenção e veja a tela da atendente.</button></li>
+  </ol>
+</div>
+<div class="troca" role="group" aria-label="Tela da demonstração">
+  <span>Demonstração</span>
+  <button type="button" data-modo="at" aria-pressed="true">Atendente</button>
+  <button type="button" data-modo="ad" aria-pressed="false">Central do TI</button>
+  <button type="button" class="guia" id="abrir-roteiro" aria-label="Roteiro da demonstração" aria-expanded="false"><span data-ic="info"></span></button>
+</div>
+<div class="avisos" id="avisos" aria-live="polite"></div>
+
+<script>
+// ================================================================= ícones
+const IC = {
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>', plus: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  check: '<path d="m5 12 5 5 9-10"/>', arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>', back: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
+  chevron: '<path d="m9 6 6 6-6 6"/>', info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  alert: '<path d="M12 4 3 20h18L12 4Z"/><path d="M12 10v4M12 17h.01"/>', bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4l2-2Z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+  headset: '<path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="13" width="4" height="6" rx="1.5"/><rect x="17" y="13" width="4" height="6" rx="1.5"/><path d="M19 19c0 1.5-2 2-5 2"/>',
+  wrench: '<path d="M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.6 2.6-2-2 2.6-2.6Z"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>', window: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/>',
+  history: '<path d="M4 12a8 8 0 1 0 2.5-5.8L4 8.5"/><path d="M4 4v4.5h4.5M12 8v4l3 2"/>', ban: '<circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', power: '<path d="M12 4v8"/><path d="M7 7a7 7 0 1 0 10 0"/>',
+};
+function ic(nome, tam = 18) {
+  const s = document.createElement('span');
+  s.innerHTML = `<svg width="${tam}" height="${tam}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[nome]}</svg>`;
+  return s.firstChild;
+}
+// Marcadores data-ic viram ícones: dentro do elemento, se for <i>; no lugar dele, se for <span>.
+for (const alvo of document.querySelectorAll('[data-ic]')) {
+  const icone = ic(alvo.dataset.ic, Number(alvo.dataset.tam) || 18);
+  if (alvo.tagName === 'I') alvo.replaceChildren(icone); else alvo.replaceWith(icone);
+}
+
+// =================================================================== dados
+const CORES = ['#0d47a1', '#1976d2', '#2e9e5b', '#0f9d76', '#0c8fd0', '#2e416d', '#4f6fcf', '#0f766e'];
+const GRUPOS = ['Bancos e promotoras', 'Comunicação', 'Pontual e ferramentas'];
+const SITES = [
+  ['Safra', 'epfweb.safra.com.br', 0], ['Quero Mais Consignado', 'portaldecredito.queromaisconsignado.com.br', 0],
+  ['Teddy Consig360', 'teddy.consig360.com.br', 0], ['Nossa Fintech', 'fintechdocorban.nossafintech.com.br', 0],
+  ['Digio', 'funcaoconsig.digio.com.br', 0], ['C6 Consig', 'c6.c6consig.com.br', 0],
+  ['Parceiro Santander', 'www.parceirosantander.com.br', 0], ['Red Consig', 'esteira.redconsig.com.br', 0],
+  ['Bem Promotora', 'bemweb.bempromotora.com.br', 0], ['Meu CashCard', 'front.meucashcard.com.br', 0],
+  ['Aki Promotora', 'akipromotora.app', 0], ['Pan Consig', 'panconsig.pansolucoes.com.br', 0],
+  ['Banco do Brasil', 'correspondente.bb.com.br', 0], ['Paraná Banco', 'front.paranabanco.b.br', 0],
+  ['JoinBank Finanto', 'finanto.joinbank.com.br', 0], ['Daycoval Consignado', 'consignado.daycoval.com.br', 0],
+  ['Daycoval Portal de Crédito', 'portaldecredito.daycoval.com.br', 0],
+  ['WhatsApp Web', 'web.whatsapp.com', 1], ['Teams', 'teams.microsoft.com', 1], ['Gmail', 'mail.google.com', 1],
+  ['Site da Pontual', 'www.pontualconsig.com.br', 2], ['Sistema interno', '192.168.0.243:3000', 2],
+].map(([nome, dominio, g]) => ({ nome, dominio, grupo: GRUPOS[g], programa: false, liberado: true, proposta: null, maquinas: null }));
+// O Excel começa como proposta aguardando a segunda aprovação.
+SITES.push({ nome: 'Excel', dominio: 'C:\\Program Files\\Microsoft Office\\EXCEL.EXE', grupo: GRUPOS[2], programa: true, liberado: false, maquinas: null,
+  proposta: { por: 'Paulo', hora: '09:12', motivo: 'planilhas de acompanhamento de propostas' } });
+
+const MEU = 'PC-04', T0 = Date.now();
+const MAQUINAS = [
+  ['PC-01', 'Ana Souza', 'online', '11 Pro', ['Safra', 'WhatsApp Web'], 192], ['PC-02', 'Beatriz Lima', 'online', '11 Pro', ['C6 Consig', 'Teams'], 185],
+  ['PC-03', 'Camila Rocha', 'offline', '10 Pro', [], 0], ['PC-04', 'Marina Alves', 'online', '11 Pro', [], 168],
+  ['PC-05', 'Daniela Reis', 'online', '11 Pro', ['Banco do Brasil'], 200], ['PC-06', 'Fernanda Dias', 'online', '10 Pro', ['Daycoval Consignado', 'Gmail'], 97],
+  ['PC-07', 'Gabriela Nunes', 'alerta', '11 Pro', ['Digio'], 181], ['PC-08', 'Helena Castro', 'online', '11 Pro', ['Paraná Banco', 'WhatsApp Web'], 130],
+  ['PC-09', 'Isabela Moraes', 'manutencao', '10 Pro', [], 0], ['PC-10', 'Juliana Pires', 'online', '11 Pro', ['Bem Promotora'], 195],
+].map(([pc, pessoa, estado, win, apps, min], i) => ({ pc, pessoa, estado, win, apps, inicio: T0 - min * 60000, sinal: T0 - (i * 3 + 2) * 1000, visual: i }));
+
+const ROTULO = { online: 'Online', offline: 'Offline', alerta: 'Com alerta', manutencao: 'Em manutenção', suporte: 'Suporte remoto' };
+const IC_ESTADO = { online: 'power', offline: 'ban', alerta: 'alert', manutencao: 'wrench', suporte: 'link' };
+const COR_ESTADO = { online: '#15803d', offline: '#64748b', alerta: '#b45309', manutencao: '#3730a3', suporte: '#0369a1' };
+const FUNDO_ESTADO = { online: 'var(--verde-100)', offline: '#eef1f5', alerta: 'var(--ambar-100)', manutencao: 'var(--indigo-100)', suporte: 'var(--ciano-100)' };
+
+const S = {
+  modo: 'at', secao: 'visao', visao: 'lista', sel: null, aba: 'resumo', cat: 'Todos', fTipo: 'Todos',
+  abertas: [], atual: null, bloqueada: false, avisoAberto: false,
+  uso: { Safra: 6, 'WhatsApp Web': 5, 'C6 Consig': 4, 'Pan Consig': 3, 'Banco do Brasil': 3, Teams: 2 },
+  suporte: { fase: 'nenhum', motivo: '', prazo: '' }, manut: { ativo: false, motivo: '', ate: '' }, config: 42,
+  alertas: [{ id: 1, pc: 'PC-07', texto: 'Três tentativas de abrir um site bloqueado', hora: '10:41' }, { id: 2, pc: 'PC-03', texto: 'Sem comunicação há 2 horas', hora: '08:55' }],
+  auditoria: [
+    { hora: '09:30', texto: 'Paulo publicou a configuração 42. Motivo: inclusão do portal Daycoval' },
+    { hora: '09:12', texto: 'Paulo propôs a inclusão do programa Excel' },
+    { hora: '08:20', texto: 'Renata colocou o PC-09 em manutenção até 12:00. Motivo: troca de teclado' },
+  ],
+  historico: [{ hora: '08:02', texto: 'Iniciou a sessão' }],
+  notificacoes: [],
+};
+let proximoAlerta = 3;
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...filhos) => { const n = Object.assign(document.createElement(tag), props); n.append(...filhos.filter((f) => f !== null && f !== undefined)); return n; };
+const hhmm = (d = new Date()) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+const auditar = (texto) => S.auditoria.unshift({ hora: hhmm(), texto });
+const registrar = (texto) => S.historico.unshift({ hora: hhmm(), texto });
+const cor = (nome) => { let h = 0; for (const c of nome) h = (h * 31 + c.charCodeAt(0)) >>> 0; return CORES[h % CORES.length]; };
+const iniciais = (nome) => { const p = nome.split(' '); return (p[0][0] + (p[1] ? p[1][0] : p[0][1] || '')).toUpperCase(); };
+const avatar = (nome, classe = '') => el('span', { className: `avatar ${classe}`, textContent: iniciais(nome), style: `background:${cor(nome)}` });
+const selo = (estado, texto) => el('span', { className: `selo s-${estado}`, textContent: texto ?? ROTULO[estado] });
+const primeiro = (nome) => nome.split(' ')[0];
+const maquina = (pc) => MAQUINAS.find((m) => m.pc === pc);
+const saudar = () => { const h = new Date().getHours(); return h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; };
+
+// Acesso por atendente: "maquinas" nulo significa todas; senão, a lista das máquinas que veem o item.
+const temAcesso = (s, pc) => !s.maquinas || s.maquinas.includes(pc);
+function definirAcesso(s, pc, ligado) {
+  const lista = new Set(s.maquinas ?? MAQUINAS.map((m) => m.pc));
+  if (ligado) lista.add(pc); else lista.delete(pc);
+  s.maquinas = lista.size === MAQUINAS.length ? null : MAQUINAS.map((m) => m.pc).filter((p) => lista.has(p));
+}
+function quemUsa(s) {
+  if (!s.maquinas) return 'Todas as atendentes';
+  if (s.maquinas.length === 0) return 'Nenhuma atendente';
+  const nomes = s.maquinas.map((pc) => primeiro(maquina(pc).pessoa));
+  return nomes.length <= 2 ? nomes.join(' e ') : `${nomes.length} atendentes`;
+}
+function fecharSeSemAcesso(s) {
+  if (s.liberado && temAcesso(s, MEU)) return;
+  S.abertas = S.abertas.filter((a) => a.nome !== s.nome);
+  if (S.atual === s.nome) S.atual = null;
+}
+function estadoDe(m) {
+  if (m.pc !== MEU) return m.estado;
+  if (S.manut.ativo) return 'manutencao';
+  if (S.suporte.fase === 'ativo') return 'suporte';
+  if (S.alertas.some((a) => a.pc === MEU)) return 'alerta';
+  return 'online';
+}
+const appsDe = (m) => (m.pc === MEU ? S.abertas.map((a) => a.nome) : m.apps);
+const duracao = (ms) => { const min = Math.floor(ms / 60000); return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`; };
+const haQuanto = (m) => (estadoDe(m) === 'offline' ? 'há 2 h' : `há ${Math.max(1, Math.round((Date.now() - m.sinal) / 1000))} s`);
+
+// ============================================================ notificações
+// Toda notificação vai para a aba "Notificações" da Central do TI. Só as urgentes
+// (hoje, a tentativa de abrir um site não permitido) também saltam na tela.
+function avisar(texto, irPara, rotulo, urgente = false) {
+  S.notificacoes.unshift({ hora: hhmm(), texto, urgente, lida: false });
+  if (!urgente) return;
+  const corpo = el('div', {}, texto);
+  const caixa = el('div', { className: 'toast urgente' }, ic('alert', 20), corpo);
+  caixa.setAttribute('role', 'alert');
+  const b = el('button', { type: 'button', textContent: rotulo });
+  b.onclick = () => { mudarModo(irPara); irSecao('alertas'); caixa.remove(); };
+  corpo.append(el('div', {}, b));
+  $('avisos').append(caixa);
+  setTimeout(() => caixa.remove(), 9000);
+}
+
+// ================================================================== telas
+function mudarModo(modo) {
+  S.modo = modo;
+  $('app-at').hidden = modo !== 'at';
+  $('app-ad').hidden = modo !== 'ad';
+  for (const b of document.querySelectorAll('.troca [data-modo]')) b.setAttribute('aria-pressed', String(b.dataset.modo === modo));
+  window.scrollTo(0, 0);
+}
+function irSecao(secao) {
+  S.secao = secao;
+  for (const b of document.querySelectorAll('.menu button')) { if (b.dataset.secao === secao) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); }
+  for (const p of document.querySelectorAll('[data-painel]')) p.hidden = p.dataset.painel !== secao;
+  // Ao sair da aba de notificações, as que foram vistas deixam de contar como novas.
+  if (S.vendoNotif && secao !== 'notificacoes') for (const n2 of S.notificacoes) n2.lida = true;
+  S.vendoNotif = secao === 'notificacoes';
+  if (typeof desenharAdmin === 'function') desenharAdmin();
+  window.scrollTo(0, 0);
+}
+function abrirGaveta(pc, aba = 'resumo') { S.sel = pc; S.aba = aba; desenharGaveta(); }
+function fecharGaveta() { S.sel = null; $('gaveta').hidden = true; $('gaveta-veu').hidden = true; }
+function alternarRoteiro(aberto) { $('roteiro').hidden = !aberto; $('abrir-roteiro').setAttribute('aria-expanded', String(aberto)); }
+for (const b of document.querySelectorAll('.troca [data-modo]')) b.onclick = () => mudarModo(b.dataset.modo);
+for (const b of document.querySelectorAll('.menu button')) b.onclick = () => irSecao(b.dataset.secao);
+$('sino').onclick = () => irSecao('notificacoes');
+$('gaveta-veu').onclick = fecharGaveta;
+$('abrir-roteiro').onclick = () => alternarRoteiro($('roteiro').hidden);
+for (const b of document.querySelectorAll('[data-visao]')) b.onclick = () => { S.visao = b.dataset.visao; desenharVisao(); };
+for (const p of document.querySelectorAll('[data-passo]')) p.onclick = () => {
+  alternarRoteiro(false);
+  const n = p.dataset.passo;
+  if (n === '1') { mudarModo('at'); $('busca').focus(); return; }
+  mudarModo('ad');
+  if (n === '2') { irSecao('visao'); abrirGaveta(MEU); if (S.suporte.fase === 'nenhum' && !S.manut.ativo) $('dlg-suporte').showModal(); }
+  if (n === '3') { irSecao('apps'); novoSite([MEU]); }
+  if (n === '4') { irSecao('visao'); abrirGaveta(MEU); if (!S.manut.ativo) $('dlg-manut').showModal(); }
+};
+for (const d of document.querySelectorAll('dialog')) for (const b of d.querySelectorAll('[data-fechar]')) b.onclick = () => d.close();
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (!$('roteiro').hidden) alternarRoteiro(false); else if (S.sel && !document.querySelector('dialog[open]')) fecharGaveta(); } });
+
+// ========================================================== logo e relógio
+for (const alvo of document.querySelectorAll('[data-logo]')) {
+  const img = el('img', { src: 'https://www.pontualconsig.com.br/frontend/assets/img/LOGO%20PONTUAL%20CONSIG%203.svg', alt: 'Pontual Consig' });
+  // Sem internet, a logo é trocada pelo nome escrito.
+  img.onerror = () => alvo.replaceChildren(el('span', { className: 'logo-texto', innerHTML: 'Pontual<em>Consig</em>' }));
+  alvo.append(img);
+}
+function relogio() {
+  const d = new Date();
+  for (const t of document.querySelectorAll('[data-hora]')) t.textContent = hhmm(d);
+  for (const t of document.querySelectorAll('[data-data]')) t.textContent = d.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+// ================================================================ atendente
+function desenharAtendente() {
+  const meus = SITES.filter((s) => s.liberado && temAcesso(s, MEU));
+  $('saudacao').replaceChildren(`${saudar()}, `, el('span', { textContent: 'Marina' }), '.');
+  $('saudacao-sub').textContent = 'O que você vai abrir agora?';
+
+  const termo = $('busca').value.trim().toLowerCase();
+  const casa = (s) => !termo || s.nome.toLowerCase().includes(termo) || s.dominio.toLowerCase().includes(termo);
+
+  $('sec-abertos').hidden = S.abertas.length === 0 || Boolean(termo);
+  $('abertos').replaceChildren(...S.abertas.map((a) => {
+    const ir = el('button', { type: 'button' }, avatar(a.nome, 'm q'), a.nome);
+    ir.onclick = () => { S.atual = a.nome; S.bloqueada = false; desenhar(); };
+    const x = el('button', { type: 'button', className: 'x' }, ic('x', 16));
+    x.setAttribute('aria-label', `Fechar ${a.nome}`);
+    x.onclick = () => fechar(a.nome);
+    return el('div', { className: 'aberto' }, ir, x);
+  }));
+
+  const destaques = [...meus].filter((s) => S.uso[s.nome]).sort((a, b) => S.uso[b.nome] - S.uso[a.nome]).slice(0, 6);
+  $('sec-destaques').hidden = Boolean(termo) || destaques.length === 0;
+  $('destaques').replaceChildren(...destaques.map((s) => {
+    const b = el('button', { type: 'button', className: 'destaque' }, avatar(s.nome, 'gg'), el('span', {}, el('b', { textContent: s.nome }), el('small', { textContent: s.programa ? 'Programa' : s.grupo })));
+    b.onclick = () => abrir(s);
+    return b;
+  }));
+
+  $('guias-grupo').replaceChildren(...['Todos', ...GRUPOS].map((g) => {
+    const b = el('button', { type: 'button', textContent: g });
+    b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(S.cat === g));
+    b.onclick = () => { S.cat = g; desenharAtendente(); };
+    return b;
+  }));
+  const lista = meus.filter((s) => (S.cat === 'Todos' || s.grupo === S.cat) && casa(s));
+  $('todos-titulo').textContent = termo ? `${lista.length} ${lista.length === 1 ? 'resultado' : 'resultados'}` : `Tudo o que está liberado para você (${meus.length})`;
+  $('lista-sites').replaceChildren(...lista.map((s) => {
+    const b = el('button', { type: 'button', className: 'item' }, avatar(s.nome, 'q'),
+      el('span', {}, el('b', { textContent: s.nome }), el('small', { textContent: s.programa ? 'Programa instalado' : s.dominio })), ic('arrow', 20));
+    b.onclick = () => abrir(s);
+    return b;
+  }));
+  $('nada').hidden = lista.length > 0;
+  $('busca').onkeydown = (e) => { if (e.key === 'Enter' && lista.length) { $('busca').value = ''; abrir(lista[0]); } };
+
+  const aberta = S.abertas.find((a) => a.nome === S.atual);
+  const pagina = S.bloqueada || Boolean(aberta);
+  $('at-inicio').hidden = pagina;
+  $('at-pagina').hidden = !pagina;
+  $('app-at').classList.toggle('aberta', pagina);
+  $('abas-app').replaceChildren(...S.abertas.map((a) => {
+    const ir = el('button', { type: 'button' }, avatar(a.nome, 'm q'), a.nome);
+    ir.onclick = () => { S.atual = a.nome; S.bloqueada = false; desenhar(); };
+    const x = el('button', { type: 'button', className: 'x' }, ic('x', 16));
+    x.setAttribute('aria-label', `Fechar ${a.nome}`);
+    x.onclick = () => fechar(a.nome);
+    const aba = el('div', { className: 'aba-app' }, ir, x);
+    aba.setAttribute('aria-selected', String(S.atual === a.nome && !S.bloqueada));
+    return aba;
+  }));
+  if (S.bloqueada) {
+    $('site').replaceChildren(el('div', { className: 'bloqueio' }, el('i', {}, ic('ban', 44)),
+      el('h3', { textContent: 'Este site não é permitido' }),
+      el('p', { textContent: 'Só os sites autorizados pela Pontual abrem neste computador. A tentativa foi registrada e o TI foi avisado.' })));
+  } else if (aberta) {
+    const tom = cor(aberta.nome);
+    if (aberta.programa) {
+      const colunas = ['', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+      const celulas = [];
+      for (let linha = 0; linha < 16; linha += 1) {
+        for (let coluna = 0; coluna < 9; coluna += 1) {
+          const cab = linha === 0 || coluna === 0;
+          celulas.push(el('span', { className: cab ? 'cab' : '', textContent: linha === 0 ? colunas[coluna] : coluna === 0 ? String(linha) : '' }));
+        }
+      }
+      $('site').replaceChildren(
+        el('div', { className: 'portal-topo', style: `background:${tom}` }, ic('window', 22), el('b', { textContent: aberta.nome }), el('small', {}, 'Programa instalado')),
+        el('div', { className: 'nota-demo' }, ic('info', 18), 'No produto, o programa abre em tela cheia na frente do terminal. Aqui é só uma representação.'),
+        el('div', { className: 'planilha' }, ...celulas));
+    } else {
+      $('site').replaceChildren(
+        el('div', { className: 'portal-topo', style: `background:${tom}` }, ic('globe', 22), el('b', { textContent: aberta.nome }), el('small', {}, ic('lock', 16), aberta.dominio)),
+        el('div', { className: 'nota-demo' }, ic('info', 18), 'No produto, o site real do banco abre aqui, em tela cheia e sem barra de endereço. Nesta demonstração ele não é carregado.'),
+        el('div', { className: 'portal-corpo' },
+          el('div', { className: 'portal-lado', style: `background:linear-gradient(140deg, ${tom}, #0f172a)` },
+            el('h2', { textContent: aberta.nome }), el('p', { textContent: 'Portal do correspondente. Acesse com o seu usuário e a sua senha.' })),
+          el('div', { className: 'portal-form' }, el('div', {},
+            el('h3', { textContent: 'Entrar' }),
+            el('div', { className: 'falso-campo', textContent: 'Usuário' }), el('div', { className: 'falso-campo', textContent: 'Senha' }),
+            el('div', { className: 'falso-botao', style: `background:${tom}`, textContent: 'Acessar' })))));
+    }
+  }
+
+  $('faixa-sessao').hidden = S.suporte.fase !== 'ativo';
+  $('at-config').textContent = `Configuração ${S.config}`;
+  $('at-manut').hidden = !S.manut.ativo;
+  if (S.manut.ativo) $('at-manut-texto').textContent = `O TI está trabalhando nesta máquina. Motivo: ${S.manut.motivo.toLowerCase()}. Previsão de retorno: ${S.manut.ate}.`;
+
+  const veu = $('at-veu'), folha = $('at-folha');
+  if (S.suporte.fase === 'pedido' && !S.manut.ativo) {
+    veu.hidden = false;
+    const sim = el('button', { type: 'button', className: 'btn', textContent: 'Permitir acesso' });
+    const nao = el('button', { type: 'button', className: 'btn claro', textContent: 'Recusar' });
+    sim.onclick = () => { S.suporte.fase = 'ativo'; auditar('Marina permitiu o suporte remoto de Paulo no PC-04'); avisar('A Marina permitiu. A sessão de suporte começou.', 'ad', 'Ver na Central do TI'); desenhar(); };
+    nao.onclick = () => { S.suporte.fase = 'nenhum'; auditar('Marina recusou o suporte remoto de Paulo no PC-04'); avisar('A Marina recusou o pedido de suporte.', 'ad', 'Ver na Central do TI'); desenhar(); };
+    folha.setAttribute('aria-label', 'Pedido de suporte remoto');
+    folha.replaceChildren(el('h2', { textContent: 'O TI quer acessar sua tela' }),
+      el('p', { textContent: 'Se você permitir, a pessoa abaixo vai ver sua tela e poderá usar o mouse e o teclado.' }),
+      el('div', { className: 'pedido' }, avatar('Paulo Admin', 'g'), el('div', {}, el('strong', { textContent: 'Paulo, do TI' }),
+        el('p', { textContent: `Motivo: ${S.suporte.motivo}` }), el('p', { textContent: `Termina sozinha em ${S.suporte.prazo}.` }))),
+      el('p', { textContent: 'Um aviso fica no topo da tela o tempo todo, e você pode encerrar quando quiser.' }),
+      el('div', { className: 'acoes' }, sim, nao));
+  } else if (S.avisoAberto) {
+    veu.hidden = false;
+    const ok = el('button', { type: 'button', className: 'btn', textContent: 'Entendi' });
+    ok.onclick = () => { S.avisoAberto = false; desenhar(); };
+    const lista2 = (itens) => el('ul', {}, ...itens.map((t) => el('li', { textContent: t })));
+    folha.setAttribute('aria-label', 'O que é registrado');
+    folha.replaceChildren(el('h2', { textContent: 'O que é registrado neste computador' }),
+      el('h3', { textContent: 'A Pontual registra' }),
+      lista2(['Horários em que o computador está ligado e conectado.', 'Quais programas e sites autorizados você abriu, e por quanto tempo.', 'Tentativas de abrir um programa ou site bloqueado.', 'Sessões de suporte remoto do TI.']),
+      el('h3', { textContent: 'A Pontual não registra' }),
+      lista2(['O que você digita.', 'Imagens da sua tela.', 'O conteúdo de mensagens, documentos e páginas.', 'Áudio, câmera ou localização.']),
+      el('div', { className: 'acoes' }, ok));
+  } else {
+    veu.hidden = true;
+  }
+}
+function abrir(s) {
+  if (!S.abertas.some((a) => a.nome === s.nome)) { S.abertas.push(s); registrar(`Abriu ${s.nome}`); avisar(`Marina abriu ${s.nome}.`, 'ad', 'Ver na Central do TI'); }
+  S.uso[s.nome] = (S.uso[s.nome] || 0) + 1;
+  S.atual = s.nome; S.bloqueada = false;
+  desenhar(); window.scrollTo(0, 0);
+}
+function fechar(nome) { S.abertas = S.abertas.filter((a) => a.nome !== nome); if (S.atual === nome) S.atual = null; registrar(`Fechou ${nome}`); desenhar(); }
+function encerrarSuporte(quem) { S.suporte.fase = 'nenhum'; auditar(`${quem} encerrou a sessão de suporte remoto no PC-04`); desenhar(); }
+$('busca').oninput = desenharAtendente;
+$('at-voltar').onclick = () => { S.atual = null; S.bloqueada = false; desenhar(); };
+$('at-ver-aviso').onclick = () => { S.avisoAberto = true; desenhar(); };
+$('at-chamar').onclick = () => chamarTi();
+$('at-chamar-2').onclick = () => chamarTi();
+$('at-encerrar').onclick = () => encerrarSuporte('Marina');
+$('at-bloqueado').onclick = () => {
+  S.bloqueada = true;
+  registrar('Tentou abrir um site não permitido');
+  S.alertas.unshift({ id: proximoAlerta++, pc: MEU, texto: 'Tentativa de abrir um site não permitido', hora: hhmm() });
+  avisar('Marina tentou abrir um site não permitido. O acesso foi bloqueado.', 'ad', 'Ver na Central do TI', true);
+  desenhar(); window.scrollTo(0, 0);
+};
+const chamarTi = () => {
+  S.alertas.unshift({ id: proximoAlerta++, pc: MEU, texto: 'Marina chamou o TI', hora: hhmm() });
+  avisar('Chamado enviado. O TI já foi avisado.', 'ad', 'Ver na Central do TI');
+  desenhar();
+};
+
+// ============================================================ escritório 2D
+const cv = $('canvas'), cx = cv.getContext('2d'), W = 400, H = 224;
+const R = (c, x, y, w, h) => { cx.fillStyle = c; cx.fillRect(x, y, w, h); };
+const PELES = ['#f4cba4', '#e3ab7c', '#bb7c52', '#8b5a3d'], CABELOS = ['#3b2a22', '#7b4b26', '#c98b2e', '#2d2d3c', '#a43d2e'], BLUSAS = ['#1976d2', '#2e9e5b', '#0c8fd0', '#7c5cc4', '#d97706', '#0f766e'];
+const posicao = (i) => ({ x: 46 + (i % 5) * 77, y: 104 + Math.floor(i / 5) * 76 });
+function pessoa(x, y, v, quadro, parada) {
+  const pele = PELES[v % 4], cabelo = CABELOS[(v * 3 + 1) % 5], blusa = BLUSAS[(v * 5 + 2) % 6];
+  R('#2b1d1f', x + 1, y - 1, 10, 10); R(pele, x + 2, y + 2, 8, 6);
+  R(cabelo, x + 2, y, 8, 3); R(cabelo, x + 2, y + 3, 1, 3); R(cabelo, x + 9, y + 3, 1, 3);
+  R('#2b1d1f', x + 4, y + 5, 1, 2); R('#2b1d1f', x + 7, y + 5, 1, 2);
+  R('#2b1d1f', x, y + 9, 12, 7); R(blusa, x + 1, y + 9, 10, 6);
+  if (!parada) { const d = quadro % 2; R(pele, x + 2 + d, y + 14, 2, 1); R(pele, x + 8 - d, y + 14, 2, 1); }
+}
+function sala(quadro) {
+  R('#eef3f9', 0, 0, W, 40);
+  for (let x = 6; x < W; x += 16) R('#e2eaf3', x, 0, 2, 40);
+  R('#2e416d', 0, 40, W, 9); R('#3d5488', 0, 40, W, 2); R('#1b2a4a', 0, 49, W, 2); R('#c9a273', 0, 51, W, H - 51);
+  for (let y = 51, n = 0; y < H; y += 11, n += 1) { R('#b88d5c', 0, y + 10, W, 1); R('#d2ad80', 0, y, W, 1); for (let x = (n % 2) * 28 + 14; x < W; x += 56) R('#b88d5c', x, y, 1, 10); }
+  R('rgba(27,18,8,0.18)', 0, 51, W, 3);
+  for (const x of [28, 118, 248, 338]) {
+    R('#ffffff', x, 6, 34, 26); R('#a8d8ee', x + 2, 8, 30, 22); R('#cdeaf4', x + 2, 20, 30, 10); R('#ffffff', x + 16, 8, 2, 22); R('#ffffff', x + 2, 18, 30, 2); R('#ffffff', x + 6, 11, 7, 2);
+    cx.fillStyle = 'rgba(255,244,200,0.16)'; cx.beginPath(); cx.moveTo(x + 2, 52); cx.lineTo(x + 32, 52); cx.lineTo(x + 46, 92); cx.lineTo(x + 12, 92); cx.fill();
+  }
+  for (const [x, y] of [[8, 60], [W - 20, 60], [8, H - 30], [W - 20, H - 30]]) { R('#2f7d4a', x, y, 12, 10); R('#43a35a', x + 2, y - 4, 8, 8); R('#7dcf8f', x + 4, y - 2, 3, 3); R('#2b1d1f', x + 1, y + 10, 10, 8); R('#c8553d', x + 2, y + 11, 8, 6); }
+  R('#0d47a1', 160, H - 22, 80, 16); R('#1976d2', 162, H - 20, 76, 12); R('#10b981', 166, H - 16, 68, 4);
+  MAQUINAS.forEach((m, i) => estacao(m, posicao(i), quadro));
+}
+function estacao(m, { x, y }, quadro) {
+  const estado = estadoDe(m), pisca = quadro % 2 === 0;
+  cx.fillStyle = 'rgba(40,22,12,0.25)'; cx.beginPath(); cx.ellipse(x, y + 12, 24, 4, 0, 0, 7); cx.fill();
+  R('#1b2333', x - 2, y - 24, 16, 15); R('#3d5488', x - 1, y - 23, 14, 13);
+  if (estado !== 'offline' && estado !== 'manutencao') pessoa(x, y - 25, m.visual, quadro, estado === 'alerta');
+  R('#4a2c18', x - 24, y - 10, 48, 5); R('#b07c48', x - 23, y - 10, 46, 3); R('#cd9a62', x - 23, y - 10, 46, 1);
+  R('#4a2c18', x - 22, y - 5, 44, 12); R('#8a5a34', x - 21, y - 5, 42, 10); R('#74492a', x - 18, y - 3, 14, 6); R('#74492a', x + 4, y - 3, 14, 6);
+  R('#4a2c18', x - 21, y + 7, 4, 4); R('#4a2c18', x + 17, y + 7, 4, 4); R('#141a26', x - 22, y - 25, 18, 13); R('#141a26', x - 15, y - 12, 4, 2);
+  R({ online: pisca ? '#9ff0c4' : '#7fe0ae', offline: '#232a38', alerta: pisca ? '#ffd166' : '#ff9f43', manutencao: '#9db8ff', suporte: pisca ? '#7fd8ff' : '#4fc3f7' }[estado], x - 20, y - 23, 14, 9);
+  if (estado === 'online' || estado === 'suporte') { R('rgba(13,71,161,0.45)', x - 19, y - 21, 7, 1); R('rgba(13,71,161,0.45)', x - 19, y - 19, 10, 1); R('rgba(13,71,161,0.45)', x - 19, y - 17, 5, 1); }
+  R('#2c3344', x - 1, y - 9, 14, 2);
+  if (estado === 'alerta' || estado === 'suporte' || estado === 'manutencao') {
+    const by = y - 44 + (pisca ? 0 : 1);
+    R('#2b1d1f', x + 2, by, 11, 11); R('#ffffff', x + 3, by + 1, 9, 9); R('#2b1d1f', x + 6, by + 11, 2, 2);
+    if (estado === 'alerta') { R('#d97706', x + 7, by + 2, 2, 5); R('#d97706', x + 7, by + 8, 2, 1); }
+    if (estado === 'suporte') { R('#0c8fd0', x + 4, by + 4, 7, 1); R('#0c8fd0', x + 9, by + 3, 1, 3); R('#0c8fd0', x + 4, by + 7, 7, 1); R('#0c8fd0', x + 5, by + 6, 1, 3); }
+    if (estado === 'manutencao') { R('#1d4ed8', x + 7, by + 2, 2, 7); R('#1d4ed8', x + 4, by + 5, 7, 2); }
+  }
+  if (estado === 'manutencao' || estado === 'suporte') pessoa(x + 20, y - 18, 7, quadro, true);
+}
+
+// ============================================================= central do TI
+function desenharVisao() {
+  const n = {};
+  for (const m of MAQUINAS) { const e = estadoDe(m); n[e] = (n[e] || 0) + 1; }
+  const emUso = MAQUINAS.filter((m) => appsDe(m).length > 0 && estadoDe(m) !== 'offline').length;
+  const atencao = (n.alerta || 0) + (n.offline || 0);
+  $('ad-saudacao').textContent = `${saudar()}, Paulo.`;
+  $('ad-frase').replaceChildren(el('strong', { textContent: `${emUso} de ${MAQUINAS.length} computadores` }), ' estão em uso agora. ',
+    atencao ? el('strong', { textContent: `${atencao} ${atencao === 1 ? 'precisa' : 'precisam'} da sua atenção.` }) : 'Tudo em ordem.');
+  $('numeros').replaceChildren(...['online', 'alerta', 'offline', 'manutencao', 'suporte'].filter((e) => n[e] || e === 'online' || e === 'alerta').map((e) => {
+    const i = el('i', {}, ic(IC_ESTADO[e], 22)); i.style.cssText = `background:${FUNDO_ESTADO[e]};color:${COR_ESTADO[e]}`;
+    return el('div', { className: 'numero' }, i, el('div', {}, el('b', { textContent: n[e] || 0 }), el('span', { textContent: ROTULO[e] })));
+  }));
+  const abertos = S.alertas.length;
+  $('conta-alertas').hidden = abertos === 0; $('conta-alertas').textContent = abertos;
+  const naoLidas = S.notificacoes.filter((n2) => !n2.lida).length;
+  $('conta-notif').hidden = naoLidas === 0; $('conta-notif').textContent = naoLidas; $('sino-ponto').hidden = naoLidas === 0;
+
+  for (const b of document.querySelectorAll('[data-visao]')) b.setAttribute('aria-pressed', String(b.dataset.visao === S.visao));
+  $('linhas').hidden = S.visao !== 'lista';
+  $('sala-caixa').hidden = S.visao !== 'sala';
+  $('linhas').replaceChildren(...MAQUINAS.map((m) => {
+    const estado = estadoDe(m), apps = appsDe(m);
+    const b = el('button', { type: 'button', className: 'pessoa' }, avatar(m.pessoa, 'g'),
+      el('span', {}, el('b', { textContent: m.pessoa }), el('small', { textContent: `${m.pc}, Windows ${m.win}` })),
+      el('span', { className: 'col-2' }, selo(estado)),
+      el('span', { className: 'uso', textContent: apps.length ? apps.join(', ') : estado === 'offline' ? 'Desligado ou sem rede' : estado === 'manutencao' ? 'Fora de serviço' : 'Nenhum aplicativo aberto' }),
+      el('small', { className: 'col-4 num', textContent: haQuanto(m) }), ic('chevron', 20));
+    b.setAttribute('aria-label', `${m.pessoa}, ${ROTULO[estado]}. Ver detalhes`);
+    b.onclick = () => abrirGaveta(m.pc);
+    return el('li', {}, b);
+  }));
+  const alvo = $('sala');
+  for (const antigo of alvo.querySelectorAll('.mesa')) antigo.remove();
+  MAQUINAS.forEach((m, i) => {
+    const { x, y } = posicao(i), estado = estadoDe(m);
+    const b = el('button', { type: 'button', className: 'mesa' }, el('b', { textContent: primeiro(m.pessoa) }), el('small', { textContent: ROTULO[estado], style: `background:${COR_ESTADO[estado]}` }));
+    b.style.cssText = `left:${((x - 36) / W) * 100}%;top:${((y - 46) / H) * 100}%;width:${(72 / W) * 100}%;height:${(74 / H) * 100}%`;
+    b.setAttribute('aria-label', `${m.pessoa}, ${ROTULO[estado]}. Ver detalhes`);
+    b.onclick = () => abrirGaveta(m.pc);
+    alvo.append(b);
+  });
+}
+function desenharGaveta() {
+  if (!S.sel) return;
+  const m = maquina(S.sel), estado = estadoDe(m), apps = appsDe(m), meu = m.pc === MEU;
+  const guia = (id, texto) => { const b = el('button', { type: 'button', textContent: texto }); b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(S.aba === id)); b.onclick = () => { S.aba = id; desenharGaveta(); }; return b; };
+  const corpo = el('div', { className: 'gaveta-corpo' });
+  const dado = (r, v, larga) => el('div', { className: larga ? 'larga' : '' }, el('dt', { textContent: r }), el('dd', {}, v));
+
+  if (S.aba === 'resumo') {
+    corpo.append(el('dl', { className: 'dados' },
+      dado('Em uso agora', apps.length ? el('div', { className: 'tags' }, ...apps.map((a) => el('span', { className: 'selo s-neutro', textContent: a }))) : 'Nenhum aplicativo aberto', true),
+      dado('Tempo de atividade', estado === 'offline' || estado === 'manutencao' ? 'Sem sessão' : duracao(Date.now() - m.inicio)),
+      dado('Última comunicação', el('span', { className: 'num', textContent: haQuanto(m) })),
+      dado('Windows', m.win), dado('Alertas abertos', String(S.alertas.filter((a) => a.pc === m.pc).length))));
+    if (meu) {
+      const acoes = el('div', { className: 'acoes', style: 'margin:0' });
+      if (S.suporte.fase === 'ativo') {
+        const fim = el('button', { type: 'button', className: 'btn rubi' }, ic('x', 18), 'Encerrar suporte');
+        fim.onclick = () => encerrarSuporte('Paulo'); acoes.append(fim);
+      } else {
+        const sup = el('button', { type: 'button', className: 'btn', disabled: S.manut.ativo || S.suporte.fase === 'pedido' }, ic('link', 18), S.suporte.fase === 'pedido' ? 'Aguardando a Marina' : 'Pedir suporte remoto');
+        sup.onclick = () => $('dlg-suporte').showModal(); acoes.append(sup);
+      }
+      const man = el('button', { type: 'button', className: 'btn claro' }, ic('wrench', 18), S.manut.ativo ? 'Encerrar manutenção' : 'Manutenção');
+      man.onclick = () => { if (!S.manut.ativo) return $('dlg-manut').showModal(); S.manut.ativo = false; auditar('Paulo encerrou a manutenção do PC-04'); desenhar(); };
+      acoes.append(man);
+      corpo.append(acoes);
+    } else {
+      corpo.append(el('p', { className: 'aviso-linha' }, ic('info', 18), 'Máquina simulada. Suporte remoto e manutenção funcionam no computador da Marina.'));
+    }
+    if (meu && S.suporte.fase === 'ativo') {
+      const copia = $('app-at').cloneNode(true);
+      copia.hidden = false;
+      for (const n2 of [copia, ...copia.querySelectorAll('[id]')]) n2.removeAttribute('id');
+      corpo.append(el('div', { className: 'espelho' }, el('p', {}, ic('link', 16), 'Tela da Marina, ao vivo, com a permissão dela'), el('div', { className: 'mini' }, el('div', {}, copia))));
+    } else {
+      corpo.append(el('p', { className: 'aviso-linha' }, ic('lock', 18), 'A tela da atendente só aparece durante uma sessão de suporte que ela permitiu. Fora disso, você vê apenas o status e os aplicativos em uso.'));
+    }
+  }
+  if (S.aba === 'acesso') {
+    const itens = SITES.filter((s) => s.liberado), liberados = itens.filter((s) => temAcesso(s, m.pc)).length;
+    const maisSite = el('button', { type: 'button', className: 'btn p' }, ic('plus', 16), 'Adicionar site');
+    maisSite.onclick = () => novoSite([m.pc]);
+    const maisProg = el('button', { type: 'button', className: 'btn claro p' }, ic('plus', 16), 'Adicionar programa');
+    maisProg.onclick = () => novoPrograma([m.pc]);
+    corpo.append(el('div', {}, el('p', {}, el('strong', { className: 'num', style: 'color:var(--tinta)', textContent: `${liberados} de ${itens.length}` }), ` liberados para a ${primeiro(m.pessoa)}.`),
+      el('div', { className: 'acoes', style: 'margin-top:14px' }, maisSite, maisProg)),
+      el('ul', { className: 'lista-acesso' }, ...itens.map((s) => {
+        const chave = el('button', { type: 'button', className: 'interruptor' });
+        chave.setAttribute('role', 'switch'); chave.setAttribute('aria-checked', String(temAcesso(s, m.pc))); chave.setAttribute('aria-label', `${s.nome} para ${m.pessoa}`);
+        chave.onclick = () => {
+          const ligar = !temAcesso(s, m.pc);
+          definirAcesso(s, m.pc, ligar); S.config += 1; fecharSeSemAcesso(s);
+          auditar(`Paulo ${ligar ? 'liberou' : 'tirou'} ${s.nome} ${ligar ? 'para' : 'de'} ${m.pessoa} (${m.pc}). Configuração ${S.config} publicada`);
+          const rolagem = $('gaveta').querySelector('.gaveta-corpo').scrollTop;
+          desenhar();
+          $('gaveta').querySelector('.gaveta-corpo').scrollTop = rolagem;
+        };
+        return el('li', {}, avatar(s.nome, 'q'), el('span', { className: 'n', textContent: s.nome }), s.programa ? selo('neutro', 'Programa') : null, chave);
+      })));
+  }
+  if (S.aba === 'historico') {
+    const linhas = meu ? S.historico : [{ hora: '10:12', texto: `Abriu ${m.apps[0] ?? 'o terminal'}` }, { hora: '08:03', texto: 'Iniciou a sessão' }];
+    corpo.append(el('ul', { className: 'tempo' }, ...linhas.map((l) => el('li', {}, el('time', { textContent: l.hora }), el('span', { textContent: l.texto })))));
+    if (!meu) corpo.append(el('p', { className: 'aviso-linha' }, ic('info', 18), 'Histórico de exemplo. O da Marina é real nesta demonstração.'));
+  }
+  const fechar2 = el('button', { type: 'button', className: 'redondo' }, ic('x', 20));
+  fechar2.setAttribute('aria-label', 'Fechar detalhes'); fechar2.onclick = fecharGaveta;
+  $('gaveta').replaceChildren(
+    el('div', { className: 'gaveta-topo' }, avatar(m.pessoa, 'g'), el('div', {}, el('h2', { textContent: m.pessoa }), el('p', {}, `${m.pc} `, selo(estado))), fechar2),
+    el('div', { className: 'guias', role: 'tablist' }, guia('resumo', 'Resumo'), guia('acesso', 'Sites e programas'), guia('historico', 'Histórico')), corpo);
+  $('gaveta').hidden = false; $('gaveta-veu').hidden = false;
+}
+function desenharApps() {
+  $('pendencias').replaceChildren(...SITES.filter((s) => s.proposta).map((prog) => {
+    const aprovar = el('button', { type: 'button', className: 'btn verde' }, ic('check', 18), 'Aprovar como Renata');
+    aprovar.onclick = () => {
+      prog.liberado = true; prog.proposta = null; S.config += 1;
+      auditar(`Renata aprovou a inclusão do programa ${prog.nome}, proposta por Paulo. Configuração ${S.config} publicada`);
+      avisar(`${prog.nome} aprovado por duas pessoas, para ${quemUsa(prog).toLowerCase()}.`, 'at', 'Ver como atendente');
+      desenhar();
+    };
+    const recusar = el('button', { type: 'button', className: 'btn claro', textContent: 'Recusar' });
+    recusar.onclick = () => { SITES.splice(SITES.indexOf(prog), 1); auditar(`Renata recusou a inclusão do programa ${prog.nome}, proposta por Paulo`); desenhar(); };
+    return el('div', { className: 'pendencia' }, el('i', {}, ic('clock', 24)),
+      el('div', {}, el('h3', { textContent: `${prog.nome} aguarda a segunda aprovação` }),
+        el('p', { textContent: `Proposto por ${prog.proposta.por} às ${prog.proposta.hora}, para ${quemUsa(prog).toLowerCase()}. Motivo: ${prog.proposta.motivo}. Quem propôs não pode aprovar.` })),
+      aprovar, recusar);
+  }));
+  $('f-tipo').replaceChildren(...['Todos', 'Sites', 'Programas'].map((t) => {
+    const b = el('button', { type: 'button', textContent: t });
+    b.setAttribute('aria-pressed', String(S.fTipo === t)); b.onclick = () => { S.fTipo = t; desenharApps(); };
+    return b;
+  }));
+  const termo = $('f-app').value.trim().toLowerCase();
+  const linhas = SITES.filter((s) => (S.fTipo === 'Todos' || (S.fTipo === 'Programas') === s.programa) && (!termo || s.nome.toLowerCase().includes(termo) || s.dominio.toLowerCase().includes(termo)));
+  const cab = el('thead', {}, el('tr', {}, ...['Nome', 'Tipo', 'Quem usa', 'Situação', 'Liberado'].map((t) => el('th', { textContent: t, scope: 'col' }))));
+  const corpo = el('tbody', {}, ...linhas.map((s) => {
+    const pessoas = s.maquinas ? s.maquinas.map((pc) => maquina(pc).pessoa) : MAQUINAS.map((m) => m.pessoa);
+    const quem = el('button', { type: 'button', className: 'elo-quem' }, el('span', { className: 'pilha' }, ...pessoas.slice(0, 4).map((p) => avatar(p, 'm'))), quemUsa(s));
+    quem.setAttribute('aria-label', `Alterar quem usa ${s.nome}: ${quemUsa(s)}`);
+    quem.onclick = () => editarAcesso(s);
+    const chave = el('button', { type: 'button', className: 'interruptor', disabled: Boolean(s.proposta) });
+    chave.setAttribute('role', 'switch'); chave.setAttribute('aria-checked', String(s.liberado)); chave.setAttribute('aria-label', `${s.liberado ? 'Bloquear' : 'Liberar'} ${s.nome}`);
+    chave.onclick = () => {
+      s.liberado = !s.liberado; S.config += 1; fecharSeSemAcesso(s);
+      auditar(`Paulo ${s.liberado ? 'liberou' : 'bloqueou'} ${s.nome}. Configuração ${S.config} publicada`);
+      avisar(`${s.nome} foi ${s.liberado ? 'liberado' : 'bloqueado'}.`, 'at', 'Ver como atendente');
+      desenhar();
+    };
+    return el('tr', {},
+      el('td', {}, el('div', { className: 'celula' }, avatar(s.nome, 'q'), el('div', { style: 'min-width:0' }, el('b', { textContent: s.nome }), el('small', { textContent: s.dominio })))),
+      el('td', { textContent: s.programa ? 'Programa' : 'Site' }), el('td', {}, quem),
+      el('td', {}, s.proposta ? selo('pendente', 'Aguardando aprovação') : s.liberado ? selo('online', 'Liberado') : selo('bloqueado', 'Bloqueado')),
+      el('td', {}, chave));
+  }));
+  $('tb-apps').replaceChildren(cab, linhas.length ? corpo : el('tbody', {}, el('tr', {}, el('td', { colSpan: 5, className: 'vazio', textContent: 'Nada encontrado. Use "Adicionar site" para cadastrar um novo.' }))));
+}
+function desenharRegistros() {
+  const n = S.alertas.length;
+  $('alertas-frase').textContent = n ? `${n} ${n === 1 ? 'alerta aberto' : 'alertas abertos'}. Resolva cada um depois de verificar.` : 'Nenhum alerta aberto no momento.';
+  $('ls-alertas').replaceChildren(...(n ? S.alertas.map((a) => {
+    const ok = el('button', { type: 'button', className: 'btn claro p', textContent: 'Resolver' });
+    ok.onclick = () => { S.alertas = S.alertas.filter((x) => x.id !== a.id); auditar(`Paulo resolveu o alerta do ${a.pc}: ${a.texto}`); desenhar(); };
+    const ver = el('button', { type: 'button', className: 'btn claro p', textContent: 'Ver atendente' });
+    ver.onclick = () => { irSecao('visao'); abrirGaveta(a.pc); };
+    const i = el('i', {}, ic('alert', 20)); i.style.cssText = 'background:var(--ambar-100);color:var(--ambar-700)';
+    return el('li', {}, i, el('div', {}, el('strong', { textContent: `${maquina(a.pc).pessoa} (${a.pc})` }), el('div', { textContent: a.texto, style: 'color:var(--texto)' }), el('time', { textContent: `Hoje, ${a.hora}` })), ver, ok);
+  }) : [el('li', { className: 'vazio', textContent: 'Tudo em ordem. Quando algo precisar de atenção, aparece aqui.' })]));
+  $('ls-notif').replaceChildren(...(S.notificacoes.length ? S.notificacoes.slice(0, 40).map((n2) => {
+    const i = el('i', {}, ic(n2.urgente ? 'alert' : 'bell', 20));
+    i.style.cssText = n2.urgente ? 'background:var(--rubi-100);color:var(--rubi-700)' : 'background:var(--azul-50);color:var(--azul-700)';
+    return el('li', {}, i, el('div', { style: n2.lida ? '' : 'font-weight:600' }, n2.texto, el('time', { textContent: `Hoje, ${n2.hora}`, style: 'font-weight:400' })),
+      n2.urgente ? selo('bloqueado', 'Urgente') : null, n2.lida ? null : selo('suporte', 'Nova'));
+  }) : [el('li', { className: 'vazio', textContent: 'Nenhuma notificação ainda. Elas aparecem aqui conforme as atendentes usam os computadores.' })]));
+  $('ls-auditoria').replaceChildren(...S.auditoria.slice(0, 20).map((a) => {
+    const i = el('i', {}, ic('history', 20)); i.style.cssText = 'background:var(--azul-50);color:var(--azul-700)';
+    return el('li', {}, i, el('div', {}, a.texto, el('time', { textContent: `Hoje, ${a.hora}` })));
+  }));
+}
+function desenharAdmin() { desenharVisao(); desenharGaveta(); desenharApps(); desenharRegistros(); }
+$('f-app').oninput = desenharApps;
+
+// ------------------------------------------------- formulários e "para quem"
+function montarQuem(id, escolhidas) {
+  const radio = (valor, marcado, texto) => el('label', {}, el('input', { type: 'radio', name: id, value: valor, checked: marcado }), texto);
+  const pessoas = el('div', { className: 'pessoas' }, ...MAQUINAS.map((m) => {
+    const caixa = el('input', { type: 'checkbox', value: m.pc, checked: Boolean(escolhidas?.includes(m.pc)) });
+    caixa.onchange = () => { $(id).querySelector('input[value="algumas"]').checked = true; };
+    return el('label', {}, caixa, avatar(m.pessoa, 'm'), primeiro(m.pessoa));
+  }));
+  $(id).replaceChildren(el('strong', { textContent: 'Para quem' }),
+    el('div', { className: 'opcoes', role: 'radiogroup' }, radio('todas', !escolhidas, 'Todas as atendentes'), radio('algumas', Boolean(escolhidas), 'Só as escolhidas')), pessoas);
+}
+function lerQuem(id) {
+  if ($(id).querySelector('input[value="todas"]').checked) return null;
+  return [...$(id).querySelectorAll('input[type="checkbox"]:checked')].map((c) => c.value);
+}
+const compacta = (lista) => (lista && lista.length === MAQUINAS.length ? null : lista);
+function abrirFormulario(id, campos, erro, quem, escolhidas) {
+  for (const c of campos) $(c).value = '';
+  $(erro).hidden = true; montarQuem(quem, escolhidas);
+  $(id).showModal(); $(campos[0]).focus();
+}
+const falhar = (erro, texto) => { $(erro).textContent = texto; $(erro).hidden = false; };
+const dominioDe = (v) => { try { return new URL(v.includes('://') ? v : `https://${v}`).host; } catch { return ''; } };
+const novoSite = (escolhidas = null) => abrirFormulario('dlg-site', ['site-nome', 'site-end'], 'site-erro', 'site-quem', escolhidas);
+const novoPrograma = (escolhidas = null) => abrirFormulario('dlg-prog', ['prog-nome', 'prog-caminho', 'prog-motivo'], 'prog-erro', 'prog-quem', escolhidas);
+$('novo-site').onclick = () => novoSite();
+$('novo-prog').onclick = () => novoPrograma();
+let editando = null;
+function editarAcesso(s) { editando = s; $('acesso-titulo').textContent = `Quem usa ${s.nome}`; montarQuem('acesso-quem', s.maquinas); $('dlg-acesso').showModal(); }
+$('acesso-salvar').onclick = () => {
+  editando.maquinas = compacta(lerQuem('acesso-quem')); S.config += 1; fecharSeSemAcesso(editando);
+  auditar(`Paulo alterou quem usa ${editando.nome}: ${quemUsa(editando).toLowerCase()}. Configuração ${S.config} publicada`);
+  $('dlg-acesso').close();
+  avisar(`Acesso a ${editando.nome} atualizado: ${quemUsa(editando).toLowerCase()}.`, 'at', 'Ver como atendente');
+  desenhar();
+};
+$('site-salvar').onclick = () => {
+  const nome = $('site-nome').value.trim(), dominio = dominioDe($('site-end').value.trim()), lista = lerQuem('site-quem');
+  if (!nome) return falhar('site-erro', 'Informe o nome que a atendente vai ver.');
+  if (!dominio || !dominio.includes('.')) return falhar('site-erro', 'Informe um endereço válido, como portal.banco.com.br.');
+  if (SITES.some((s) => s.nome.toLowerCase() === nome.toLowerCase())) return falhar('site-erro', 'Já existe um item com esse nome.');
+  if (SITES.some((s) => s.dominio === dominio)) return falhar('site-erro', 'Esse endereço já está cadastrado.');
+  if (lista && lista.length === 0) return falhar('site-erro', 'Escolha pelo menos uma atendente.');
+  const novo = { nome, dominio, grupo: $('site-grupo').value, programa: false, liberado: true, proposta: null, maquinas: compacta(lista) };
+  SITES.push(novo); S.config += 1;
+  auditar(`Paulo adicionou o site ${nome} (${dominio}) para ${quemUsa(novo).toLowerCase()}. Configuração ${S.config} publicada`);
+  $('dlg-site').close();
+  avisar(temAcesso(novo, MEU) ? `${nome} foi adicionado e já aparece para a Marina.` : `${nome} foi adicionado para ${quemUsa(novo).toLowerCase()}. A Marina não está na lista, então não aparece para ela.`, 'at', 'Ver como atendente');
+  desenhar();
+};
+$('prog-salvar').onclick = () => {
+  const nome = $('prog-nome').value.trim(), caminho = $('prog-caminho').value.trim(), motivo = $('prog-motivo').value.trim(), lista = lerQuem('prog-quem');
+  if (!nome) return falhar('prog-erro', 'Informe o nome do programa.');
+  if (!/\.exe$/i.test(caminho)) return falhar('prog-erro', 'Informe o caminho completo do executável, terminando em .exe.');
+  if (/(^|\\)(cmd|powershell|pwsh|wscript|cscript|mshta|regedit|rundll32)\.exe$/i.test(caminho)) return falhar('prog-erro', 'Este programa está na lista fixa de bloqueio e não pode ser liberado.');
+  if (!motivo) return falhar('prog-erro', 'A justificativa é obrigatória.');
+  if (SITES.some((s) => s.nome.toLowerCase() === nome.toLowerCase())) return falhar('prog-erro', 'Já existe um item com esse nome.');
+  if (lista && lista.length === 0) return falhar('prog-erro', 'Escolha pelo menos uma atendente.');
+  const novo = { nome, dominio: caminho, grupo: GRUPOS[2], programa: true, liberado: false, proposta: { por: 'Paulo', hora: hhmm(), motivo }, maquinas: compacta(lista) };
+  SITES.push(novo);
+  auditar(`Paulo propôs a inclusão do programa ${nome} para ${quemUsa(novo).toLowerCase()}. Motivo: ${motivo}`);
+  $('dlg-prog').close();
+  avisar(`Proposta enviada. ${nome} só fica disponível depois que outro administrador aprovar.`);
+  irSecao('apps'); desenhar();
+};
+$('sup-enviar').onclick = () => {
+  S.suporte = { fase: 'pedido', motivo: $('sup-motivo').value || 'Sem motivo informado', prazo: $('sup-prazo').value };
+  auditar(`Paulo pediu suporte remoto ao PC-04. Motivo: ${S.suporte.motivo}. Prazo: ${S.suporte.prazo}`);
+  $('dlg-suporte').close();
+  avisar('Pedido enviado. A Marina precisa permitir na tela dela.', 'at', 'Ver como atendente');
+  desenhar();
+};
+$('man-enviar').onclick = () => {
+  const horas = { '30 minutos': 0.5, '1 hora': 1, '2 horas': 2 }[$('man-prazo').value];
+  S.manut = { ativo: true, motivo: $('man-motivo').value || 'Sem motivo informado', ate: hhmm(new Date(Date.now() + horas * 3600000)) };
+  S.suporte.fase = 'nenhum';
+  auditar(`Paulo colocou o PC-04 em manutenção até ${S.manut.ate}. Motivo: ${S.manut.motivo}`);
+  $('dlg-manut').close();
+  avisar('Computador da Marina em manutenção. Ela vê a tela de manutenção.', 'at', 'Ver como atendente');
+  desenhar();
+};
+
+// ================================================================== ciclo
+function desenhar() { desenharAtendente(); desenharAdmin(); }
+let quadro = 0;
+setInterval(() => { quadro += 1; if (S.modo === 'ad' && S.visao === 'sala') sala(quadro); }, 320);
+setInterval(() => {   // simulação das outras máquinas: sinal de vida e troca de aplicativo
+  for (const m of MAQUINAS) if (estadoDe(m) !== 'offline' && Math.random() < 0.6) m.sinal = Date.now();
+  if (Math.random() < 0.5) {
+    const livres = MAQUINAS.filter((m) => m.pc !== MEU && m.estado === 'online');
+    const m = livres[Math.floor(Math.random() * livres.length)];
+    const opcoes = SITES.filter((s) => s.liberado && !s.programa && temAcesso(s, m.pc));
+    if (opcoes.length) m.apps = [opcoes[Math.floor(Math.random() * opcoes.length)].nome, ...m.apps].slice(0, 2);
+  }
+  relogio();
+  if (document.querySelector('dialog[open]') || S.modo !== 'ad') return;
+  desenharVisao();
+  if (S.sel && S.aba === 'resumo' && S.suporte.fase !== 'ativo') desenharGaveta();
+}, 4000);
+
+relogio();
+sala(0);
+desenhar();
+mudarModo('at');
+</script>
+</body>
+</html>

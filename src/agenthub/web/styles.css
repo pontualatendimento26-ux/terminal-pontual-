@@ -1,0 +1,559 @@
+/* Central dos Agentes.
+   A cena do escritório é o destaque; a interface em volta fica discreta,
+   em tinta azul-petróleo, como a moldura de uma janela para o escritório. */
+
+:root {
+  --ink: #14222a;
+  --panel: #1b2e37;
+  --panel-raised: #233b46;
+  --line: #36545f;
+  --paper: #f3e7c9;
+  --muted: #a3b6ba;
+  --honey: #f6c84a;
+  --wood: #3e2614;
+  --wood-light: #8a5c34;
+
+  --working: #8fd887;
+  --waiting: #94c4ec;
+  --done: #f6d78a;
+  --error: #ff9a88;
+  --disconnected: #98a5a9;
+  --unknown: #cdbfe6;
+
+  --display: 'VT323', 'Courier New', monospace;
+  --body: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  font-weight: 400;
+  margin: 0;
+  line-height: 1.05;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  font-family: var(--display);
+  font-size: 19px;
+  color: var(--paper);
+  background: var(--panel-raised);
+  border: 2px solid var(--line);
+  padding: 3px 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--honey);
+}
+
+button:focus-visible {
+  outline: 3px solid var(--honey);
+  outline-offset: 2px;
+}
+
+button.ghost {
+  background: transparent;
+}
+
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+/* ------------------------------------------------------------------ topo */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 10px 18px;
+  border-bottom: 2px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.brand h1 {
+  font-size: 36px;
+  line-height: 0.95;
+  color: var(--honey);
+}
+
+.brand p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.summary {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-family: var(--display);
+  font-size: 21px;
+}
+
+.count strong {
+  font-size: 26px;
+  font-weight: 400;
+}
+
+.count-working { color: var(--working); }
+.count-waiting { color: var(--waiting); }
+.count-done { color: var(--done); }
+.count-error { color: var(--error); }
+.count-disconnected { color: var(--disconnected); }
+.count-unknown { color: var(--unknown); }
+
+.top-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.link {
+  font-size: 13px;
+  padding-left: 16px;
+  position: relative;
+}
+
+.link::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+}
+
+.link-on { color: var(--working); }
+.link-on::before { background: var(--working); }
+.link-off { color: var(--error); }
+.link-off::before { border: 2px solid var(--error); }
+
+/* ----------------------------------------------------------------- palco */
+
+.stage {
+  position: relative;
+  min-height: 0;
+  margin: 12px 18px;
+  /* Moldura de metal, combinando com o escritório. */
+  border: 4px solid #5f666c;
+  box-shadow: inset 0 0 0 2px #8e959b;
+  overflow: hidden;
+}
+
+.canvas {
+  position: absolute;
+  inset: 2px;
+}
+
+.canvas canvas {
+  display: block;
+}
+
+.stage-offline .canvas {
+  opacity: 0.35;
+  filter: grayscale(0.7);
+}
+
+.empty {
+  position: absolute;
+  left: 50%;
+  bottom: 44px;
+  transform: translateX(-50%);
+  width: min(460px, calc(100% - 40px));
+  background: rgba(20, 34, 42, 0.92);
+  border: 2px solid var(--line);
+  padding: 14px 18px;
+  text-align: center;
+}
+
+.empty h2 {
+  font-size: 26px;
+  color: var(--honey);
+  margin-bottom: 4px;
+}
+
+.hint {
+  position: absolute;
+  left: 12px;
+  bottom: 8px;
+  font-size: 12px;
+  color: var(--paper);
+  background: rgba(20, 34, 42, 0.78);
+  padding: 2px 8px;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------- painel lateral */
+
+.panel {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  bottom: 2px;
+  width: min(380px, calc(100% - 4px));
+  background: var(--panel);
+  border-left: 2px solid var(--line);
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.panel-head h2 {
+  font-size: 28px;
+  color: var(--honey);
+  overflow-wrap: anywhere;
+}
+
+.panel-kind {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.panel h3,
+.hooks-dialog h3 {
+  font-size: 21px;
+  margin-bottom: 6px;
+  color: var(--paper);
+}
+
+.story {
+  background: var(--panel-raised);
+  border-left: 4px solid var(--honey);
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.story p {
+  overflow-wrap: anywhere;
+}
+
+.fields {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.field dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.field dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.note {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Texto original do erro, como veio do Claude Code (já mascarado). */
+.error-message {
+  display: block;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-left: 3px solid #e0624f;
+  background: rgba(224, 98, 79, 0.12);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.absent {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.tools,
+.files,
+.history,
+.limits {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tools li {
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  padding: 1px 8px;
+  font-size: 13px;
+}
+
+.tools span {
+  color: var(--muted);
+}
+
+.files li {
+  font-size: 13px;
+  padding: 2px 0;
+  border-bottom: 1px dashed var(--line);
+  overflow-wrap: anywhere;
+}
+
+.history li {
+  display: grid;
+  grid-template-columns: 68px 1fr;
+  gap: 8px;
+  font-size: 13px;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.history time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.history span {
+  overflow-wrap: anywhere;
+}
+
+.history-error span {
+  color: var(--error);
+}
+
+/* ----------------------------------------------------------------- chips */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--display);
+  font-size: 18px;
+  line-height: 1.15;
+  padding: 0 8px;
+  border: 2px solid currentColor;
+  white-space: nowrap;
+}
+
+.chip-glyph {
+  font-weight: 700;
+}
+
+.chip-working { color: var(--working); }
+.chip-waiting { color: var(--waiting); }
+.chip-done { color: var(--done); }
+.chip-error { color: var(--error); }
+.chip-disconnected { color: var(--disconnected); border-style: dashed; }
+.chip-unknown { color: var(--unknown); border-style: dotted; }
+
+/* ------------------------------------------------------- todos os agentes */
+
+.dock {
+  border-top: 2px solid var(--line);
+  padding: 10px 18px 14px;
+  max-height: 34vh;
+  overflow-y: auto;
+}
+
+.dock-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.dock-head h2 {
+  font-size: 24px;
+}
+
+.roster {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+}
+
+.card {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  /* Coluna que pode encolher: nome longo vira "…" em vez de empurrar a etiqueta. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 8px 10px;
+  font-family: var(--body);
+  background: var(--panel);
+}
+
+.card-selected {
+  border-color: var(--honey);
+  background: var(--panel-raised);
+}
+
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-top .chip {
+  flex-shrink: 0;
+}
+
+.card-name {
+  min-width: 0;
+  font-family: var(--display);
+  font-size: 22px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.star {
+  color: var(--honey);
+  margin-right: 4px;
+}
+
+.card-kind,
+.card-time {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.card-activity {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- diálogo */
+
+.hooks-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  background: var(--panel);
+  color: var(--paper);
+  border: 4px solid var(--wood);
+  box-shadow: inset 0 0 0 2px var(--wood-light);
+  padding: 20px;
+}
+
+.hooks-dialog::backdrop {
+  background: rgba(10, 18, 22, 0.7);
+}
+
+.hooks-dialog p,
+.hooks-dialog h3 {
+  margin-top: 12px;
+}
+
+.table-wrap {
+  margin-top: 12px;
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th,
+td {
+  text-align: left;
+  vertical-align: top;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+th {
+  font-family: var(--display);
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+td:nth-child(3) {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.limits li {
+  padding-left: 14px;
+  position: relative;
+  margin-top: 4px;
+  max-width: 68ch;
+}
+
+.limits li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.6em;
+  width: 6px;
+  height: 6px;
+  background: var(--honey);
+}
+
+@media (max-width: 720px) {
+  .stage {
+    margin: 8px;
+  }
+  .hint {
+    display: none;
+  }
+  .panel {
+    width: calc(100% - 4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
