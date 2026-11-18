@@ -39,6 +39,79 @@ public static class DbInitializer
         new("Site da Pontual", "https://www.pontualconsig.com.br/index.html", Tools),
     ];
 
+    /// <summary>
+    /// O banco é criado por <c>EnsureCreated</c>, que não mexe num banco que já existe. As tabelas que
+    /// entraram depois da primeira instalação (as da assistente) são criadas aqui, com o mesmo comando
+    /// que o EF geraria, só que com "IF NOT EXISTS". Nada é alterado nas tabelas antigas.
+    /// </summary>
+    private static async Task CreateMissingTablesAsync(PontualDb db)
+    {
+        string[] added = ["TextSettings", "AssistantScripts", "AssistantProfiles", "AssistantMessages"];
+
+        foreach (var statement in db.Database.GenerateCreateScript().Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            string? sql = null;
+            if (added.Any(table => statement.StartsWith($"CREATE TABLE \"{table}\"", StringComparison.Ordinal)))
+            {
+                sql = "CREATE TABLE IF NOT EXISTS" + statement["CREATE TABLE".Length..];
+            }
+            else if (statement.StartsWith("CREATE INDEX ", StringComparison.Ordinal)
+                && added.Any(table => statement.Contains($" ON \"{table}\"", StringComparison.Ordinal)))
+            {
+                sql = "CREATE INDEX IF NOT EXISTS" + statement["CREATE INDEX".Length..];
+            }
+
+            if (sql is not null)
+            {
+                // Texto gerado pelo próprio EF a partir do modelo; não contém dado de fora.
+#pragma warning disable EF1002
+                await db.Database.ExecuteSqlRawAsync(sql.Replace("{", "{{").Replace("}", "}}"));
+#pragma warning restore EF1002
+            }
+        }
+    }
+
+    /// <summary>
+    /// Carrega uma única vez os roteiros da pasta <c>roteiros-iniciais</c> (ao lado do executável): cada arquivo
+    /// .txt vira um roteiro da assistente, com o nome do arquivo como título. Depois disso quem manda é a Central.
+    /// </summary>
+    private static async Task SeedScriptsAsync(PontualDb db, IServiceProvider services)
+    {
+        if (await db.TextSettings.AnyAsync(s => s.Key == TextSetting.AssistantScriptsSeeded))
+        {
+            return;
+        }
+
+        var folder = Path.Combine(AppContext.BaseDirectory, "roteiros-iniciais");
+        var files = Directory.Exists(folder) ? Directory.GetFiles(folder, "*.txt").Order(StringComparer.Ordinal).ToArray() : [];
+        var now = services.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime;
+        var added = 0;
+        foreach (var file in files)
+        {
+            var title = Input.Truncated(Path.GetFileNameWithoutExtension(file), 80);
+            var content = AssistantEndpoints.Multiline(await File.ReadAllTextAsync(file));
+            if (title.Length == 0 || content.Length == 0)
+            {
+                continue;
+            }
+
+            db.AssistantScripts.Add(new AssistantScript { Id = Guid.NewGuid(), Title = title, Content = content, UpdatedAt = now, UpdatedByName = "Sistema" });
+            added++;
+        }
+
+        db.TextSettings.Add(new TextSetting { Key = TextSetting.AssistantScriptsSeeded, Value = "1" });
+        if (added == 0)
+        {
+            await db.SaveChangesAsync();
+            return;
+        }
+
+        await services.GetRequiredService<AuditWriter>().SaveAsync(
+            db,
+            new AuditInfo(ActorType.System, null, "Sistema", "assistant.script.seed",
+                $"Sistema cadastrou os {added} roteiros iniciais da assistente"));
+    }
+
     public static async Task InitializeAsync(IServiceProvider services)
     {
         await using var scope = services.CreateAsyncScope();
@@ -52,6 +125,8 @@ public static class DbInitializer
 
         await db.Database.EnsureCreatedAsync();
         await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
+        await CreateMissingTablesAsync(db);
+        await SeedScriptsAsync(db, scope.ServiceProvider);
 
         if (!await db.Settings.AnyAsync(s => s.Key == Setting.ConfigVersion))
         {

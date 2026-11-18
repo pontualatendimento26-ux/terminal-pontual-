@@ -105,4 +105,5 @@ public sealed record ConfigItemDto(Guid Id, string Name, string Kind, string Tar
 
 public sealed record ConfigDto(long Version, string? AttendantName, bool ObservationMode, IReadOnlyList<ConfigItemDto> Items);
 
-public sealed record HeartbeatDto(string State, long ConfigVersion, string? AttendantName, MaintenanceDto? Maintenance, bool ObservationMode);
+/// <param name="Assistant">A assistente de IA está ligada para esta máquina (o terminal mostra o botão flutuante).</param>
+public sealed record HeartbeatDto(string State, long ConfigVersion, string? AttendantName, MaintenanceDto? Maintenance, bool ObservationMode, bool Assistant);

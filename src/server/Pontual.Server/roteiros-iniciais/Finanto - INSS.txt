@@ -1,0 +1,32 @@
+Roteiro do Finanto no INSS
+
+Restrições gerais:
+- UFs bloqueadas pra maiores de 60 anos: PB, AP, TO e RR
+- Não aceita representante legal
+- Não opera com espécie 32
+- Não opera LOAS (espécies 87/88)
+- Não consulta SRCC/Não Perturbe
+- Cartão RMC/RCC: não ativo
+
+Empréstimo novo:
+- Ativo: sim
+- Idade: 22 a 69 anos
+- Parcela mínima: R$ 20,00
+
+Portabilidade com refin (refin da portabilidade):
+- Ativo: sim
+- Saldo mínimo: R$ 6.000,00 na tabela padrão. Pra saldos entre R$ 4.000 e R$ 5.999,99 tem tabela especial com taxa de 1,80% a.m. e mínimo de 12 pagas
+- Troco mínimo: R$ 100,00 ou 5% do endividamento (prevalece o maior)
+- Idade: 22 a 69 anos
+- Aceita benefício desbloqueado
+- Pagas mínimas por banco de origem:
+  - Daycoval (707), Pan (623), Paraná, Santander, Parati, Mercantil, Agibank, Banrisul (041): mínimo 12 pagas
+  - Demais bancos: a partir de 1 paga
+- Bancos de origem não aceitos: 012, 329, 422, 752, 643, 380, 079, 025, 935, 626
+
+Portabilidade pura:
+- Ativo: sim
+- Taxa mínima: 1,70% a.m.
+
+Refin de carteira:
+- Não ativo

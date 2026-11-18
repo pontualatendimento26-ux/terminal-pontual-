@@ -179,6 +179,7 @@ public partial class MainWindow : Window
         _clock.Stop();
         _toastTimer.Stop();
         Toast.IsOpen = false;
+        CloseAssistant();
         if (_hwndSource is not null)
         {
             NativeMethods.UnregisterHotKey(_hwndSource.Handle, ExitHotkeyId);
@@ -249,25 +250,23 @@ public partial class MainWindow : Window
             Activate();
             var answer = MessageBox.Show(this,
                 "Liberar esta conta e sair do Terminal?\n\n" +
-                "O bloqueio será REMOVIDO desta conta. O computador volta para a tela de entrada do Windows e, " +
-                "ao entrar de novo nesta conta, ela abre a área de trabalho normal (sem o Terminal).\n\n" +
-                "Use isto quando precisar administrar o computador.",
+                "O bloqueio será REMOVIDO desta conta. Vai aparecer uma janela do Windows pedindo permissão de " +
+                "administrador — clique Sim (ou informe uma conta de administrador). Em seguida o computador volta para " +
+                "a tela de entrada e, ao entrar de novo nesta conta, ela abre a área de trabalho normal (sem o Terminal).",
                 "Terminal Pontual", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
             if (answer != MessageBoxResult.Yes)
             {
                 return;
             }
 
-            if (!Unblock.RemoveForCurrentUser())
+            // As travas do bloqueio ficam em chaves de política, que só um administrador apaga. Por isso o Terminal
+            // se relança com poderes de administrador (--desbloquear): esse processo remove o bloqueio e sai da conta.
+            if (!Unblock.StartElevatedRemoval())
             {
                 MessageBox.Show(this,
-                    "Parte do bloqueio não pôde ser removida automaticamente. Vou sair mesmo assim; " +
-                    "se ao entrar a conta ainda abrir o Terminal, chame o TI.",
+                    "A liberação foi cancelada (a permissão de administrador não foi concedida). A conta continua no Terminal.",
                     "Terminal Pontual", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
-
-            // Sai da conta: a sessão termina (o vigia também), e o próximo login já cai na área de trabalho normal.
-            PowerWindow.SignOut();
         }
         finally
         {
@@ -692,6 +691,7 @@ public partial class MainWindow : Window
             _state = heartbeat.State;
             _maintenance = heartbeat.Maintenance;
             _observationMode = heartbeat.ObservationMode;
+            _assistantEnabled = heartbeat.Assistant;
             if (!string.IsNullOrWhiteSpace(heartbeat.AttendantName))
             {
                 _attendantName = heartbeat.AttendantName;
@@ -1455,6 +1455,7 @@ public partial class MainWindow : Window
     private void UpdateLayoutState()
     {
         var overlay = CurrentOverlay();
+        UpdateAssistant();
 
         // Cada aba aparece só se for a página atual do monitor em que está, e nunca junto com um aviso.
         foreach (var tab in _tabs)

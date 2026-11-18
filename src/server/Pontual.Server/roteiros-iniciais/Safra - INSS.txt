@@ -1,0 +1,28 @@
+Roteiro do Safra no INSS
+
+Regras gerais:
+- UFs bloqueadas: nenhuma
+- Não aceita representante legal
+- Não opera espécies de invalidez (espécies 4, 5, 6, 32, 33, 34, 51, 83, 92)
+- Não opera LOAS (espécies 87/88)
+- Não consulta SRCC/Não Perturbe
+- Cartão RMC/RCC: não ativo
+
+Empréstimo novo:
+- Ativo: sim
+- Idade: 26 a 68 anos
+- Ticket mínimo: R$ 400,00
+
+Refin de portabilidade:
+- Ativo: sim
+- Taxa mínima: 1,44% a.m.
+- Saldo mínimo: R$ 5.200,00
+- Troco mínimo: R$ 200,00
+- Pagas por origem: Banrisul (041) exige 12 pagas; Pan (623) exige 15 pagas; C6 (626) exige 18 pagas; Facta (925) exige 24 pagas; rede 0 pagas; demais bancos a partir de 12 pagas
+- Bancos de origem restritos: 707, 012 e 422
+
+Refin de carteira:
+- Ativo: sim
+- Aceita margem negativa: sim
+
+Portabilidade pura: não opera

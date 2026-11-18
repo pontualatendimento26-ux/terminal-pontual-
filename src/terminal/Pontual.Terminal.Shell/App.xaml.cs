@@ -22,6 +22,17 @@ public partial class App : Application
 
         bool Has(string option) => e.Args.Any(a => string.Equals(a, option, StringComparison.OrdinalIgnoreCase));
 
+        // Remoção elevada do bloqueio: o Terminal se relança com "--desbloquear <sid>" (pela janela de permissão do
+        // Windows). Aqui, já como administrador, apaga as travas da conta daquele SID e sai para a tela de entrada.
+        var desbloquear = e.Args.SkipWhile(a => !string.Equals(a, "--desbloquear", StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(desbloquear))
+        {
+            Unblock.RemoveForUser(desbloquear);
+            PowerWindow.SignOut();
+            Shutdown();
+            return;
+        }
+
         // Modo bloqueado (versão 2.0): o Windows abre este programa no lugar da área de trabalho.
         // O primeiro processo só vigia: se o Terminal fechar ou travar, ele abre de novo, para a tela nunca ficar vazia.
         _locked = Has("--bloqueado");

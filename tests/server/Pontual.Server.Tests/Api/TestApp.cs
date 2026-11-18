@@ -4,7 +4,9 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Pontual.Server.Tests.Api;
 
@@ -20,7 +22,14 @@ public sealed class TestApp : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Testing");
         builder.UseSetting("Database:Path", _databasePath);
+        if (AssistantModel is { } model)
+        {
+            builder.ConfigureTestServices(services => services.AddSingleton(model));
+        }
     }
+
+    /// <summary>IA de mentira para os testes da assistente; definir antes de criar o primeiro cliente.</summary>
+    public Pontual.Server.Assistant.IAssistantModel? AssistantModel { get; init; }
 
     protected override void Dispose(bool disposing)
     {

@@ -18,7 +18,8 @@ public sealed record TerminalConfig(int Version, string? AttendantName, bool Obs
 public sealed record MaintenanceInfo(string? Reason, string? Until);
 
 /// <summary>Resposta de <c>POST /device/heartbeat</c>.</summary>
-public sealed record HeartbeatResponse(string State, int ConfigVersion, string? AttendantName, MaintenanceInfo? Maintenance, bool ObservationMode)
+/// <param name="Assistant">A assistente de IA está ligada para esta máquina (servidor antigo não manda: fica falso).</param>
+public sealed record HeartbeatResponse(string State, int ConfigVersion, string? AttendantName, MaintenanceInfo? Maintenance, bool ObservationMode, bool Assistant = false)
 {
     public const string StatePending = "pending";
     public const string StateActive = "active";

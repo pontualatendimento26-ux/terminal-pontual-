@@ -1,0 +1,30 @@
+Roteiro do Qualibanking no INSS
+
+O Qualibanking tem dois roteiros no INSS (Regra 1 e Regra 2). Como são duas regras distintas, é preciso confirmar qual delas se aplica à operação antes de fechar.
+
+REGRAS COMUNS AOS DOIS
+- Não aceita representante legal
+- Não opera LOAS
+- Refin de carteira: não opera
+- Troco mínimo: R$ 100,00 ou 5% do endividamento (o que for maior)
+- Saldo mínimo de portabilidade: R$ 2.000,00
+- Benefício precisa estar desbloqueado
+- Bancos de origem restritos: 012 (Inbursa), 626 (C6 Consignado), 643 (Pine), 329 (QI), 394 (Bradesco Fin), 025 (Alfa), 359 (Zema), 047 (Banesse), 063 (Bradecard), 082 e 654 (Digimais), 212 (Original), 243 (Master), 246 (ABC Brasil), 320 (Sul Financeira), 330 (Bari), 349 (AL5), 429 (Crediare), 254 (Paraná Banco), 276 (Senff), 604 (Industrial), 925 (BRB Financeira) e 070 (BRB)
+
+REGRA 1
+- Novo: 22 a 69 anos, PMT mínima R$ 20,00
+- UFs bloqueadas pra maiores de 60 anos: PB, AP, TO e RR
+- Consulta SRCC/NMP: não
+- Cartão RMC/RCC: ativo
+- Refin de portabilidade: saldo de R$ 2.000 a R$ 5.999,99 exige 15 pagas; a partir de R$ 6.000, 1 paga
+- Pagas por origem: Santander (033), Daycoval (707), Pan (623), 326, 290, Banrisul (041), 389, 121 e 925 exigem mais de 12 pagas; demais a partir de 1
+- Portabilidade pura: taxa mínima 1,75% a.m., saldo mínimo R$ 8.000,00
+
+REGRA 2
+- Novo: 18 a 69 anos; invalidez (espécies 4, 5, 6, 32, 33, 34, 51, 83, 92) de 18 a 67 anos
+- UFs bloqueadas: nenhuma
+- Consulta NMP: sim; SRCC: não
+- Refin de portabilidade: parcela mínima R$ 50,00
+- Pagas por origem: Daycoval (707), Pan (623) e 925 exigem mais de 12 pagas
+- Portabilidade pura: não opera
+- Invalidez a partir dos 55 anos: regra de tempo de benefício até 57 anos, 11 meses e 29 dias (mais restritiva que a maioria dos bancos, que usa até 59 anos)

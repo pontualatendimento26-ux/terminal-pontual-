@@ -1,0 +1,28 @@
+Roteiro do Digio no INSS
+
+Regras gerais:
+- UFs bloqueadas: nenhuma
+- Não aceita representante legal
+- Não opera LOAS (espécies 87/88)
+- Não consulta SRCC/Não Perturbe
+- Cartão RMC/RCC: não ativo
+
+Empréstimo novo:
+- Ativo: sim
+- Idade: 18 a 71 anos
+- Ticket mínimo: R$ 1.200,00
+
+Refin de portabilidade:
+- Ativo: sim
+- Taxa mínima: 1,39% a.m.
+- Saldo mínimo: R$ 4.500,00
+- Troco mínimo: R$ 250,00
+- Pagas por origem: rede 0 pagas; demais bancos a partir de 12 pagas
+- Bancos de origem restritos: 237, 001, 394 e 041
+
+Refin de carteira:
+- Ativo: sim
+- Aceita margem negativa: sim
+
+Portabilidade pura:
+- Existe, mas foi removida do simulador (não gera comissão)

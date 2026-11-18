@@ -1,0 +1,29 @@
+Roteiro do BRB Red Consig (BRB Financeira) no INSS
+
+Regras gerais:
+- UFs bloqueadas: nenhuma
+- Não aceita representante legal
+- Não opera LOAS (espécies 87/88)
+- Consulta SRCC/Não Perturbe: sim
+- Cartão RMC/RCC: ativo
+
+Empréstimo novo:
+- Ativo: sim
+- Idade: 18 a 73 anos
+- PMT mínima: R$ 25,00
+
+Refin de portabilidade:
+- Ativo: sim
+- Saldo mínimo: R$ 3.000,00 (taxa acima de 1,85% a.m.) ou R$ 4.000,00 (taxa de 1,79% a.m.)
+- Troco mínimo: R$ 100,00
+- Idade: 18 a 73 anos
+- Pagas por origem: bancos de rede (origem agência) acima de 1 paga; bancos correspondentes acima de 12 pagas
+- Bancos de origem restritos: 626, 380, 079, 329, 643, 121, 925 (9251/9252) e 702
+
+Portabilidade pura: não opera
+
+Refin de carteira:
+- Ativo: sim
+- Aceita margem negativa: sim
+
+Info extra: tem política de idade diferenciada para clientes entre 60 e 78 anos, com prazo e valor ajustados por tabela interna. Regras válidas para os produtos Consig 360 e InConta.

@@ -1,0 +1,30 @@
+Roteiro do ICred no INSS
+
+Regras gerais:
+- UFs bloqueadas: nenhuma
+- Não aceita representante legal
+- Não opera LOAS (espécies 87/88)
+- Não consulta SRCC/Não Perturbe
+- Cartão RMC/RCC: não ativo
+
+Empréstimo novo:
+- Ativo: sim
+- Idade: 21 a 67 anos
+- Ticket mínimo: R$ 1.200,00
+
+Refin de portabilidade:
+- Ativo: sim
+- Idade: 21 a 70 anos
+- Troco mínimo: R$ 100,00
+- Valor mínimo solicitado (saldo devedor + troco): R$ 3.000,00
+- Aceita benefício desbloqueado
+- Pagas: Pan (623) exige mais de 12 pagas; demais bancos não informado
+- Bancos de origem restritos: 329, 012, 643 e 626
+
+Portabilidade pura: não opera
+
+Refin de carteira:
+- Ativo: sim
+- Aceita margem negativa: sim
+
+Atenção: a idade do crédito novo vai até 67 anos, mas a do refin de portabilidade vai até 70. Fique de olho na hora de checar elegibilidade.

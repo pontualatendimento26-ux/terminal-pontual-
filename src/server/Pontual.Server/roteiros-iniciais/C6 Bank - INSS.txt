@@ -1,0 +1,27 @@
+Roteiro do C6 Bank no INSS
+
+Regras gerais:
+- UFs bloqueadas: nenhuma
+- Não aceita representante legal
+- Não opera LOAS (espécies 87/88)
+- Não consulta SRCC/Não Perturbe
+- Cartão RMC/RCC: não ativo
+
+Empréstimo novo:
+- Ativo: sim
+- Idade: 18 a 69 anos
+- Ticket mínimo: R$ 1.000,00
+
+Refin de portabilidade:
+- Ativo: sim
+- Taxa mínima: 1,39% a.m.
+- Saldo mínimo: R$ 3.000,00
+- Troco mínimo: R$ 100,00
+- Pagas por origem: rede 0 pagas; demais bancos a partir de 12 pagas
+- Bancos de origem restritos: 626, 329, 012 e 643
+
+Refin de carteira:
+- Ativo: sim
+- Aceita margem negativa: sim
+
+Portabilidade pura: não opera

@@ -337,3 +337,27 @@ dialog { background: var(--branco); }
 .mesa .meia + .meia { left: 50%; }
 .mesa .meia:hover { border-color: rgba(255, 255, 255, 0.9); background: rgba(255, 255, 255, 0.12); }
 .mesa .meia small { padding: 0 5px; }
+
+/* ---------------------------------------------------------- assistente (IA) */
+.ia-conexao { padding: 0 24px 24px; display: grid; gap: 18px; }
+.ia-linha { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--suave); font-size: 14px; }
+.ia-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; padding-top: 18px; border-top: 1px solid var(--linha); }
+.ia-campo { display: grid; gap: 6px; font-size: 14px; font-weight: 500; color: var(--tinta); align-content: start; justify-items: start; }
+.ia-campo .campo { max-width: 420px; }
+.ia-por { display: block; font-size: 13px; color: var(--suave); }
+.ia-resumo { display: block; max-width: 38ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ia-nada { color: var(--apagado); }
+dialog.largo { width: min(820px, calc(100vw - 32px)); }
+textarea.campo.ia-texto-longo { min-height: min(52vh, 460px); font-size: 14px; }
+textarea.campo.ia-texto-medio { min-height: 220px; }
+.dica.erro { color: var(--rubi-700); font-weight: 500; }
+.ia-conversa { max-height: min(56vh, 520px); overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 10px; padding: 14px; border: 1px solid var(--linha); border-radius: var(--r-md); background: var(--cinza-100); }
+.ia-divisa { justify-self: center; font-size: 12.5px; color: var(--suave); margin-top: 6px; }
+.ia-fala { max-width: 86%; padding: 10px 14px; border-radius: 14px; background: var(--branco); border: 1px solid var(--linha); justify-self: start; }
+.ia-fala.eu { justify-self: end; background: var(--azul-100); border-color: transparent; }
+.ia-fala small { display: block; font-size: 12px; color: var(--suave); margin-bottom: 2px; }
+.ia-fala p { color: var(--tinta); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Com a seção "Assistente" o menu tem um item a mais: o cabeçalho aperta mais cedo para não transbordar. */
+@media (max-width: 1400px) { .ad .produto { display: none; } .ad .menu button { padding: 0 9px; } .ad .eu small { display: none; } }
+@media (max-width: 1160px) { .ad .menu button { padding: 0 6px; font-size: 14px; } }
+@media (max-width: 1100px) { .ad .menu { order: 3; width: 100%; margin: 0; overflow-x: auto; } .ad .topo > div { flex-wrap: wrap; padding: 10px 0; } }

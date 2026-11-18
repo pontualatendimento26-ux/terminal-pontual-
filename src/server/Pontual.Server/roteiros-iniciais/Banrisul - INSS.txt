@@ -1,0 +1,29 @@
+Roteiro do Banrisul no INSS
+
+Regras gerais:
+- UFs bloqueadas: nenhuma
+- Não aceita representante legal
+- Não opera LOAS (espécies 87/88)
+- Não consulta SRCC/Não Perturbe
+- Cartão RMC/RCC: não ativo
+
+Empréstimo novo:
+- Ativo: sim
+- Idade: 18 a 70 anos
+- Ticket mínimo: R$ 700,00
+
+Refin de portabilidade:
+- Ativo: sim
+- Taxa mínima: 1,40% a.m.
+- Saldo mínimo: R$ 5.000,00
+- Troco mínimo: R$ 100,00
+- Pagas por origem: Pan (623) exige 30 pagas; rede 1 paga; demais bancos a partir de 12 pagas
+- Bancos de origem restritos: 041 e 268
+
+Portabilidade pura:
+- Ativo: sim
+- Taxa mínima: 1,70% a.m.
+
+Refin de carteira:
+- Ativo: sim
+- Aceita margem negativa: sim

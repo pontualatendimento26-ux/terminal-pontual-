@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Assistente Pontual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="assistente.css">
+</head>
+<body class="as">
+
+<header class="as-topo">
+  <span class="as-marca" aria-hidden="true">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3Z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2Z"/></svg>
+  </span>
+  <div class="as-titulo"><h1>Assistente Pontual</h1><p id="as-sub">Roteiros operacionais dos bancos</p></div>
+  <button type="button" class="as-icone" id="as-nova" title="Começar uma conversa nova" aria-label="Começar uma conversa nova">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+  <button type="button" class="as-icone" id="as-fechar" title="Fechar" aria-label="Fechar a assistente">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+  </button>
+</header>
+
+<main class="as-corpo" id="as-corpo" aria-live="polite">
+  <div class="as-estado" id="as-estado"><p id="as-estado-texto">Carregando a conversa…</p></div>
+  <div class="as-falas" id="as-falas" hidden></div>
+</main>
+
+<form class="as-envio" id="as-form" novalidate>
+  <p class="as-erro" id="as-erro" role="alert" hidden></p>
+  <div class="as-caixa">
+    <textarea id="as-texto" rows="1" maxlength="4000" placeholder="Pergunte sobre um banco ou um procedimento" aria-label="Sua pergunta" disabled></textarea>
+    <button type="submit" id="as-enviar" aria-label="Enviar a pergunta" disabled>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    </button>
+  </div>
+  <p class="as-nota">Não informe CPF nem dados de clientes. As conversas ficam registradas pela Pontual.</p>
+</form>
+
+<script src="assistente.js"></script>
+</body>
+</html>

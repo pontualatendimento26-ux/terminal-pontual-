@@ -207,6 +207,8 @@ async function api(metodo, caminho, corpo) {
 const FONTES = {
   devices: ['/devices', 'devices.read'], alerts: ['/alerts', 'alerts.read'], notifs: ['/notifications', 'devices.read'],
   items: ['/items', 'apps.read'], observed: ['/observed-hosts', 'apps.read'], audit: ['/audit', 'audit.read'], admins: ['/admins', 'admins.manage'],
+  // A seção Assistente carrega os próprios dados (assistente.js); esta linha só diz qual permissão a abre.
+  assistente: ['/assistant', 'config.read'],
 };
 // Busca as listas pedidas. Se o administrador alterou algo enquanto a busca corria,
 // o resultado é descartado para não desfazer na tela o que ele acabou de fazer.
@@ -505,7 +507,7 @@ async function marcarLidas() {
 }
 
 // ============================================================== navegação
-const SECOES = { visao: 'devices', apps: 'items', alertas: 'alerts', notificacoes: 'notifs', auditoria: 'audit', admins: 'admins' };
+const SECOES = { visao: 'devices', apps: 'items', alertas: 'alerts', notificacoes: 'notifs', assistente: 'assistente', auditoria: 'audit', admins: 'admins' };
 function irSecao(secao) {
   if (!pode(FONTES[SECOES[secao]][1])) secao = 'visao';
   if (S.secao === 'notificacoes' && secao !== 'notificacoes') S.novas.clear();
@@ -519,6 +521,7 @@ function irSecao(secao) {
   const extras = { apps: ['items', 'observed'], auditoria: ['audit'], admins: ['admins'] }[secao];
   if (extras) carregar(...extras).then(() => { if (S.secao === secao) desenhar(); });
   if (secao === 'notificacoes') marcarLidas();
+  if (secao === 'assistente') Assistente.abrir();
 }
 for (const b of document.querySelectorAll('.menu [data-secao]')) b.onclick = () => irSecao(b.dataset.secao);
 $('sino').onclick = () => irSecao('notificacoes');
@@ -579,6 +582,7 @@ function desenhar() {
   if (S.secao === 'notificacoes') desenharNotificacoes();
   if (S.secao === 'auditoria') desenharAuditoria();
   if (S.secao === 'admins') desenharAdmins();
+  if (S.secao === 'assistente') Assistente.desenhar();
   desenharGaveta();
 }
 // Linha única para lista ainda carregando ou que falhou; nulo quando há dados.

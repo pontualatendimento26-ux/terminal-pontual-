@@ -123,6 +123,8 @@ public static class DeviceEndpoints
         db.Alerts.RemoveRange(await db.Alerts.Where(a => a.DeviceId == id).ToListAsync(ct));
         db.History.RemoveRange(await db.History.Where(h => h.DeviceId == id).ToListAsync(ct));
         db.ObservedHosts.RemoveRange(await db.ObservedHosts.Where(o => o.DeviceId == id).ToListAsync(ct));
+        db.AssistantMessages.RemoveRange(await db.AssistantMessages.Where(m => m.DeviceId == id).ToListAsync(ct));
+        db.AssistantProfiles.RemoveRange(await db.AssistantProfiles.Where(p => p.DeviceId == id).ToListAsync(ct));
 
         // Tira a máquina dos públicos; a lista pode ficar vazia (ninguém), nunca vira "todas" por acidente.
         foreach (var item in await db.Items.Where(i => i.AudienceJson != null).ToListAsync(ct))

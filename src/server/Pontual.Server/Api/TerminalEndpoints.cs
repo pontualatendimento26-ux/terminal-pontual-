@@ -78,7 +78,7 @@ public static class TerminalEndpoints
         return Results.Ok(new { deviceId = device.Id, token });
     }
 
-    private static async Task<IResult> HeartbeatAsync(HttpContext context, PontualDb db, TimeProvider time, CancellationToken ct)
+    private static async Task<IResult> HeartbeatAsync(HttpContext context, PontualDb db, IConfiguration configuration, TimeProvider time, CancellationToken ct)
     {
         var device = context.Device();
         var body = await context.ReadBodyAsync<HeartbeatBody>();
@@ -95,7 +95,8 @@ public static class TerminalEndpoints
 
         var version = await ConfigVersionAsync(db, ct);
         var state = !device.Approved ? "pending" : device.InMaintenance(now) ? "maintenance" : "active";
-        return Results.Ok(new HeartbeatDto(state, version, device.AttendantName, MaintenanceDto.From(device, now), device.ObservationMode));
+        var assistant = state == "active" && await AssistantEndpoints.IsEnabledAsync(db, configuration, device, ct);
+        return Results.Ok(new HeartbeatDto(state, version, device.AttendantName, MaintenanceDto.From(device, now), device.ObservationMode, assistant));
     }
 
     private static async Task<IResult> ConfigAsync(HttpContext context, PontualDb db, CancellationToken ct)

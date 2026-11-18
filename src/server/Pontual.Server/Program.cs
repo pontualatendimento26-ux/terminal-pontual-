@@ -35,6 +35,7 @@ builder.Services.AddDbContext<PontualDb>((services, options) =>
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AuditWriter>();
 builder.Services.AddSingleton<ScreenWatch>();
+builder.Services.AddSingleton<Pontual.Server.Assistant.IAssistantModel, Pontual.Server.Assistant.ClaudeAssistantModel>();
 builder.Services.AddSingleton<IPasswordHasher<Admin>, PasswordHasher<Admin>>();
 
 builder.Services.AddRateLimiter(options =>
@@ -56,6 +57,11 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy(TerminalEndpoints.DeviceRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
         "device:" + Secrets.Sha256(context.Request.Headers.Authorization.ToString()),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 300, Window = TimeSpan.FromMinutes(1) }));
+
+    // Cada pergunta à assistente custa uma chamada paga à IA: o teto por máquina é bem mais baixo.
+    options.AddPolicy(AssistantEndpoints.RateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
+        "assistant:" + Secrets.Sha256(context.Request.Headers.Authorization.ToString()),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 15, Window = TimeSpan.FromMinutes(1) }));
 });
 
 var app = builder.Build();
@@ -188,6 +194,7 @@ ItemEndpoints.Map(api);
 MonitorEndpoints.Map(api);
 TerminalEndpoints.Map(api);
 ScreenEndpoints.Map(api);
+AssistantEndpoints.Map(api);
 
 app.Map("/api/{**rest}", () => Results.Json(new ErrorBody("Rota não encontrada."), statusCode: StatusCodes.Status404NotFound));
 

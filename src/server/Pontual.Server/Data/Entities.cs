@@ -181,6 +181,60 @@ public sealed class Setting
     public long Value { get; set; }
 }
 
+/// <summary>Configuração em texto (as de <see cref="Setting"/> são só números).</summary>
+public sealed class TextSetting
+{
+    /// <summary>Chave da API da IA, guardada cifrada (ver <c>AssistantSecrets</c>).</summary>
+    public const string AssistantApiKey = "assistant.apiKey";
+    public const string AssistantModel = "assistant.model";
+    /// <summary>Orientações gerais da Pontual, válidas para todas as atendentes.</summary>
+    public const string AssistantInstructions = "assistant.instructions";
+    /// <summary>Marca de que os roteiros iniciais já foram carregados (não voltam se a Central apagar algum).</summary>
+    public const string AssistantScriptsSeeded = "assistant.scriptsSeeded";
+
+    public required string Key { get; set; }
+    public string Value { get; set; } = "";
+}
+
+/// <summary>Roteiro operacional (de um banco, em geral) que a assistente usa para responder.</summary>
+public sealed class AssistantScript
+{
+    public Guid Id { get; set; }
+    public required string Title { get; set; }
+    public required string Content { get; set; }
+    public bool Enabled { get; set; } = true;
+    public DateTime UpdatedAt { get; set; }
+    public string UpdatedByName { get; set; } = "";
+}
+
+/// <summary>Perfil da assistente de uma atendente (uma máquina = uma atendente, ADR 0003).</summary>
+public sealed class AssistantProfile
+{
+    public Guid DeviceId { get; set; }
+    /// <summary>Orientações da supervisão só para esta atendente.</summary>
+    public string Instructions { get; set; } = "";
+    public bool Enabled { get; set; } = true;
+    public DateTime UpdatedAt { get; set; }
+}
+
+public static class AssistantRole
+{
+    public const string User = "user";
+    public const string Assistant = "assistant";
+}
+
+/// <summary>Uma fala da conversa da atendente com a assistente.</summary>
+public sealed class AssistantMessage
+{
+    public long Id { get; set; }
+    public Guid DeviceId { get; set; }
+    /// <summary>"Nova conversa" troca este valor: só as falas da conversa atual voltam para a IA como contexto.</summary>
+    public Guid ConversationId { get; set; }
+    public required string Role { get; set; }
+    public required string Text { get; set; }
+    public DateTime At { get; set; }
+}
+
 /// <summary>
 /// Registro de auditoria gravado. Guarda tudo o que <see cref="AuditChain"/> usou no hash, para a cadeia
 /// poder ser reconstruída e verificada.

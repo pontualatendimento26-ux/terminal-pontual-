@@ -16,6 +16,10 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
     public DbSet<ObservedHost> ObservedHosts => Set<ObservedHost>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<AuditRecord> Audit => Set<AuditRecord>();
+    public DbSet<TextSetting> TextSettings => Set<TextSetting>();
+    public DbSet<AssistantScript> AssistantScripts => Set<AssistantScript>();
+    public DbSet<AssistantProfile> AssistantProfiles => Set<AssistantProfile>();
+    public DbSet<AssistantMessage> AssistantMessages => Set<AssistantMessage>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -56,6 +60,16 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
         modelBuilder.Entity<ObservedHost>().HasIndex(o => o.Host).IsUnique();
 
         modelBuilder.Entity<Setting>().HasKey(s => s.Key);
+
+        modelBuilder.Entity<TextSetting>().HasKey(s => s.Key);
+
+        modelBuilder.Entity<AssistantProfile>(e =>
+        {
+            e.HasKey(p => p.DeviceId);
+            e.Property(p => p.DeviceId).ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<AssistantMessage>().HasIndex(m => new { m.DeviceId, m.Id });
 
         modelBuilder.Entity<AuditRecord>(e =>
         {

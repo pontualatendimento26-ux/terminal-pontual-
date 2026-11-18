@@ -1,0 +1,645 @@
+using System.Collections.Concurrent;
+using System.Text;
+using System.Text.Json;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.EntityFrameworkCore;
+using Pontual.Domain.Authorization;
+using Pontual.Server.Assistant;
+using Pontual.Server.Data;
+
+namespace Pontual.Server.Api;
+
+/// <summary>
+/// Assistente de IA das atendentes. O terminal conversa por <c>/device/assistant</c>; a Central cadastra a
+/// chave, os roteiros operacionais e o perfil de cada atendente, e lê as conversas.
+/// A chave da IA nunca sai do servidor: o terminal só fala com o servidor da Pontual.
+/// </summary>
+public static class AssistantEndpoints
+{
+    public const string RateLimit = "assistant";
+    public const string DefaultModel = "claude-opus-5-5";
+
+    private static readonly (string Id, string Label)[] Models =
+    [
+        ("claude-opus-5-5", "Claude Opus 5.5 (mais capaz)"),
+        ("claude-sonnet-5-5", "Claude Sonnet 5.5 (equilibrado)"),
+        ("claude-haiku-5-5", "Claude Haiku 5.5 (mais rápido e barato)"),
+    ];
+
+    private const int MaxQuestion = 4000;
+    private const int MaxScript = 60_000;
+    private const int MaxAllScripts = 1_200_000;
+    private const int MaxProfileInstructions = 4000;
+    private const int MaxGeneralInstructions = 8000;
+    private const int MaxScripts = 200;
+
+    /// <summary>Quantas falas da conversa atual voltam para a IA como contexto.</summary>
+    private const int ContextTurns = 40;
+    private const int HistoryShown = 60;
+    private const int ConversationsShown = 300;
+
+    /// <summary>Depois deste tempo parada, a próxima pergunta abre uma conversa nova (um novo expediente).</summary>
+    private static readonly TimeSpan ConversationIdle = TimeSpan.FromHours(8);
+
+    private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
+
+    /// <summary>Máquinas com uma resposta em andamento: uma pergunta por vez por atendente.</summary>
+    private static readonly ConcurrentDictionary<Guid, byte> Busy = new();
+
+    private sealed record AskBody(string? Text, bool? NewConversation);
+    private sealed record SettingsBody(string? ApiKey, bool? RemoveKey, string? Model, string? Instructions);
+    private sealed record ScriptBody(string? Title, string? Content, bool? Enabled);
+    private sealed record ProfileBody(string? Instructions, bool? Enabled);
+
+    public static void Map(RouteGroupBuilder api)
+    {
+        // Terminal.
+        api.MapGet("/device/assistant", StateAsync).Terminal().RequireRateLimiting(TerminalEndpoints.DeviceRateLimit);
+        api.MapPost("/device/assistant/messages", AskAsync).Terminal().RequireRateLimiting(RateLimit);
+
+        // Central.
+        api.MapGet("/assistant", OverviewAsync).Panel(Permission.ConfigRead);
+        api.MapPut("/assistant/settings", SaveSettingsAsync).Panel(Permission.ConfigEdit);
+        api.MapPost("/assistant/test", TestAsync).Panel(Permission.ConfigEdit);
+        api.MapGet("/assistant/scripts/{id:guid}", ScriptAsync).Panel(Permission.ConfigRead);
+        api.MapPost("/assistant/scripts", CreateScriptAsync).Panel(Permission.ConfigEdit);
+        api.MapPut("/assistant/scripts/{id:guid}", UpdateScriptAsync).Panel(Permission.ConfigEdit);
+        api.MapDelete("/assistant/scripts/{id:guid}", DeleteScriptAsync).Panel(Permission.ConfigEdit);
+        api.MapPut("/assistant/profiles/{deviceId:guid}", SaveProfileAsync).Panel(Permission.ConfigEdit);
+        api.MapGet("/assistant/conversations/{deviceId:guid}", ConversationsAsync).Panel(Permission.UsageReadIndividual);
+    }
+
+    /// <summary>A assistente aparece para a máquina? Precisa de máquina aprovada, chave cadastrada e perfil ligado.</summary>
+    public static async Task<bool> IsEnabledAsync(PontualDb db, IConfiguration configuration, Device device, CancellationToken ct)
+    {
+        if (!device.Approved)
+        {
+            return false;
+        }
+
+        var profileOff = await db.AssistantProfiles.AsNoTracking().AnyAsync(p => p.DeviceId == device.Id && !p.Enabled, ct);
+        return !profileOff && await AssistantSecrets.ReadKeyAsync(db, configuration, ct) is not null;
+    }
+
+    // ------------------------------------------------------------------ terminal
+
+    private static async Task<IResult> StateAsync(HttpContext context, PontualDb db, IConfiguration configuration, CancellationToken ct)
+    {
+        var device = context.Device();
+        var enabled = await IsEnabledAsync(db, configuration, device, ct);
+        if (!enabled)
+        {
+            return Results.Ok(new { enabled, attendantName = device.AttendantName, messages = Array.Empty<object>() });
+        }
+
+        var messages = await db.AssistantMessages.AsNoTracking()
+            .Where(m => m.DeviceId == device.Id)
+            .OrderByDescending(m => m.Id)
+            .Take(HistoryShown)
+            .ToListAsync(ct);
+        messages.Reverse();
+
+        return Results.Ok(new { enabled, attendantName = device.AttendantName, messages = messages.Select(MessageDto) });
+    }
+
+    /// <summary>
+    /// Recebe a pergunta e devolve a resposta em fluxo (text/event-stream), um JSON por linha "data:":
+    /// <c>{"delta":"…"}</c> a cada pedaço, e no fim <c>{"done":true,"id":…,"at":…}</c> ou <c>{"error":"…"}</c>.
+    /// </summary>
+    private static async Task<IResult> AskAsync(HttpContext context, PontualDb db, IConfiguration configuration, IAssistantModel model, TimeProvider time, CancellationToken ct)
+    {
+        var device = context.Device();
+        var body = await context.ReadBodyAsync<AskBody>();
+        var question = Multiline(body.Text);
+        if (question.Length == 0)
+        {
+            throw ApiError.BadRequest("Escreva a sua pergunta.");
+        }
+
+        if (question.Length > MaxQuestion)
+        {
+            throw ApiError.BadRequest($"A pergunta aceita no máximo {MaxQuestion} caracteres. Divida em partes menores.");
+        }
+
+        var apiKey = await IsEnabledAsync(db, configuration, device, ct) ? await AssistantSecrets.ReadKeyAsync(db, configuration, ct) : null;
+        if (apiKey is null)
+        {
+            throw ApiError.Conflict("A assistente não está ligada para este computador.");
+        }
+
+        if (!Busy.TryAdd(device.Id, 0))
+        {
+            throw ApiError.Conflict("Aguarde a resposta anterior terminar.");
+        }
+
+        try
+        {
+            var now = time.GetUtcNow().UtcDateTime;
+            var last = await db.AssistantMessages.AsNoTracking()
+                .Where(m => m.DeviceId == device.Id)
+                .OrderByDescending(m => m.Id)
+                .FirstOrDefaultAsync(ct);
+            var conversationId = body.NewConversation == true || last is null || now - last.At > ConversationIdle
+                ? Guid.NewGuid()
+                : last.ConversationId;
+
+            var asked = new AssistantMessage { DeviceId = device.Id, ConversationId = conversationId, Role = AssistantRole.User, Text = question, At = now };
+            db.AssistantMessages.Add(asked);
+            await db.SaveChangesAsync(ct);
+
+            var request = await BuildRequestAsync(db, device, apiKey, conversationId, now, ct);
+
+            context.Response.ContentType = "text/event-stream";
+            context.Response.Headers.CacheControl = "no-store";
+            context.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
+            await SendAsync(context, new { conversationId, questionId = asked.Id }, ct);
+
+            var answer = new StringBuilder();
+            string? error = null;
+            try
+            {
+                var stop = await model.AskAsync(request, async piece =>
+                {
+                    answer.Append(piece);
+                    await SendAsync(context, new { delta = piece }, ct);
+                }, ct);
+
+                if (stop == AssistantStop.Refusal && answer.Length == 0)
+                {
+                    error = "A assistente não pôde responder a essa pergunta. Reformule ou procure a supervisão.";
+                }
+                else if (stop == AssistantStop.MaxTokens)
+                {
+                    const string cut = "\n\n(A resposta ficou longa demais e foi cortada. Peça para continuar.)";
+                    answer.Append(cut);
+                    await SendAsync(context, new { delta = cut }, ct);
+                }
+                else if (answer.Length == 0)
+                {
+                    error = "A assistente não respondeu. Tente de novo.";
+                }
+            }
+            catch (AssistantFailure failure)
+            {
+                error = failure.Message;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // A atendente fechou a janela no meio da resposta: o que já chegou fica guardado.
+            }
+
+            AssistantMessage? answered = null;
+            if (answer.Length > 0)
+            {
+                answered = new AssistantMessage
+                {
+                    DeviceId = device.Id,
+                    ConversationId = conversationId,
+                    Role = AssistantRole.Assistant,
+                    Text = answer.ToString(),
+                    At = time.GetUtcNow().UtcDateTime,
+                };
+                db.AssistantMessages.Add(answered);
+                await db.SaveChangesAsync(CancellationToken.None);
+            }
+
+            if (!ct.IsCancellationRequested)
+            {
+                object final = error is not null || answered is null
+                    ? new { error = error ?? "A assistente não respondeu. Tente de novo." }
+                    : new { done = true, id = answered.Id, at = answered.At };
+                await SendAsync(context, final, ct);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Conexão encerrada pelo terminal.
+        }
+        finally
+        {
+            Busy.TryRemove(device.Id, out _);
+        }
+
+        return Results.Empty;
+    }
+
+    private static async Task<AssistantRequest> BuildRequestAsync(PontualDb db, Device device, string apiKey, Guid conversationId, DateTime now, CancellationToken ct)
+    {
+        var settings = await db.TextSettings.AsNoTracking().ToDictionaryAsync(s => s.Key, s => s.Value, ct);
+        var scripts = await db.AssistantScripts.AsNoTracking().Where(s => s.Enabled).ToListAsync(ct);
+        var profile = await db.AssistantProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.DeviceId == device.Id, ct);
+
+        var recent = await db.AssistantMessages.AsNoTracking()
+            .Where(m => m.DeviceId == device.Id && m.ConversationId == conversationId)
+            .OrderByDescending(m => m.Id)
+            .Take(ContextTurns)
+            .ToListAsync(ct);
+        recent.Reverse();
+
+        return new AssistantRequest(
+            apiKey,
+            ModelOf(settings),
+            AssistantPrompt.Shared(settings.GetValueOrDefault(TextSetting.AssistantInstructions, ""), scripts),
+            AssistantPrompt.Personal(device, profile, now),
+            Turns(recent));
+    }
+
+    /// <summary>
+    /// A API exige que a conversa comece pela atendente e alterne os lados. Uma pergunta que ficou sem
+    /// resposta (falha de rede, por exemplo) é juntada à seguinte.
+    /// </summary>
+    internal static List<AssistantTurn> Turns(IEnumerable<AssistantMessage> messages)
+    {
+        var turns = new List<AssistantTurn>();
+        foreach (var message in messages)
+        {
+            if (turns.Count == 0 && message.Role != AssistantRole.User)
+            {
+                continue;
+            }
+
+            if (turns.Count > 0 && turns[^1].Role == message.Role)
+            {
+                turns[^1] = turns[^1] with { Text = turns[^1].Text + "\n\n" + message.Text };
+            }
+            else
+            {
+                turns.Add(new AssistantTurn(message.Role, message.Text));
+            }
+        }
+
+        return turns;
+    }
+
+    private static async Task SendAsync(HttpContext context, object payload, CancellationToken ct)
+    {
+        await context.Response.WriteAsync("data: " + JsonSerializer.Serialize(payload, Web) + "\n\n", ct);
+        await context.Response.Body.FlushAsync(ct);
+    }
+
+    // ------------------------------------------------------------------- central
+
+    private static async Task<IResult> OverviewAsync(PontualDb db, IConfiguration configuration, CancellationToken ct)
+    {
+        var settings = await db.TextSettings.AsNoTracking().ToDictionaryAsync(s => s.Key, s => s.Value, ct);
+        var hasStoredKey = settings.TryGetValue(TextSetting.AssistantApiKey, out var stored) && AssistantSecrets.Unprotect(stored) is { Length: > 0 };
+        var hasKey = hasStoredKey || !string.IsNullOrWhiteSpace(configuration["Assistant:ApiKey"]);
+
+        var scripts = await db.AssistantScripts.AsNoTracking()
+            .OrderBy(s => s.Title)
+            .Select(s => new { id = s.Id, title = s.Title, enabled = s.Enabled, chars = s.Content.Length, updatedAt = s.UpdatedAt, updatedBy = s.UpdatedByName })
+            .ToListAsync(ct);
+
+        var profiles = await db.AssistantProfiles.AsNoTracking().ToDictionaryAsync(p => p.DeviceId, ct);
+        var usage = await db.AssistantMessages.AsNoTracking()
+            .Where(m => m.Role == AssistantRole.User)
+            .GroupBy(m => m.DeviceId)
+            .Select(g => new { DeviceId = g.Key, Questions = g.Count(), LastAt = g.Max(m => m.At) })
+            .ToDictionaryAsync(g => g.DeviceId, ct);
+        var devices = await db.Devices.AsNoTracking().Where(d => d.Approved).OrderBy(d => d.AttendantName).ThenBy(d => d.Hostname).ToListAsync(ct);
+
+        return Results.Ok(new
+        {
+            settings = new
+            {
+                hasKey,
+                keyFromServerConfig = hasKey && !hasStoredKey,
+                model = ModelOf(settings),
+                models = Models.Select(m => new { id = m.Id, label = m.Label }),
+                instructions = settings.GetValueOrDefault(TextSetting.AssistantInstructions, ""),
+            },
+            limits = new { script = MaxScript, allScripts = MaxAllScripts, profileInstructions = MaxProfileInstructions, generalInstructions = MaxGeneralInstructions },
+            scripts,
+            profiles = devices.Select(d =>
+            {
+                profiles.TryGetValue(d.Id, out var profile);
+                usage.TryGetValue(d.Id, out var used);
+                return new
+                {
+                    deviceId = d.Id,
+                    attendantName = d.AttendantName,
+                    hostname = d.Hostname,
+                    enabled = profile?.Enabled ?? true,
+                    instructions = profile?.Instructions ?? "",
+                    questions = used?.Questions ?? 0,
+                    lastAt = used?.LastAt,
+                };
+            }),
+        });
+    }
+
+    private static async Task<IResult> SaveSettingsAsync(HttpContext context, PontualDb db, AuditWriter audit, CancellationToken ct)
+    {
+        var admin = context.Admin();
+        var body = await context.ReadBodyAsync<SettingsBody>();
+        var changes = new List<string>();
+
+        if (body.ApiKey is not null || body.RemoveKey == true)
+        {
+            // A chave dá acesso a uma conta paga: só quem gerencia chaves mexe nela.
+            context.Demand(Permission.KeysManage);
+            if (body.RemoveKey == true)
+            {
+                await SetAsync(db, TextSetting.AssistantApiKey, "", ct);
+                changes.Add("removeu a chave da IA");
+            }
+            else
+            {
+                var key = Input.Clean(body.ApiKey);
+                if (key.Length is < 20 or > 300 || key.Any(char.IsWhiteSpace))
+                {
+                    throw ApiError.BadRequest("A chave da IA não parece válida. Copie a chave inteira, sem espaços.");
+                }
+
+                await SetAsync(db, TextSetting.AssistantApiKey, AssistantSecrets.Protect(key), ct);
+                changes.Add("cadastrou a chave da IA");
+            }
+        }
+
+        if (body.Model is not null)
+        {
+            if (Models.All(m => m.Id != body.Model))
+            {
+                throw ApiError.BadRequest("Modelo de IA inválido.");
+            }
+
+            if (await SetAsync(db, TextSetting.AssistantModel, body.Model, ct))
+            {
+                changes.Add($"trocou o modelo da assistente para {body.Model}");
+            }
+        }
+
+        if (body.Instructions is not null)
+        {
+            var instructions = Multiline(body.Instructions);
+            if (instructions.Length > MaxGeneralInstructions)
+            {
+                throw ApiError.BadRequest($"As orientações gerais aceitam no máximo {MaxGeneralInstructions} caracteres.");
+            }
+
+            if (await SetAsync(db, TextSetting.AssistantInstructions, instructions, ct))
+            {
+                changes.Add("alterou as orientações gerais da assistente");
+            }
+        }
+
+        if (changes.Count > 0)
+        {
+            // Nem a chave nem o texto das orientações entram na auditoria; só o fato.
+            await audit.SaveAsync(db, AuditInfo.By(admin, "assistant.settings", $"{admin.Name} {string.Join(" e ", changes)}"), cancellationToken: ct);
+        }
+
+        return Results.NoContent();
+    }
+
+    /// <summary>Faz uma pergunta mínima à IA para confirmar que a chave e o modelo funcionam.</summary>
+    private static async Task<IResult> TestAsync(PontualDb db, IConfiguration configuration, IAssistantModel model, CancellationToken ct)
+    {
+        var apiKey = await AssistantSecrets.ReadKeyAsync(db, configuration, ct)
+            ?? throw ApiError.Conflict("Cadastre a chave da IA antes de testar.");
+        var settings = await db.TextSettings.AsNoTracking().ToDictionaryAsync(s => s.Key, s => s.Value, ct);
+
+        var answer = new StringBuilder();
+        try
+        {
+            await model.AskAsync(
+                new AssistantRequest(apiKey, ModelOf(settings), "Este é um teste de conexão.", "Responda somente com a palavra: funcionando",
+                    [new AssistantTurn(AssistantRole.User, "Teste de conexão.")]),
+                piece => { answer.Append(piece); return Task.CompletedTask; },
+                ct);
+        }
+        catch (AssistantFailure failure)
+        {
+            throw new ApiError(StatusCodes.Status502BadGateway, failure.Message);
+        }
+
+        return Results.Ok(new { ok = true, answer = Input.Truncated(answer.ToString(), 200) });
+    }
+
+    private static async Task<IResult> ScriptAsync(Guid id, PontualDb db, CancellationToken ct)
+    {
+        var script = await db.AssistantScripts.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id, ct)
+            ?? throw ApiError.NotFound("Roteiro não encontrado.");
+        return Results.Ok(new { id = script.Id, title = script.Title, content = script.Content, enabled = script.Enabled, updatedAt = script.UpdatedAt, updatedBy = script.UpdatedByName });
+    }
+
+    private static async Task<IResult> CreateScriptAsync(HttpContext context, PontualDb db, AuditWriter audit, TimeProvider time, CancellationToken ct)
+    {
+        var admin = context.Admin();
+        var body = await context.ReadBodyAsync<ScriptBody>();
+        if (await db.AssistantScripts.CountAsync(ct) >= MaxScripts)
+        {
+            throw ApiError.Conflict($"O limite é de {MaxScripts} roteiros. Junte ou remova algum antes de criar outro.");
+        }
+
+        var script = new AssistantScript
+        {
+            Id = Guid.NewGuid(),
+            Title = Input.Required(body.Title, "o título do roteiro", 80),
+            Content = ScriptContent(body.Content),
+            Enabled = body.Enabled ?? true,
+            UpdatedAt = time.GetUtcNow().UtcDateTime,
+            UpdatedByName = admin.Name,
+        };
+        await EnsureRoomAsync(db, script, ct);
+        db.AssistantScripts.Add(script);
+
+        await audit.SaveAsync(db, AuditInfo.By(admin, "assistant.script.create",
+            $"{admin.Name} cadastrou o roteiro \"{script.Title}\" da assistente", "assistant-script", script.Id), cancellationToken: ct);
+        return Results.Ok(new { id = script.Id });
+    }
+
+    private static async Task<IResult> UpdateScriptAsync(Guid id, HttpContext context, PontualDb db, AuditWriter audit, TimeProvider time, CancellationToken ct)
+    {
+        var admin = context.Admin();
+        var body = await context.ReadBodyAsync<ScriptBody>();
+        var script = await db.AssistantScripts.FirstOrDefaultAsync(s => s.Id == id, ct) ?? throw ApiError.NotFound("Roteiro não encontrado.");
+
+        if (body.Title is not null)
+        {
+            script.Title = Input.Required(body.Title, "o título do roteiro", 80);
+        }
+
+        if (body.Content is not null)
+        {
+            script.Content = ScriptContent(body.Content);
+        }
+
+        if (body.Enabled is { } enabled)
+        {
+            script.Enabled = enabled;
+        }
+
+        await EnsureRoomAsync(db, script, ct);
+        script.UpdatedAt = time.GetUtcNow().UtcDateTime;
+        script.UpdatedByName = admin.Name;
+
+        await audit.SaveAsync(db, AuditInfo.By(admin, "assistant.script.update",
+            $"{admin.Name} alterou o roteiro \"{script.Title}\" da assistente{(script.Enabled ? "" : " (desligado)")}", "assistant-script", script.Id), cancellationToken: ct);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> DeleteScriptAsync(Guid id, HttpContext context, PontualDb db, AuditWriter audit, CancellationToken ct)
+    {
+        var admin = context.Admin();
+        var script = await db.AssistantScripts.FirstOrDefaultAsync(s => s.Id == id, ct) ?? throw ApiError.NotFound("Roteiro não encontrado.");
+        db.AssistantScripts.Remove(script);
+
+        await audit.SaveAsync(db, AuditInfo.By(admin, "assistant.script.delete",
+            $"{admin.Name} removeu o roteiro \"{script.Title}\" da assistente", "assistant-script", script.Id), cancellationToken: ct);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> SaveProfileAsync(Guid deviceId, HttpContext context, PontualDb db, AuditWriter audit, TimeProvider time, CancellationToken ct)
+    {
+        var admin = context.Admin();
+        var body = await context.ReadBodyAsync<ProfileBody>();
+        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.Id == deviceId, ct) ?? throw ApiError.NotFound("Máquina não encontrada.");
+
+        var profile = await db.AssistantProfiles.FirstOrDefaultAsync(p => p.DeviceId == deviceId, ct);
+        if (profile is null)
+        {
+            profile = new AssistantProfile { DeviceId = deviceId };
+            db.AssistantProfiles.Add(profile);
+        }
+
+        var changes = new List<string>();
+        if (body.Instructions is not null)
+        {
+            var instructions = Multiline(body.Instructions);
+            if (instructions.Length > MaxProfileInstructions)
+            {
+                throw ApiError.BadRequest($"As orientações da atendente aceitam no máximo {MaxProfileInstructions} caracteres.");
+            }
+
+            if (instructions != profile.Instructions)
+            {
+                profile.Instructions = instructions;
+                changes.Add($"alterou as orientações da assistente de {device.Label}");
+            }
+        }
+
+        if (body.Enabled is { } enabled && enabled != profile.Enabled)
+        {
+            profile.Enabled = enabled;
+            changes.Add($"{(enabled ? "ligou" : "desligou")} a assistente de {device.Label}");
+        }
+
+        if (changes.Count > 0)
+        {
+            profile.UpdatedAt = time.GetUtcNow().UtcDateTime;
+            await audit.SaveAsync(db, AuditInfo.By(admin, "assistant.profile",
+                $"{admin.Name} {string.Join(" e ", changes)}", "device", device.Id), cancellationToken: ct);
+        }
+
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> ConversationsAsync(Guid deviceId, HttpContext context, PontualDb db, AuditWriter audit, CancellationToken ct)
+    {
+        var admin = context.Admin();
+        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.Id == deviceId, ct) ?? throw ApiError.NotFound("Máquina não encontrada.");
+
+        var messages = await db.AssistantMessages.AsNoTracking()
+            .Where(m => m.DeviceId == deviceId)
+            .OrderByDescending(m => m.Id)
+            .Take(ConversationsShown)
+            .ToListAsync(ct);
+        messages.Reverse();
+
+        // Ler a conversa de uma pessoa é leitura de uso individual: fica registrado quem leu.
+        await audit.SaveAsync(db, AuditInfo.By(admin, "assistant.read",
+            $"{admin.Name} leu as conversas de {device.Label} com a assistente", "device", device.Id), cancellationToken: ct);
+
+        return Results.Ok(messages.Select(MessageDto));
+    }
+
+    // ------------------------------------------------------------------ utilidades
+
+    private static object MessageDto(AssistantMessage m) => new { id = m.Id, role = m.Role, text = m.Text, at = m.At, conversationId = m.ConversationId };
+
+    private static string ModelOf(Dictionary<string, string> settings) =>
+        settings.TryGetValue(TextSetting.AssistantModel, out var model) && Models.Any(m => m.Id == model) ? model : DefaultModel;
+
+    /// <summary>Grava a configuração; devolve se o valor mudou.</summary>
+    private static async Task<bool> SetAsync(PontualDb db, string key, string value, CancellationToken ct)
+    {
+        var setting = await db.TextSettings.FirstOrDefaultAsync(s => s.Key == key, ct);
+        if (setting is null)
+        {
+            db.TextSettings.Add(new TextSetting { Key = key, Value = value });
+            return value.Length > 0;
+        }
+
+        if (setting.Value == value)
+        {
+            return false;
+        }
+
+        setting.Value = value;
+        return true;
+    }
+
+    private static string ScriptContent(string? raw)
+    {
+        var content = Multiline(raw);
+        if (content.Length == 0)
+        {
+            throw ApiError.BadRequest("Cole o texto do roteiro.");
+        }
+
+        // Nada é cortado em silêncio: um roteiro pela metade faria a assistente responder errado.
+        if (content.Length > MaxScript)
+        {
+            throw ApiError.BadRequest($"O roteiro tem {content.Length} caracteres; o máximo por roteiro é {MaxScript}. Divida em duas partes (por exemplo \"Banco X - parte 1\").");
+        }
+
+        return content;
+    }
+
+    /// <summary>O conjunto dos roteiros ligados vai inteiro para a IA a cada pergunta; por isso tem um teto.</summary>
+    private static async Task EnsureRoomAsync(PontualDb db, AssistantScript script, CancellationToken ct)
+    {
+        if (!script.Enabled)
+        {
+            return;
+        }
+
+        var others = await db.AssistantScripts.AsNoTracking()
+            .Where(s => s.Enabled && s.Id != script.Id)
+            .SumAsync(s => s.Content.Length, ct);
+        if (others + script.Content.Length > MaxAllScripts)
+        {
+            throw ApiError.Conflict($"Os roteiros ligados passariam de {MaxAllScripts} caracteres no total. Desligue ou enxugue algum roteiro antes.");
+        }
+    }
+
+    /// <summary>
+    /// Como <see cref="Input.Clean"/>, mas preserva quebras de linha e tabulações (roteiros e perguntas têm
+    /// várias linhas). Tira os demais caracteres de controle e surrogates soltos.
+    /// </summary>
+    internal static string Multiline(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return "";
+        }
+
+        var text = value.ReplaceLineEndings("\n");
+        var builder = new StringBuilder(text.Length);
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+            {
+                builder.Append(c).Append(text[++i]);
+            }
+            else if (!char.IsSurrogate(c) && (c is '\n' or '\t' || !char.IsControl(c)))
+            {
+                builder.Append(c);
+            }
+        }
+
+        return builder.ToString().Trim();
+    }
+}

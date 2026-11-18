@@ -95,6 +95,7 @@
       <button type="button" data-secao="apps">Sites e programas</button>
       <button type="button" data-secao="alertas">Alertas<span class="conta" id="conta-alertas" hidden></span></button>
       <button type="button" data-secao="notificacoes">Notificações<span class="conta azul" id="conta-notif" hidden></span></button>
+      <button type="button" data-secao="assistente">Assistente</button>
       <button type="button" data-secao="auditoria">Auditoria</button>
     </nav>
     <div class="fim">
@@ -172,6 +173,25 @@
     <section data-painel="notificacoes" hidden aria-labelledby="t-notif">
       <div class="abertura baixa"><h1 id="t-notif">Notificações</h1><p>Tudo o que acontece nos computadores e na Central aparece aqui. Só a tentativa de abrir um site não permitido salta na tela na hora.</p></div>
       <div class="quadro"><ul class="registros alto" id="ls-notif"></ul></div>
+    </section>
+
+    <section data-painel="assistente" hidden aria-labelledby="t-ia">
+      <div class="abertura baixa"><h1 id="t-ia">Assistente</h1><p>A IA que tira dúvidas das atendentes pelo botão flutuante do Terminal. Ela responde com base nos roteiros operacionais cadastrados aqui, e cada atendente tem o seu perfil e o seu histórico.</p></div>
+      <div class="quadro">
+        <div class="quadro-topo"><div><h2>Conexão com a IA</h2><p>A chave fica guardada só no servidor; os computadores das atendentes nunca a recebem.</p></div></div>
+        <div class="ia-conexao" id="ia-conexao"></div>
+      </div>
+      <div class="quadro depois">
+        <div class="quadro-topo">
+          <div><h2>Roteiros operacionais</h2><p id="roteiros-frase"></p></div>
+          <div class="fim"><button type="button" class="btn" id="novo-roteiro" hidden><span data-ic="plus"></span>Adicionar roteiro</button></div>
+        </div>
+        <div class="rolagem-x"><table id="tb-roteiros"></table></div>
+      </div>
+      <div class="quadro depois">
+        <div class="quadro-topo"><div><h2>Perfil de cada atendente</h2><p>Ligue ou desligue a assistente por pessoa, escreva orientações só para ela e leia as conversas. Toda leitura de conversa fica na auditoria.</p></div></div>
+        <div class="rolagem-x"><table id="tb-perfis"></table></div>
+      </div>
     </section>
 
     <section data-painel="auditoria" hidden aria-labelledby="t-aud">
@@ -294,6 +314,34 @@
   <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Criar administrador</button></div>
 </form></dialog>
 
+<dialog id="dlg-ia-chave" aria-labelledby="t-ia-chave"><form class="dlg" novalidate>
+  <h2 id="t-ia-chave">Chave da IA</h2><p>Crie a chave em console.anthropic.com (API keys) e cole aqui. Ela é guardada cifrada no servidor e não aparece de novo na tela.</p>
+  <label>Chave da API<input class="campo" id="ia-chave-valor" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" aria-describedby="ia-chave-erro"></label>
+  <p class="erro" id="ia-chave-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Salvar a chave</button></div>
+</form></dialog>
+
+<dialog id="dlg-ia-roteiro" class="largo" aria-labelledby="t-ia-roteiro"><form class="dlg" novalidate>
+  <h2 id="t-ia-roteiro">Adicionar roteiro</h2><p>Cole o roteiro como texto. A assistente passa a usá-lo na pergunta seguinte.</p>
+  <label>Título<input class="campo" id="ia-roteiro-titulo" maxlength="80" autocomplete="off" placeholder="Ex.: Banco Exemplo — digitação de proposta" aria-describedby="ia-roteiro-erro"></label>
+  <label>Texto do roteiro<textarea class="campo ia-texto-longo" id="ia-roteiro-texto" spellcheck="false" placeholder="Cole aqui o passo a passo, as regras, os documentos exigidos e os prazos." aria-describedby="ia-roteiro-conta ia-roteiro-erro"></textarea><span class="dica" id="ia-roteiro-conta"></span></label>
+  <p class="erro" id="ia-roteiro-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Fechar</button><button type="submit" class="btn" id="ia-roteiro-salvar">Salvar o roteiro</button></div>
+</form></dialog>
+
+<dialog id="dlg-ia-texto" class="largo" aria-labelledby="t-ia-texto"><form class="dlg" novalidate>
+  <h2 id="t-ia-texto"></h2><p id="ia-texto-explicacao"></p>
+  <label>Orientações<textarea class="campo ia-texto-medio" id="ia-texto-valor" aria-describedby="ia-texto-conta ia-texto-erro"></textarea><span class="dica" id="ia-texto-conta"></span></label>
+  <p class="erro" id="ia-texto-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Salvar</button></div>
+</form></dialog>
+
+<dialog id="dlg-ia-conversa" class="largo" aria-labelledby="t-ia-conversa"><div class="dlg">
+  <h2 id="t-ia-conversa">Conversas</h2><p>As 300 falas mais recentes. Esta leitura foi registrada na auditoria.</p>
+  <div class="ia-conversa" id="ia-conversa-falas"></div>
+  <div class="acoes"><button type="button" class="btn" data-fechar>Fechar</button></div>
+</div></dialog>
+
 <dialog id="dlg-confirmar" aria-labelledby="conf-titulo" aria-describedby="conf-texto"><form class="dlg" novalidate>
   <h2 id="conf-titulo"></h2><p id="conf-texto"></p>
   <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn rubi" id="conf-ok"></button></div>
@@ -304,5 +352,6 @@
 
 <script src="/central/escritorio.js"></script>
 <script src="/central/app.js"></script>
+<script src="/central/assistente.js"></script>
 </body>
 </html>
