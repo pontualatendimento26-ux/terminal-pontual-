@@ -20,6 +20,10 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
     public DbSet<AssistantScript> AssistantScripts => Set<AssistantScript>();
     public DbSet<AssistantProfile> AssistantProfiles => Set<AssistantProfile>();
     public DbSet<AssistantMessage> AssistantMessages => Set<AssistantMessage>();
+    public DbSet<KnowledgeLink> KnowledgeLinks => Set<KnowledgeLink>();
+    public DbSet<KnowledgeSuggestion> KnowledgeSuggestions => Set<KnowledgeSuggestion>();
+    public DbSet<AssistantFeedback> AssistantFeedback => Set<AssistantFeedback>();
+    public DbSet<AttendantInsight> AttendantInsights => Set<AttendantInsight>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -70,6 +74,18 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
         });
 
         modelBuilder.Entity<AssistantMessage>().HasIndex(m => new { m.DeviceId, m.Id });
+
+        modelBuilder.Entity<KnowledgeLink>().HasIndex(l => new { l.FromId, l.ToId }).IsUnique();
+
+        modelBuilder.Entity<KnowledgeSuggestion>().HasIndex(s => s.Status);
+
+        modelBuilder.Entity<AssistantFeedback>().HasIndex(f => new { f.DeviceId, f.MessageId }).IsUnique();
+
+        modelBuilder.Entity<AttendantInsight>(e =>
+        {
+            e.HasKey(i => i.DeviceId);
+            e.Property(i => i.DeviceId).ValueGeneratedNever();
+        });
 
         modelBuilder.Entity<AuditRecord>(e =>
         {

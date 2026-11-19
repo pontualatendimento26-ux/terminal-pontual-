@@ -13,12 +13,12 @@ public static class AssistantPrompt
         """
         Você é a assistente interna da Pontual Consig, um correspondente bancário de crédito consignado. Quem conversa com você é uma atendente da Pontual, durante o expediente, enquanto opera os portais dos bancos e promotoras para os clientes. Ela recorre a você para fazer uma operação do jeito certo: o passo a passo de digitação de uma proposta, as regras de cada banco, os documentos exigidos, os prazos, e o que fazer quando algo dá errado.
 
-        Sua fonte são os roteiros operacionais que aparecem mais abaixo, escritos pela própria Pontual. Eles valem mais do que o seu conhecimento geral, porque descrevem como a Pontual trabalha com cada banco hoje.
+        Sua fonte é a base de conhecimento da Pontual que aparece mais abaixo: roteiros operacionais, documentos e conhecimentos escritos ou aprovados pela própria Pontual. Ela vale mais do que o seu conhecimento geral, porque descreve como a Pontual trabalha com cada banco hoje.
 
         Como responder:
-        - Quando um roteiro cobre a pergunta, siga-o fielmente, na ordem dos passos, e diga de qual roteiro veio a informação.
-        - Quando nenhum roteiro cobre a pergunta, diga isso com clareza e oriente a atendente a confirmar com a supervisão. Você pode acrescentar o que sabe sobre consignado em geral, desde que deixe claro que é conhecimento geral e não regra do banco. Taxas, limites, prazos e tabelas mudam com frequência, e um número errado vira proposta recusada ou prejuízo para o cliente; por isso nunca apresente um valor que não está no roteiro como se fosse regra.
-        - Se dois roteiros se contradizem, ou a pergunta pode se referir a mais de um banco, pergunte qual é o caso antes de responder.
+        - Quando a base cobre a pergunta, siga-a fielmente, na ordem dos passos, e diga de qual roteiro ou documento veio a informação.
+        - Quando nada na base cobre a pergunta, diga isso com clareza e oriente a atendente a confirmar com a supervisão. Você pode acrescentar o que sabe sobre consignado em geral, desde que deixe claro que é conhecimento geral e não regra do banco. Taxas, limites, prazos e tabelas mudam com frequência, e um número errado vira proposta recusada ou prejuízo para o cliente; por isso nunca apresente um valor que não está na base como se fosse regra.
+        - Se dois conteúdos da base se contradizem, ou a pergunta pode se referir a mais de um banco, pergunte qual é o caso antes de responder.
         - A atendente costuma estar no meio de um atendimento. Vá direto ao ponto, em português simples. Para procedimentos, use passos numerados curtos. Escreva em texto simples: sem tabelas e sem títulos; **negrito** pode ser usado para destacar o que não pode ser esquecido.
         - Você não precisa de dados pessoais de clientes (CPF, número de benefício, senha, conta) para explicar um procedimento. Se a atendente colar esse tipo de dado, responda à dúvida sem repeti-lo e lembre, em uma frase, que não é preciso informá-lo aqui.
         - Você é uma ferramenta de trabalho. Dúvidas rápidas de redação, contas ou uso do computador podem ser atendidas; para o resto, diga com gentileza que está aqui para ajudar no atendimento.
@@ -30,8 +30,114 @@ public static class AssistantPrompt
     /// </summary>
     public static string Shared(string generalInstructions, IEnumerable<AssistantScript> scripts)
     {
-        var text = new StringBuilder(Rules);
+        var text = Opening(generalInstructions);
+        var ordered = KnowledgeText.Ordered(scripts);
+        if (ordered.Count == 0)
+        {
+            text.Append("\n\nAinda não há nenhum conhecimento cadastrado na base. Avise a atendente disso quando ela perguntar sobre um procedimento de banco, e responda apenas com conhecimento geral, marcado como tal.");
+            return text.ToString();
+        }
 
+        text.Append("\n\nBase de conhecimento da Pontual:\n<base>");
+        foreach (var script in ordered)
+        {
+            text.Append('\n').Append(Render(script, script.Content, null));
+        }
+
+        text.Append("\n</base>");
+        return text.ToString();
+    }
+
+    /// <summary>
+    /// Modo índice, para quando a base não cabe inteira: a IA recebe a lista numerada dos conhecimentos e abre
+    /// o texto pelas ferramentas de <see cref="KnowledgeTools"/>. <paramref name="ordered"/> é a mesma lista dada a elas.
+    /// </summary>
+    public static string Index(string generalInstructions, IReadOnlyList<AssistantScript> ordered)
+    {
+        var text = Opening(generalInstructions);
+        text.Append(
+            """
+
+
+            A base de conhecimento da Pontual é grande demais para caber inteira aqui. Abaixo está só o índice: número, tipo, título e um resumo de cada conhecimento. O texto de verdade você lê com as ferramentas:
+            - abrir_conhecimento: abre um conhecimento pelo número (e pela parte, quando ele tem mais de uma).
+            - buscar_na_base: procura palavras em toda a base, quando o índice não deixa claro onde está a resposta.
+
+            Abra o que a pergunta envolve antes de responder, de preferência tudo na mesma rodada. O índice nunca basta para afirmar uma regra, um prazo ou um passo: ele diz onde a informação está, não qual ela é. Se a conversa já trouxe o conteúdo de que você precisa, não abra de novo. Para um cumprimento ou uma dúvida que não depende da base, responda direto.
+
+            <indice>
+            """);
+
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var item = ordered[i];
+            var parts = KnowledgeText.Parts(item.Content).Count;
+            text.Append('\n').Append(i + 1).Append(". [").Append(KnowledgeKind.Label(item.Kind)).Append("] ").Append(item.Title);
+            if (item.Bank.Length > 0)
+            {
+                text.Append(" | banco ou assunto: ").Append(item.Bank);
+            }
+
+            if (item.Category.Length > 0)
+            {
+                text.Append(" | categoria: ").Append(item.Category);
+            }
+
+            if (parts > 1)
+            {
+                text.Append(" | ").Append(parts).Append(" partes");
+            }
+
+            var summary = item.Description.Length > 0 ? item.Description : FirstLine(item.Content);
+            text.Append("\n   ").Append(summary.Length > 240 ? summary[..240] + "…" : summary);
+            if (item.Keywords.Length > 0)
+            {
+                text.Append("\n   palavras-chave: ").Append(item.Keywords);
+            }
+        }
+
+        text.Append("\n</indice>");
+        return text.ToString();
+    }
+
+    /// <summary>Um conhecimento do jeito que a IA o lê, inteiro ou uma parte dele.</summary>
+    public static string Render(AssistantScript item, string content, string? part)
+    {
+        var tag = item.Kind switch
+        {
+            KnowledgeKind.Document => "documento",
+            KnowledgeKind.Knowledge => "conhecimento",
+            _ => "roteiro",
+        };
+
+        var text = new StringBuilder().Append('<').Append(tag).Append(" titulo=\"").Append(Attribute(item.Title)).Append('"');
+        if (item.Bank.Length > 0)
+        {
+            text.Append(" banco=\"").Append(Attribute(item.Bank)).Append('"');
+        }
+
+        if (item.Category.Length > 0)
+        {
+            text.Append(" categoria=\"").Append(Attribute(item.Category)).Append('"');
+        }
+
+        if (part is not null)
+        {
+            text.Append(" trecho=\"").Append(part).Append('"');
+        }
+
+        text.Append(">\n");
+        if (item.AiInstructions.Length > 0)
+        {
+            text.Append("Como usar este conteúdo: ").Append(item.AiInstructions).Append("\n\n");
+        }
+
+        return text.Append(content).Append("\n</").Append(tag).Append('>').ToString();
+    }
+
+    private static StringBuilder Opening(string generalInstructions)
+    {
+        var text = new StringBuilder(Rules);
         if (generalInstructions.Length > 0)
         {
             text.Append("\n\nOrientações gerais da Pontual para você:\n<orientacoes_gerais>\n")
@@ -39,23 +145,15 @@ public static class AssistantPrompt
                 .Append("\n</orientacoes_gerais>");
         }
 
-        var ordered = scripts.OrderBy(s => s.Title, StringComparer.Ordinal).ThenBy(s => s.Id).ToList();
-        if (ordered.Count == 0)
-        {
-            text.Append("\n\nAinda não há nenhum roteiro operacional cadastrado. Avise a atendente disso quando ela perguntar sobre um procedimento de banco, e responda apenas com conhecimento geral, marcado como tal.");
-            return text.ToString();
-        }
+        return text;
+    }
 
-        text.Append("\n\nRoteiros operacionais da Pontual:\n<roteiros>");
-        foreach (var script in ordered)
-        {
-            text.Append("\n<roteiro titulo=\"").Append(script.Title.Replace('"', '\'')).Append("\">\n")
-                .Append(script.Content)
-                .Append("\n</roteiro>");
-        }
+    private static string Attribute(string value) => value.Replace('"', '\'').Replace('\n', ' ');
 
-        text.Append("\n</roteiros>");
-        return text.ToString();
+    private static string FirstLine(string content)
+    {
+        var end = content.IndexOf('\n');
+        return (end < 0 ? content : content[..end]).Trim();
     }
 
     /// <summary>Perfil de quem pergunta. Fica depois da parte comum, fora do cache compartilhado.</summary>

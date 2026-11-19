@@ -191,12 +191,44 @@ public sealed class TextSetting
     public const string AssistantInstructions = "assistant.instructions";
     /// <summary>Marca de que os roteiros iniciais já foram carregados (não voltam se a Central apagar algum).</summary>
     public const string AssistantScriptsSeeded = "assistant.scriptsSeeded";
+    /// <summary>"0" desliga a análise automática das conversas (perfil das atendentes e sugestões); o padrão é ligada.</summary>
+    public const string AssistantAutoAnalysis = "assistant.autoAnalysis";
 
     public required string Key { get; set; }
     public string Value { get; set; } = "";
 }
 
-/// <summary>Roteiro operacional (de um banco, em geral) que a assistente usa para responder.</summary>
+/// <summary>Tipos de conhecimento da assistente. Todos ficam na mesma tabela e chegam à IA pelo mesmo caminho.</summary>
+public static class KnowledgeKind
+{
+    public const string Script = "script";
+    public const string Document = "document";
+    public const string Knowledge = "knowledge";
+
+    public static readonly string[] All = [Script, Document, Knowledge];
+
+    public static string Label(string kind) => kind switch
+    {
+        Document => "documento",
+        Knowledge => "conhecimento",
+        _ => "roteiro",
+    };
+}
+
+/// <summary>Situação do arquivo de um documento enviado.</summary>
+public static class FileStatus
+{
+    public const string None = "";
+    public const string Processed = "processed";
+    /// <summary>PDF sem texto (escaneado): fica guardado à espera do leitor de PDF escaneado.</summary>
+    public const string NoText = "no_text";
+    public const string Error = "error";
+}
+
+/// <summary>
+/// Um conhecimento da assistente: roteiro operacional, documento enviado ou conhecimento operacional avulso.
+/// (O nome da classe e da tabela vem da primeira versão, que só tinha roteiros.)
+/// </summary>
 public sealed class AssistantScript
 {
     public Guid Id { get; set; }
@@ -205,6 +237,114 @@ public sealed class AssistantScript
     public bool Enabled { get; set; } = true;
     public DateTime UpdatedAt { get; set; }
     public string UpdatedByName { get; set; } = "";
+
+    public string Kind { get; set; } = KnowledgeKind.Script;
+    public string Description { get; set; } = "";
+    public string Category { get; set; } = "";
+    /// <summary>Banco ou assunto a que o conhecimento se refere.</summary>
+    public string Bank { get; set; } = "";
+    public string Keywords { get; set; } = "";
+    /// <summary>Como a IA deve usar este conhecimento; vai junto com o conteúdo.</summary>
+    public string AiInstructions { get; set; } = "";
+    /// <summary>Observações internas da Pontual; não vão para a IA.</summary>
+    public string Notes { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+    /// <summary>De onde veio: "manual", "arquivo", "atendentes" (sugestão aprovada) ou "sistema".</summary>
+    public string Source { get; set; } = "manual";
+    public string FileName { get; set; } = "";
+    public long FileSize { get; set; }
+    public string FileStatus { get; set; } = "";
+    public string FileError { get; set; } = "";
+}
+
+/// <summary>Ligação entre dois conhecimentos (ex.: um roteiro e o documento do banco). Não tem direção.</summary>
+public sealed class KnowledgeLink
+{
+    public Guid Id { get; set; }
+    public Guid FromId { get; set; }
+    public Guid ToId { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public static class SuggestionStatus
+{
+    public const string Pending = "pending";
+    public const string Approved = "approved";
+    public const string Rejected = "rejected";
+}
+
+public static class SuggestionKind
+{
+    /// <summary>A atendente marcou uma resposta como errada e escreveu a correção.</summary>
+    public const string Correction = "correction";
+    /// <summary>Assunto perguntado para o qual a base não tem resposta.</summary>
+    public const string Gap = "gap";
+    /// <summary>Informação nova que uma atendente contou na conversa.</summary>
+    public const string NewInfo = "new_info";
+    /// <summary>Conteúdo existente que parece errado, desatualizado ou confuso.</summary>
+    public const string Review = "review";
+
+    public static readonly string[] All = [Correction, Gap, NewInfo, Review];
+}
+
+/// <summary>
+/// Sugestão de conhecimento vinda das atendentes (pelo botão do chat) ou da análise das conversas.
+/// Nada daqui chega à IA antes de um administrador aprovar.
+/// </summary>
+public sealed class KnowledgeSuggestion
+{
+    public Guid Id { get; set; }
+    public required string Kind { get; set; }
+    public required string Title { get; set; }
+    public string Detail { get; set; } = "";
+    /// <summary>Rascunho do texto que viraria conhecimento.</summary>
+    public string ProposedContent { get; set; } = "";
+    public string Bank { get; set; } = "";
+    public string Category { get; set; } = "";
+    /// <summary>"attendant" (botão do chat) ou "analysis" (análise das conversas pela IA).</summary>
+    public string Source { get; set; } = "analysis";
+    public Guid? DeviceId { get; set; }
+    /// <summary>Resposta da assistente avaliada pela atendente (só nas correções vindas do chat).</summary>
+    public long? MessageId { get; set; }
+    public string AttendantName { get; set; } = "";
+    /// <summary>Pergunta de exemplo que originou a sugestão.</summary>
+    public string Question { get; set; } = "";
+    /// <summary>Resposta da assistente que foi corrigida (só nas correções).</summary>
+    public string Answer { get; set; } = "";
+    /// <summary>Quantas vezes o assunto apareceu nas conversas.</summary>
+    public int Occurrences { get; set; } = 1;
+    public string Status { get; set; } = SuggestionStatus.Pending;
+    /// <summary>Conhecimento a que a sugestão foi vinculada, ou que nasceu dela.</summary>
+    public Guid? ItemId { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public DateTime? ReviewedAt { get; set; }
+    public string ReviewedByName { get; set; } = "";
+}
+
+/// <summary>Avaliação que a atendente deu a uma resposta da assistente.</summary>
+public sealed class AssistantFeedback
+{
+    public long Id { get; set; }
+    public Guid DeviceId { get; set; }
+    public long MessageId { get; set; }
+    public bool Helpful { get; set; }
+    public string Text { get; set; } = "";
+    public DateTime At { get; set; }
+}
+
+/// <summary>Perfil de atendimento de uma atendente, montado pela IA a partir das conversas dela com a assistente.</summary>
+public sealed class AttendantInsight
+{
+    public Guid DeviceId { get; set; }
+    /// <summary>JSON do perfil (ver <c>AssistantAnalysis</c>).</summary>
+    public string ProfileJson { get; set; } = "";
+    /// <summary>Última fala já analisada: a próxima análise lê só o que veio depois.</summary>
+    public long AnalyzedThroughMessageId { get; set; }
+    public int MessagesAnalyzed { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public string Model { get; set; } = "";
+    public string LastError { get; set; } = "";
 }
 
 /// <summary>Perfil da assistente de uma atendente (uma máquina = uma atendente, ADR 0003).</summary>

@@ -36,6 +36,8 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AuditWriter>();
 builder.Services.AddSingleton<ScreenWatch>();
 builder.Services.AddSingleton<Pontual.Server.Assistant.IAssistantModel, Pontual.Server.Assistant.ClaudeAssistantModel>();
+// Lê as conversas novas das atendentes de tempos em tempos (perfil de atendimento e sugestões para a base).
+builder.Services.AddHostedService<Pontual.Server.Assistant.AnalysisWorker>();
 builder.Services.AddSingleton<IPasswordHasher<Admin>, PasswordHasher<Admin>>();
 
 builder.Services.AddRateLimiter(options =>
@@ -195,6 +197,7 @@ MonitorEndpoints.Map(api);
 TerminalEndpoints.Map(api);
 ScreenEndpoints.Map(api);
 AssistantEndpoints.Map(api);
+NeuralEndpoints.Map(api);
 
 app.Map("/api/{**rest}", () => Results.Json(new ErrorBody("Rota não encontrada."), statusCode: StatusCodes.Status404NotFound));
 

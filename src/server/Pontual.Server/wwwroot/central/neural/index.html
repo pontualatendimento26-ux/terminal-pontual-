@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Central Neural da IA — Pontual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="data:,">
+<link href="/central/neural/neural.css" rel="stylesheet">
+</head>
+<body>
+
+<div class="tela-cheia" id="carga" role="status"><span class="orbe girando" aria-hidden="true"></span><p>Conectando ao cérebro da IA…</p></div>
+
+<div class="tela-cheia" id="negado" hidden>
+  <span class="orbe" aria-hidden="true"></span>
+  <h1 id="negado-titulo">Acesso restrito</h1>
+  <p id="negado-texto">A Central Neural só abre para administradores e superadministradores.</p>
+  <a class="btn" href="/central/">Voltar para a Central do TI</a>
+</div>
+
+<div class="app" id="app" hidden>
+  <aside class="trilho" aria-label="Navegação da Central Neural">
+    <div class="marca"><span class="orbe pequeno" aria-hidden="true"></span><span><b>Central Neural</b><small>IA Pontual</small></span></div>
+    <nav id="nav">
+      <button type="button" data-ir="mapa"><i data-ic="cerebro"></i><span>Cérebro Neural</span></button>
+      <button type="button" data-ir="roteiros"><i data-ic="roteiro"></i><span>Roteiros</span><em id="n-roteiros"></em></button>
+      <button type="button" data-ir="documentos"><i data-ic="documento"></i><span>Documentos</span><em id="n-documentos"></em></button>
+      <button type="button" data-ir="aprendizado"><i data-ic="aprender"></i><span>Aprendizado</span><em class="alerta" id="n-pendentes" hidden></em></button>
+      <button type="button" data-ir="base"><i data-ic="base"></i><span>Base de Conhecimento</span><em id="n-base"></em></button>
+      <button type="button" data-ir="visao"><i data-ic="visao"></i><span>Visão Geral</span></button>
+    </nav>
+    <div class="trilho-fim">
+      <a href="/central/"><i data-ic="voltar"></i><span>Central do TI</span></a>
+      <div class="eu"><b id="eu-nome"></b><small id="eu-funcao"></small></div>
+    </div>
+  </aside>
+
+  <div class="palco">
+    <header class="barra">
+      <div class="barra-titulo"><h1 id="titulo"></h1><p id="subtitulo"></p></div>
+      <div class="busca" id="busca-caixa">
+        <i data-ic="lupa"></i>
+        <input id="busca" type="search" autocomplete="off" placeholder="Buscar em toda a base" aria-label="Buscar em toda a base de conhecimento" aria-controls="busca-lista">
+        <kbd>Ctrl K</kbd>
+        <div class="busca-lista" id="busca-lista" role="listbox" hidden></div>
+      </div>
+      <span class="chip" id="chip-modo"></span>
+    </header>
+    <div class="recado" id="recado" role="status" hidden><span id="recado-texto"></span><button type="button" class="icone" id="recado-fechar" aria-label="Dispensar a mensagem"><i data-ic="x"></i></button></div>
+
+    <section class="vista vista-mapa" data-vista="mapa">
+      <canvas id="mapa" tabindex="0" aria-label="Mapa neural da IA. O mesmo conteúdo está em lista na seção Base de Conhecimento. Setas movem o mapa, + e - aproximam e afastam, 0 enquadra tudo."></canvas>
+      <div class="mapa-filtros" id="mapa-filtros"></div>
+      <div class="mapa-acoes">
+        <div class="menu-caixa">
+          <button type="button" class="btn" id="mapa-novo" aria-haspopup="true" aria-expanded="false"><i data-ic="mais"></i>Adicionar</button>
+          <div class="menu" id="mapa-menu" hidden>
+            <button type="button" data-novo="script"><i data-ic="roteiro"></i>Novo roteiro</button>
+            <button type="button" data-novo="knowledge"><i data-ic="conhecimento"></i>Novo conhecimento</button>
+            <button type="button" data-novo="document"><i data-ic="documento"></i>Enviar documento</button>
+          </div>
+        </div>
+      </div>
+      <div class="mapa-zoom" role="group" aria-label="Controles do mapa">
+        <button type="button" class="icone" id="z-mais" title="Aproximar" aria-label="Aproximar"><i data-ic="mais"></i></button>
+        <button type="button" class="icone" id="z-menos" title="Afastar" aria-label="Afastar"><i data-ic="menos"></i></button>
+        <button type="button" class="icone" id="z-tudo" title="Enquadrar tudo" aria-label="Enquadrar tudo"><i data-ic="enquadrar"></i></button>
+        <button type="button" class="icone" id="z-abrir" title="Expandir todos os ramos" aria-label="Expandir todos os ramos"><i data-ic="expandir"></i></button>
+        <button type="button" class="icone" id="z-fechar" title="Recolher os ramos" aria-label="Recolher os ramos"><i data-ic="recolher"></i></button>
+      </div>
+      <p class="mapa-rodape" id="mapa-rodape"></p>
+      <div class="dica-no" id="dica-no" hidden></div>
+    </section>
+
+    <section class="vista rolagem" data-vista="roteiros" hidden><div class="conteudo" id="v-roteiros"></div></section>
+    <section class="vista rolagem" data-vista="documentos" hidden><div class="conteudo" id="v-documentos"></div></section>
+    <section class="vista rolagem" data-vista="aprendizado" hidden><div class="conteudo" id="v-aprendizado"></div></section>
+    <section class="vista rolagem" data-vista="base" hidden><div class="conteudo" id="v-base"></div></section>
+    <section class="vista rolagem" data-vista="visao" hidden><div class="conteudo" id="v-visao"></div></section>
+
+    <aside class="gaveta" id="gaveta" hidden aria-label="Detalhes"><div class="gaveta-corpo" id="gaveta-corpo"></div></aside>
+  </div>
+
+</div>
+
+<!-- ============================================================ diálogos -->
+<dialog id="dlg-item" class="largo" aria-labelledby="item-titulo-dlg"><form class="dlg" novalidate>
+  <h2 id="item-titulo-dlg">Novo roteiro</h2><p id="item-explica"></p>
+  <div class="grade">
+    <label id="item-tipo-caixa">Tipo<select class="campo" id="item-tipo"><option value="script">Roteiro</option><option value="knowledge">Conhecimento operacional</option></select></label>
+    <label>Status<select class="campo" id="item-status"><option value="1">Ativo: a IA usa</option><option value="0">Desativado: guardado, a IA não usa</option></select></label>
+    <label class="toda">Nome<input class="campo" id="item-nome" maxlength="120" autocomplete="off" placeholder="Ex.: Banco Exemplo — portabilidade INSS"></label>
+    <label class="toda">Descrição<input class="campo" id="item-descricao" maxlength="500" autocomplete="off" placeholder="Uma frase sobre o que este conteúdo cobre"></label>
+    <label>Banco ou assunto<input class="campo" id="item-banco" maxlength="80" autocomplete="off" list="lista-bancos" placeholder="Ex.: Safra"></label>
+    <label>Categoria<input class="campo" id="item-categoria" maxlength="60" autocomplete="off" list="lista-categorias" placeholder="Ex.: Procedimentos"></label>
+    <label class="toda">Palavras-chave<input class="campo" id="item-chaves" maxlength="300" autocomplete="off" placeholder="Separadas por vírgula. Ajudam a busca e o índice da IA"></label>
+    <label class="toda">Texto<textarea class="campo alto" id="item-texto" spellcheck="false" placeholder="O passo a passo, as regras, os documentos exigidos, os prazos."></textarea><span class="dica" id="item-conta"></span></label>
+    <label class="toda">Instruções para a IA (opcional)<textarea class="campo" id="item-instrucoes" maxlength="2000" placeholder="Como a IA deve usar este conteúdo. Ex.: sempre confirmar a espécie do benefício antes de aplicar esta regra."></textarea></label>
+    <label class="toda">Observações internas (opcional)<textarea class="campo" id="item-obs" maxlength="2000" placeholder="Só para a equipe. A IA não lê este campo."></textarea></label>
+  </div>
+  <datalist id="lista-bancos"></datalist><datalist id="lista-categorias"></datalist>
+  <p class="erro" id="item-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn" id="item-salvar">Salvar</button></div>
+</form></dialog>
+
+<dialog id="dlg-ligar" aria-labelledby="ligar-titulo"><form class="dlg" novalidate>
+  <h2 id="ligar-titulo">Vincular a outro conhecimento</h2>
+  <p>A ligação organiza a base e aparece no mapa. Ela não muda, sozinha, o que a IA responde.</p>
+  <label>Procurar<input class="campo" id="ligar-busca" type="search" autocomplete="off" placeholder="Nome, banco ou categoria"></label>
+  <div class="escolhas" id="ligar-lista" role="listbox" aria-label="Conhecimentos"></div>
+  <p class="erro" id="ligar-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Vincular</button></div>
+</form></dialog>
+
+<dialog id="dlg-sugestao" class="largo" aria-labelledby="sug-titulo-dlg"><form class="dlg" novalidate>
+  <h2 id="sug-titulo-dlg">Revisar sugestão</h2>
+  <p>Nada daqui chega à IA antes de você aprovar. Confira o texto: ele passa a valer como fonte oficial.</p>
+  <div class="origem" id="sug-origem"></div>
+  <div class="grade">
+    <label class="toda">Destino<select class="campo" id="sug-destino">
+      <option value="knowledge">Transformar em conhecimento novo</option>
+      <option value="script">Transformar em roteiro novo</option>
+      <option value="existente">Acrescentar a um conhecimento que já existe</option>
+    </select></label>
+    <label class="toda" id="sug-item-caixa" hidden>Conhecimento existente<select class="campo" id="sug-item"></select></label>
+    <label class="toda" id="sug-nome-caixa">Nome<input class="campo" id="sug-nome" maxlength="120" autocomplete="off"></label>
+    <label id="sug-banco-caixa">Banco ou assunto<input class="campo" id="sug-banco" maxlength="80" autocomplete="off" list="lista-bancos"></label>
+    <label id="sug-categoria-caixa">Categoria<input class="campo" id="sug-categoria" maxlength="60" autocomplete="off" list="lista-categorias"></label>
+    <label class="toda">Texto que a IA vai usar<textarea class="campo alto" id="sug-texto" spellcheck="false"></textarea><span class="dica" id="sug-dica"></span></label>
+  </div>
+  <p class="erro" id="sug-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Fechar</button><button type="button" class="btn claro" id="sug-rascunho">Salvar rascunho</button><button type="submit" class="btn">Aprovar</button></div>
+</form></dialog>
+
+<dialog id="dlg-texto" class="largo" aria-labelledby="texto-titulo"><div class="dlg">
+  <h2 id="texto-titulo"></h2><p id="texto-sub"></p>
+  <pre class="leitura" id="texto-corpo" tabindex="0"></pre>
+  <div class="acoes"><button type="button" class="btn" data-fechar>Fechar</button></div>
+</div></dialog>
+
+<dialog id="dlg-confirmar" aria-labelledby="conf-titulo" aria-describedby="conf-texto"><form class="dlg" novalidate>
+  <h2 id="conf-titulo"></h2><p id="conf-texto"></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn perigo" id="conf-ok"></button></div>
+</form></dialog>
+
+<input type="file" id="arquivo" accept=".pdf,.docx,.txt" multiple hidden>
+
+<script src="/central/neural/mapa.js"></script>
+<script src="/central/neural/neural.js"></script>
+</body>
+</html>

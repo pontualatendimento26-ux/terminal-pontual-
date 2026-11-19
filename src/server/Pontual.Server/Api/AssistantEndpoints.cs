@@ -28,10 +28,11 @@ public static class AssistantEndpoints
 
     private const int MaxQuestion = 4000;
     private const int MaxScript = 60_000;
-    private const int MaxAllScripts = 1_200_000;
+    private const int MaxAllScripts = KnowledgeLimits.All;
     private const int MaxProfileInstructions = 4000;
     private const int MaxGeneralInstructions = 8000;
-    private const int MaxScripts = 200;
+    private const int MaxScripts = KnowledgeLimits.Items;
+    private const int MaxFeedback = 2000;
 
     /// <summary>Quantas falas da conversa atual voltam para a IA como contexto.</summary>
     private const int ContextTurns = 40;
@@ -50,12 +51,14 @@ public static class AssistantEndpoints
     private sealed record SettingsBody(string? ApiKey, bool? RemoveKey, string? Model, string? Instructions);
     private sealed record ScriptBody(string? Title, string? Content, bool? Enabled);
     private sealed record ProfileBody(string? Instructions, bool? Enabled);
+    private sealed record FeedbackBody(long? MessageId, bool? Helpful, string? Text);
 
     public static void Map(RouteGroupBuilder api)
     {
         // Terminal.
         api.MapGet("/device/assistant", StateAsync).Terminal().RequireRateLimiting(TerminalEndpoints.DeviceRateLimit);
         api.MapPost("/device/assistant/messages", AskAsync).Terminal().RequireRateLimiting(RateLimit);
+        api.MapPost("/device/assistant/feedback", FeedbackAsync).Terminal().RequireRateLimiting(TerminalEndpoints.DeviceRateLimit);
 
         // Central.
         api.MapGet("/assistant", OverviewAsync).Panel(Permission.ConfigRead);
@@ -99,7 +102,84 @@ public static class AssistantEndpoints
             .ToListAsync(ct);
         messages.Reverse();
 
-        return Results.Ok(new { enabled, attendantName = device.AttendantName, messages = messages.Select(MessageDto) });
+        var oldest = messages.Count > 0 ? messages[0].Id : 0;
+        var feedback = await db.AssistantFeedback.AsNoTracking()
+            .Where(f => f.DeviceId == device.Id && f.MessageId >= oldest)
+            .Select(f => new { messageId = f.MessageId, helpful = f.Helpful })
+            .ToListAsync(ct);
+
+        return Results.Ok(new { enabled, attendantName = device.AttendantName, messages = messages.Select(MessageDto), feedback });
+    }
+
+    /// <summary>
+    /// A atendente avalia uma resposta. "Não ajudou" com um texto vira uma sugestão de correção, que fica
+    /// pendente na Central Neural: a assistente só passa a usar o que um administrador aprovar.
+    /// </summary>
+    private static async Task<IResult> FeedbackAsync(HttpContext context, PontualDb db, TimeProvider time, CancellationToken ct)
+    {
+        var device = context.Device();
+        var body = await context.ReadBodyAsync<FeedbackBody>();
+        if (body.MessageId is not { } messageId || body.Helpful is not { } helpful)
+        {
+            throw ApiError.BadRequest("Informe a resposta avaliada e se ela ajudou.");
+        }
+
+        var text = Multiline(body.Text);
+        if (text.Length > MaxFeedback)
+        {
+            throw ApiError.BadRequest($"O comentário aceita no máximo {MaxFeedback} caracteres.");
+        }
+
+        var answer = await db.AssistantMessages.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.Id == messageId && m.DeviceId == device.Id && m.Role == AssistantRole.Assistant, ct)
+            ?? throw ApiError.NotFound("Resposta não encontrada.");
+
+        var now = time.GetUtcNow().UtcDateTime;
+        var feedback = await db.AssistantFeedback.FirstOrDefaultAsync(f => f.DeviceId == device.Id && f.MessageId == messageId, ct);
+        if (feedback is null)
+        {
+            feedback = new AssistantFeedback { DeviceId = device.Id, MessageId = messageId };
+            db.AssistantFeedback.Add(feedback);
+        }
+
+        feedback.Helpful = helpful;
+        feedback.Text = helpful ? "" : text;
+        feedback.At = now;
+
+        if (!helpful && text.Length > 0)
+        {
+            var question = await db.AssistantMessages.AsNoTracking()
+                .Where(m => m.DeviceId == device.Id && m.ConversationId == answer.ConversationId && m.Id < messageId && m.Role == AssistantRole.User)
+                .OrderByDescending(m => m.Id)
+                .Select(m => m.Text)
+                .FirstOrDefaultAsync(ct) ?? "";
+
+            var suggestion = await db.KnowledgeSuggestions
+                .FirstOrDefaultAsync(s => s.MessageId == messageId && s.DeviceId == device.Id && s.Status == SuggestionStatus.Pending, ct);
+            if (suggestion is null)
+            {
+                suggestion = new KnowledgeSuggestion
+                {
+                    Id = Guid.NewGuid(),
+                    Kind = SuggestionKind.Correction,
+                    Title = Input.Truncated($"Correção de {device.Label}: {question.ReplaceLineEndings(" ")}", 120),
+                    Source = "attendant",
+                    DeviceId = device.Id,
+                    MessageId = messageId,
+                    AttendantName = device.Label,
+                    Question = question.Length > 2000 ? question[..2000] : question,
+                    Answer = answer.Text.Length > 6000 ? answer.Text[..6000] : answer.Text,
+                    CreatedAt = now,
+                };
+                db.KnowledgeSuggestions.Add(suggestion);
+            }
+
+            suggestion.Detail = text;
+            suggestion.UpdatedAt = now;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
     }
 
     /// <summary>
@@ -147,7 +227,8 @@ public static class AssistantEndpoints
             db.AssistantMessages.Add(asked);
             await db.SaveChangesAsync(ct);
 
-            var request = await BuildRequestAsync(db, device, apiKey, conversationId, now, ct);
+            // No modo índice a IA consulta a base antes de responder; a atendente vê o que está sendo consultado.
+            var request = await BuildRequestAsync(db, device, apiKey, conversationId, now, status => SendAsync(context, new { status }, ct), ct);
 
             context.Response.ContentType = "text/event-stream";
             context.Response.Headers.CacheControl = "no-store";
@@ -223,10 +304,16 @@ public static class AssistantEndpoints
         return Results.Empty;
     }
 
-    private static async Task<AssistantRequest> BuildRequestAsync(PontualDb db, Device device, string apiKey, Guid conversationId, DateTime now, CancellationToken ct)
+    /// <summary>A base ligada cabe inteira nas instruções? Senão, a IA recebe o índice e abre o que precisar.</summary>
+    public static bool FitsInline(long enabledChars) => enabledChars <= KnowledgeLimits.InlineBudget;
+
+    private static async Task<AssistantRequest> BuildRequestAsync(
+        PontualDb db, Device device, string apiKey, Guid conversationId, DateTime now, Func<string, Task> onStatus, CancellationToken ct)
     {
         var settings = await db.TextSettings.AsNoTracking().ToDictionaryAsync(s => s.Key, s => s.Value, ct);
-        var scripts = await db.AssistantScripts.AsNoTracking().Where(s => s.Enabled).ToListAsync(ct);
+        var scripts = KnowledgeText.Ordered(await db.AssistantScripts.AsNoTracking().Where(s => s.Enabled && s.Content != "").ToListAsync(ct));
+        var inline = FitsInline(scripts.Sum(s => (long)s.Content.Length));
+        var general = settings.GetValueOrDefault(TextSetting.AssistantInstructions, "");
         var profile = await db.AssistantProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.DeviceId == device.Id, ct);
 
         var recent = await db.AssistantMessages.AsNoTracking()
@@ -239,9 +326,11 @@ public static class AssistantEndpoints
         return new AssistantRequest(
             apiKey,
             ModelOf(settings),
-            AssistantPrompt.Shared(settings.GetValueOrDefault(TextSetting.AssistantInstructions, ""), scripts),
+            inline ? AssistantPrompt.Shared(general, scripts) : AssistantPrompt.Index(general, scripts),
             AssistantPrompt.Personal(device, profile, now),
-            Turns(recent));
+            Turns(recent),
+            inline ? null : new KnowledgeTools(scripts),
+            inline ? null : onStatus);
     }
 
     /// <summary>
@@ -285,7 +374,9 @@ public static class AssistantEndpoints
         var hasStoredKey = settings.TryGetValue(TextSetting.AssistantApiKey, out var stored) && AssistantSecrets.Unprotect(stored) is { Length: > 0 };
         var hasKey = hasStoredKey || !string.IsNullOrWhiteSpace(configuration["Assistant:ApiKey"]);
 
+        // Esta seção cuida só dos roteiros; documentos e demais conhecimentos ficam na Central Neural.
         var scripts = await db.AssistantScripts.AsNoTracking()
+            .Where(s => s.Kind == KnowledgeKind.Script)
             .OrderBy(s => s.Title)
             .Select(s => new { id = s.Id, title = s.Title, enabled = s.Enabled, chars = s.Content.Length, updatedAt = s.UpdatedAt, updatedBy = s.UpdatedByName })
             .ToListAsync(ct);
@@ -438,6 +529,7 @@ public static class AssistantEndpoints
             Title = Input.Required(body.Title, "o título do roteiro", 80),
             Content = ScriptContent(body.Content),
             Enabled = body.Enabled ?? true,
+            CreatedAt = time.GetUtcNow().UtcDateTime,
             UpdatedAt = time.GetUtcNow().UtcDateTime,
             UpdatedByName = admin.Name,
         };
@@ -558,7 +650,7 @@ public static class AssistantEndpoints
 
     private static object MessageDto(AssistantMessage m) => new { id = m.Id, role = m.Role, text = m.Text, at = m.At, conversationId = m.ConversationId };
 
-    private static string ModelOf(Dictionary<string, string> settings) =>
+    internal static string ModelOf(Dictionary<string, string> settings) =>
         settings.TryGetValue(TextSetting.AssistantModel, out var model) && Models.Any(m => m.Id == model) ? model : DefaultModel;
 
     /// <summary>Grava a configuração; devolve se o valor mudou.</summary>
@@ -597,8 +689,8 @@ public static class AssistantEndpoints
         return content;
     }
 
-    /// <summary>O conjunto dos roteiros ligados vai inteiro para a IA a cada pergunta; por isso tem um teto.</summary>
-    private static async Task EnsureRoomAsync(PontualDb db, AssistantScript script, CancellationToken ct)
+    /// <summary>A base ligada tem um teto: ela vai inteira para a IA enquanto couber, e como índice depois disso.</summary>
+    internal static async Task EnsureRoomAsync(PontualDb db, AssistantScript script, CancellationToken ct)
     {
         if (!script.Enabled)
         {

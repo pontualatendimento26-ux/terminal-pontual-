@@ -32,7 +32,11 @@ public sealed class AssistantTests
 
             return "end_turn";
         }
+
+        public Task<string> AskJsonAsync(AssistantJsonRequest request, CancellationToken ct) =>
+            throw new NotSupportedException("Estes testes não pedem análise.");
     }
+
 
     private static async Task<bool> AssistantOnAsync(HttpClient terminal) =>
         (await terminal.PostAsJsonAsync("/api/v1/device/heartbeat", new { appsInUse = Array.Empty<string>(), sessionStartedAt = DateTime.UtcNow }).Json())

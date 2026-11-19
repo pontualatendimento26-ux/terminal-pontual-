@@ -46,29 +46,126 @@ public static class DbInitializer
     /// </summary>
     private static async Task CreateMissingTablesAsync(PontualDb db)
     {
-        string[] added = ["TextSettings", "AssistantScripts", "AssistantProfiles", "AssistantMessages"];
+        string[] added =
+        [
+            "TextSettings", "AssistantScripts", "AssistantProfiles", "AssistantMessages",
+            "KnowledgeLinks", "KnowledgeSuggestions", "AssistantFeedback", "AttendantInsights",
+        ];
 
-        foreach (var statement in db.Database.GenerateCreateScript().Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        foreach (var statement in Statements(db))
         {
             string? sql = null;
             if (added.Any(table => statement.StartsWith($"CREATE TABLE \"{table}\"", StringComparison.Ordinal)))
             {
                 sql = "CREATE TABLE IF NOT EXISTS" + statement["CREATE TABLE".Length..];
             }
-            else if (statement.StartsWith("CREATE INDEX ", StringComparison.Ordinal)
-                && added.Any(table => statement.Contains($" ON \"{table}\"", StringComparison.Ordinal)))
+            else if (added.Any(table => statement.Contains($" ON \"{table}\"", StringComparison.Ordinal)))
             {
-                sql = "CREATE INDEX IF NOT EXISTS" + statement["CREATE INDEX".Length..];
+                foreach (var start in (string[])["CREATE UNIQUE INDEX", "CREATE INDEX"])
+                {
+                    if (statement.StartsWith(start + " ", StringComparison.Ordinal))
+                    {
+                        sql = start + " IF NOT EXISTS" + statement[start.Length..];
+                        break;
+                    }
+                }
             }
 
             if (sql is not null)
             {
-                // Texto gerado pelo próprio EF a partir do modelo; não contém dado de fora.
-#pragma warning disable EF1002
-                await db.Database.ExecuteSqlRawAsync(sql.Replace("{", "{{").Replace("}", "}}"));
-#pragma warning restore EF1002
+                await RunAsync(db, sql);
             }
         }
+    }
+
+    private static string[] Statements(PontualDb db) =>
+        db.Database.GenerateCreateScript().Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+    // Texto gerado pelo próprio EF a partir do modelo, ou fixo deste arquivo; não contém dado de fora.
+    private static Task RunAsync(PontualDb db, string sql)
+    {
+#pragma warning disable EF1002
+        return db.Database.ExecuteSqlRawAsync(sql.Replace("{", "{{").Replace("}", "}}"));
+#pragma warning restore EF1002
+    }
+
+    /// <summary>
+    /// A tabela dos roteiros ganhou colunas quando virou a base de conhecimento (tipo, banco, categoria,
+    /// arquivo…). Num banco criado antes, cada coluna que falta é acrescentada com um valor padrão; as linhas
+    /// e as colunas antigas não são tocadas.
+    /// </summary>
+    private static async Task AddMissingColumnsAsync(PontualDb db, string table)
+    {
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var connection = db.Database.GetDbConnection();
+        await db.Database.OpenConnectionAsync();
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"PRAGMA table_info(\"{table}\")";
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                existing.Add(reader.GetString(1));
+            }
+        }
+        finally
+        {
+            await db.Database.CloseConnectionAsync();
+        }
+
+        var create = Statements(db).First(s => s.StartsWith($"CREATE TABLE \"{table}\"", StringComparison.Ordinal));
+        var addedNow = new List<string>();
+        foreach (var raw in create.Split('\n'))
+        {
+            var line = raw.Trim().TrimEnd(',');
+            if (!line.StartsWith('"'))
+            {
+                continue;
+            }
+
+            var name = line[1..line.IndexOf('"', 1)];
+            if (existing.Contains(name))
+            {
+                continue;
+            }
+
+            // O SQLite só aceita acrescentar coluna obrigatória se ela tiver um valor padrão.
+            if (line.Contains("NOT NULL", StringComparison.Ordinal) && !line.Contains("DEFAULT", StringComparison.Ordinal))
+            {
+                line += line.Contains(" INTEGER", StringComparison.Ordinal) ? " DEFAULT 0" : " DEFAULT ''";
+            }
+
+            await RunAsync(db, $"ALTER TABLE \"{table}\" ADD COLUMN {line}");
+            addedNow.Add(name);
+        }
+
+        if (table != "AssistantScripts" || addedNow.Count == 0)
+        {
+            return;
+        }
+
+        await RunAsync(db, "UPDATE \"AssistantScripts\" SET \"Kind\" = 'script' WHERE \"Kind\" = ''");
+        await RunAsync(db, "UPDATE \"AssistantScripts\" SET \"CreatedAt\" = \"UpdatedAt\" WHERE \"CreatedAt\" = ''");
+        await RunAsync(db, "UPDATE \"AssistantScripts\" SET \"Source\" = CASE WHEN \"UpdatedByName\" = 'Sistema' THEN 'sistema' ELSE 'manual' END WHERE \"Source\" = ''");
+        if (addedNow.Contains("Bank"))
+        {
+            // Os roteiros que já existiam têm o banco no título ("Finanto - INSS"): só organiza o que já está escrito.
+            var scripts = await db.AssistantScripts.Where(s => s.Bank == "" && s.Category == "").ToListAsync();
+            foreach (var script in scripts)
+            {
+                (script.Bank, script.Category) = BankAndCategory(script.Title);
+            }
+
+            await db.SaveChangesAsync();
+        }
+    }
+
+    /// <summary>"Finanto - INSS" → ("Finanto", "INSS"). Sem o separador, nada é deduzido.</summary>
+    private static (string Bank, string Category) BankAndCategory(string title)
+    {
+        var cut = title.LastIndexOf(" - ", StringComparison.Ordinal);
+        return cut <= 0 ? ("", "") : (title[..cut].Trim(), title[(cut + 3)..].Trim());
     }
 
     /// <summary>
@@ -95,7 +192,12 @@ public static class DbInitializer
                 continue;
             }
 
-            db.AssistantScripts.Add(new AssistantScript { Id = Guid.NewGuid(), Title = title, Content = content, UpdatedAt = now, UpdatedByName = "Sistema" });
+            var (bank, category) = BankAndCategory(title);
+            db.AssistantScripts.Add(new AssistantScript
+            {
+                Id = Guid.NewGuid(), Title = title, Content = content, Bank = bank, Category = category,
+                CreatedAt = now, UpdatedAt = now, UpdatedByName = "Sistema", Source = "sistema",
+            });
             added++;
         }
 
@@ -126,6 +228,7 @@ public static class DbInitializer
         await db.Database.EnsureCreatedAsync();
         await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
         await CreateMissingTablesAsync(db);
+        await AddMissingColumnsAsync(db, "AssistantScripts");
         await SeedScriptsAsync(db, scope.ServiceProvider);
 
         if (!await db.Settings.AnyAsync(s => s.Key == Setting.ConfigVersion))

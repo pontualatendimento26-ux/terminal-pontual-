@@ -5,7 +5,7 @@
 
 const Assistente = (() => {
   let dados = null, falha = null;
-  let roteiroAberto = null;   // nulo = roteiro novo
+  let roteiroAberto = null;   // roteiro em edição (roteiros novos nascem na Central Neural)
   let aoSalvarTexto = null;   // o que o diálogo de texto grava (orientações gerais ou de uma atendente)
 
   const mil = (n) => Number(n || 0).toLocaleString('pt-BR');
@@ -82,15 +82,16 @@ const Assistente = (() => {
 
   function desenharRoteiros() {
     const edita = pode('config.edit'), lista = dados.scripts || [];
-    $('novo-roteiro').hidden = !edita;
+    // Roteiros novos, documentos e o mapa do que a IA sabe ficam na Central Neural (administradores).
+    $('ir-neural').hidden = !edita;
     const ligados = lista.filter((r) => r.enabled).reduce((soma, r) => soma + r.chars, 0);
     $('roteiros-frase').textContent = lista.length
-      ? `${plural(lista.length, 'roteiro', 'roteiros')}; ${mil(ligados)} de ${mil(dados.limits.allScripts)} caracteres em uso. A assistente lê todos os roteiros ligados a cada pergunta.`
-      : 'Cole aqui o roteiro de cada banco. A assistente só conhece o que estiver cadastrado e ligado.';
+      ? `${plural(lista.length, 'roteiro', 'roteiros')}; ${mil(ligados)} caracteres em uso. Para adicionar roteiros e documentos, e ver tudo o que a IA sabe, abra a Central Neural.`
+      : 'Nenhum roteiro cadastrado. A assistente só conhece o que estiver cadastrado e ligado na Central Neural.';
     const colunas = ['Roteiro', 'Tamanho', 'Atualizado', 'Em uso', ''];
     const cab = el('thead', {}, el('tr', {}, ...colunas.map((t) => (t ? el('th', { textContent: t, scope: 'col' }) : el('th', { scope: 'col', className: 'estreita' }, el('span', { className: 'so-leitor', textContent: 'Ações' }))))));
     if (!lista.length) {
-      trocar($('tb-roteiros'), [cab, el('tbody', {}, el('tr', {}, el('td', { colSpan: colunas.length, className: 'vazio', textContent: 'Nenhum roteiro cadastrado. Use "Adicionar roteiro" para colar o primeiro.' })))]);
+      trocar($('tb-roteiros'), [cab, el('tbody', {}, el('tr', {}, el('td', { colSpan: colunas.length, className: 'vazio', textContent: 'Nenhum roteiro cadastrado. Abra a Central Neural para adicionar o primeiro.' })))]);
       return;
     }
     const corpo = el('tbody', {}, ...lista.map((r) => {
@@ -187,7 +188,6 @@ const Assistente = (() => {
     (resumo ? $('ia-roteiro-texto') : $('ia-roteiro-titulo')).focus();
   }
   $('ia-roteiro-texto').oninput = () => { if (dados) contar($('ia-roteiro-texto'), $('ia-roteiro-conta'), dados.limits.script); };
-  $('novo-roteiro').onclick = () => abrirRoteiro(null, null);
   aoEnviar('dlg-ia-roteiro', 'ia-roteiro-erro', async () => {
     const titulo = $('ia-roteiro-titulo').value.trim(), conteudo = $('ia-roteiro-texto').value.trim();
     exigir(titulo, 'Informe o título do roteiro (em geral, o nome do banco).');
