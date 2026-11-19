@@ -118,6 +118,53 @@ public sealed class PanelTests
     }
 
     [Fact]
+    public async Task Superadmin_apaga_e_troca_a_senha_de_contas()
+    {
+        using var app = new TestApp();
+        var owner = await app.OwnerAsync();
+        var bia = await app.AdminAsync(owner, "Bia", "admin");
+        var caio = await app.AdminAsync(owner, "Caio", "admin");
+        var admins = (await owner.GetAsync("/api/v1/admins").Json()).EnumerateArray().ToList();
+        Guid IdOf(string email) => admins.Single(a => a.GetProperty("email").GetString() == email).GetProperty("id").GetGuid();
+        var biaId = IdOf("bia@pontual.test");
+        var caioId = IdOf("caio@pontual.test");
+        var ownerId = IdOf(TestApp.OwnerEmail);
+        const string NewPassword = "senha-nova-1234";
+
+        // Administrador comum não apaga nem troca senha de ninguém.
+        Assert.Equal(HttpStatusCode.Forbidden, (await bia.DeleteAsync($"/api/v1/admins/{caioId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await bia.PostAsJsonAsync($"/api/v1/admins/{caioId}/password", new { password = NewPassword })).StatusCode);
+
+        // Troca de senha: senha curta é recusada; a nova vale, a antiga não, e a sessão aberta cai.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await owner.PostAsJsonAsync($"/api/v1/admins/{biaId}/password", new { password = "curta" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await owner.PostAsJsonAsync($"/api/v1/admins/{biaId}/password", new { password = NewPassword })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await bia.GetAsync("/api/v1/auth/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await app.Panel().PostAsJsonAsync("/api/v1/auth/login", new { email = "bia@pontual.test", password = TestApp.Password })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await app.Panel().PostAsJsonAsync("/api/v1/auth/login", new { email = "bia@pontual.test", password = NewPassword })).StatusCode);
+
+        // Apagar: a própria conta não; outra conta sim, e quem estava logado sai na hora.
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.DeleteAsync($"/api/v1/admins/{ownerId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.DeleteAsync($"/api/v1/admins/{Guid.NewGuid()}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.DeleteAsync($"/api/v1/admins/{caioId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await caio.GetAsync("/api/v1/auth/me")).StatusCode);
+        Assert.DoesNotContain("caio@pontual.test", (await owner.GetAsync("/api/v1/admins").Json()).GetRawText());
+
+        // O superadministrador continua logado depois de trocar a própria senha.
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await owner.PostAsJsonAsync($"/api/v1/admins/{ownerId}/password", new { password = NewPassword })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync("/api/v1/auth/me")).StatusCode);
+
+        var audit = (await owner.GetAsync("/api/v1/audit").Json()).GetRawText();
+        Assert.Contains("apagou a conta de Caio", audit);
+        Assert.Contains("trocou a senha de Bia", audit);
+    }
+
+    [Fact]
     public async Task Sem_cookie_devolve_401()
     {
         using var app = new TestApp();

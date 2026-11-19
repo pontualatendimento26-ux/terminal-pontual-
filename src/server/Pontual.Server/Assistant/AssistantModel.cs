@@ -13,6 +13,8 @@ public sealed record AssistantTurn(string Role, string Text);
 /// conhecimento) e por isso vai primeiro e fica em cache; <see cref="PersonalInstructions"/> é o perfil de quem
 /// pergunta. Com <see cref="Tools"/>, a IA consulta a base antes de responder (modo índice) e
 /// <see cref="OnStatus"/> recebe a frase do que ela está consultando.
+/// <see cref="ScreenText"/> e <see cref="ScreenImage"/> (JPEG) são o que estava na tela da atendente na hora
+/// da pergunta; acompanham só a última fala e não entram no cache nem no histórico.
 /// </summary>
 public sealed record AssistantRequest(
     string ApiKey,
@@ -21,7 +23,9 @@ public sealed record AssistantRequest(
     string PersonalInstructions,
     IReadOnlyList<AssistantTurn> Turns,
     IAssistantTools? Tools = null,
-    Func<string, Task>? OnStatus = null);
+    Func<string, Task>? OnStatus = null,
+    string? ScreenText = null,
+    byte[]? ScreenImage = null);
 
 /// <summary>Um pedido cuja resposta é um JSON no formato de <see cref="Schema"/> (análise das conversas).</summary>
 public sealed record AssistantJsonRequest(string ApiKey, string Model, string Instructions, string Input, Dictionary<string, JsonElement> Schema);
@@ -105,11 +109,35 @@ public sealed class ClaudeAssistantModel(ILogger<ClaudeAssistantModel> logger) :
     private static List<MessageParam> MessagesOf(AssistantRequest request)
     {
         var messages = new List<MessageParam>(request.Turns.Count);
-        foreach (var turn in request.Turns)
+        var withScreen = request.ScreenText is { Length: > 0 } || request.ScreenImage is not null;
+        for (var i = 0; i < request.Turns.Count; i++)
         {
-            messages.Add(turn.Role == "assistant"
-                ? new AssistantMessageParam { Content = turn.Text }
-                : new UserMessageParam { Content = turn.Text });
+            var turn = request.Turns[i];
+            if (turn.Role == "assistant")
+            {
+                messages.Add(new AssistantMessageParam { Content = turn.Text });
+            }
+            else if (withScreen && i == request.Turns.Count - 1)
+            {
+                // A tela vem antes da pergunta: primeiro a foto, depois o texto lido da tela, por fim o que a atendente escreveu.
+                var blocks = new List<ContentBlockParam>();
+                if (request.ScreenImage is { } image)
+                {
+                    blocks.Add(new ImageBlockParam { Source = new Base64ImageSource { Data = Convert.ToBase64String(image), MediaType = MediaType.ImageJpeg } });
+                }
+
+                if (request.ScreenText is { Length: > 0 } screen)
+                {
+                    blocks.Add(new TextBlockParam { Text = screen });
+                }
+
+                blocks.Add(new TextBlockParam { Text = turn.Text });
+                messages.Add(new UserMessageParam { Content = blocks });
+            }
+            else
+            {
+                messages.Add(new UserMessageParam { Content = turn.Text });
+            }
         }
 
         return messages;

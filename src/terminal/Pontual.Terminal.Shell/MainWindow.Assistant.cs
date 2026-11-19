@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using System.Windows;
 using Microsoft.Web.WebView2.Core;
@@ -48,6 +49,7 @@ public partial class MainWindow
 
     private void CloseAssistant()
     {
+        _whatsappTimer?.Stop();
         _panel?.ForceClose();
         _panel = null;
         _bubble?.Close();
@@ -153,7 +155,8 @@ public partial class MainWindow
         ApplySettings(core, isHome: true);
 
         // O mesmo objeto window.PONTUAL da tela inicial, com o token da máquina, e só para a página do próprio servidor.
-        var data = new { token = _enrollment.Token, hostname = Environment.MachineName, hosted = true, locked = _locked };
+        // "screen" avisa à página que este programa sabe entregar o que está na tela (as versões antigas não sabem).
+        var data = new { token = _enrollment.Token, hostname = Environment.MachineName, hosted = true, locked = _locked, screen = true };
         await core.AddScriptToExecuteOnDocumentCreatedAsync(
             "(function(){if(window.top!==window||location.origin!==" + JsonSerializer.Serialize(_homeOrigin) + ")return;" +
             "Object.defineProperty(window,'PONTUAL',{value:Object.freeze(" + JsonSerializer.Serialize(data, Json) + "),writable:false,configurable:false});})();");
@@ -188,17 +191,270 @@ public partial class MainWindow
 
             using var document = JsonDocument.Parse(e.WebMessageAsJson);
             var root = document.RootElement;
-            if (root.ValueKind == JsonValueKind.Object
-                && root.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String
-                && type.GetString() == "assistant-close")
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String)
+            {
+                return;
+            }
+
+            if (type.GetString() == "assistant-close")
             {
                 _panel?.Hide();
                 Activate();
+            }
+            else if (type.GetString() == "assistant-context"
+                && root.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String && id.GetString() is { Length: > 0 and <= 40 } requestId)
+            {
+                _ = SendScreenAsync(requestId);
             }
         }
         catch (Exception ex)
         {
             Log.Error("mensagem da assistente", ex);
         }
+    }
+
+    // ------------------------------------------------------------- o que está na tela
+    // Quando a atendente pergunta, a página da assistente pede o que está aberto: o texto e a foto da aba
+    // em uso e a conversa aberta no WhatsApp. Tudo é lido na hora, vai junto com aquela pergunta e não é
+    // guardado neste computador. A Central pode desligar isso (a página nem chega a pedir).
+
+    private const int ScreenTimeoutMs = 2500;
+    private const int ScreenImageWidth = 1400;
+    private const int ScreenImageBytes = 380_000;
+
+    /// <summary>
+    /// Roda dentro da página do site e devolve { address, title, whatsapp, contact, text }. Só lê: não clica,
+    /// não digita, não envia nada. Campo de senha nunca é lido. No WhatsApp devolve as últimas mensagens da
+    /// conversa aberta; nos outros sites, o texto visível e os campos preenchidos.
+    /// </summary>
+    private const string ScreenScript =
+        """
+        (() => { try {
+          const corta = (s, n, fim) => {
+            s = String(s || '').replace(/[‎‏‪-‮]/g, '').replace(/[ \t]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+            return s.length <= n ? s : (fim ? s.slice(-n) : s.slice(0, n));
+          };
+          const saida = { address: location.host + location.pathname, title: corta(document.title, 200), whatsapp: /(^|\.)whatsapp\.com$/.test(location.hostname), contact: '', text: '' };
+          if (saida.whatsapp) {
+            const main = document.querySelector('#main');
+            if (!main) { saida.text = 'Nenhuma conversa aberta no WhatsApp.'; return saida; }
+            const cabecalho = main.querySelector('header');
+            const nome = cabecalho ? cabecalho.querySelector('span[dir="auto"], span[title]') : null;
+            saida.contact = corta(nome ? (nome.innerText || nome.getAttribute('title')) : cabecalho ? cabecalho.innerText.split('\n')[0] : '', 80);
+            const linhas = [];
+            for (const m of main.querySelectorAll('[data-pre-plain-text]')) {
+              const hora = ((m.getAttribute('data-pre-plain-text') || '').match(/\[(\d{1,2}:\d{2})/) || [])[1] || '';
+              const quem = m.closest('.message-out') ? 'Atendente' : 'Cliente';
+              const texto = corta(m.innerText, 1500);
+              if (texto) linhas.push('[' + hora + '] ' + quem + ': ' + texto);
+            }
+            saida.text = linhas.length ? corta(linhas.slice(-40).join('\n'), 8000, true) : corta(main.innerText, 8000, true);
+            return saida;
+          }
+          const partes = [corta(document.body ? document.body.innerText : '', 9000)];
+          const documentos = [document];
+          for (const quadro of document.querySelectorAll('iframe')) {
+            try { const d = quadro.contentDocument; if (d && d.body) { documentos.push(d); partes.push(corta(d.body.innerText, 4000)); } } catch (e) { }
+          }
+          const campos = [];
+          for (const d of documentos) for (const c of d.querySelectorAll('input, select, textarea')) {
+            if (campos.length >= 60) break;
+            const tipo = (c.type || '').toLowerCase();
+            if (['password', 'hidden', 'submit', 'button', 'file', 'image', 'reset'].includes(tipo) || !c.offsetParent) continue;
+            const valor = corta(c.tagName === 'SELECT' ? (c.selectedOptions[0] ? c.selectedOptions[0].text : '')
+              : (tipo === 'checkbox' || tipo === 'radio') ? (c.checked ? 'marcado' : '') : c.value, 120);
+            if (!valor) continue;
+            let rotulo = '';
+            if (c.id) { const l = d.querySelector('label[for="' + CSS.escape(c.id) + '"]'); if (l) rotulo = l.innerText; }
+            campos.push(corta(rotulo || c.getAttribute('aria-label') || c.placeholder || c.name || c.id || 'campo', 60) + ': ' + valor);
+          }
+          saida.text = corta(partes.filter(Boolean).join('\n\n'), 12000) + (campos.length ? '\n\nCampos preenchidos:\n' + campos.join('\n') : '');
+          return saida;
+        } catch (e) { return null; } })()
+        """;
+
+    private async Task SendScreenAsync(string requestId)
+    {
+        object? screen = null;
+        try
+        {
+            screen = await CollectScreenAsync();
+        }
+        catch (Exception ex)
+        {
+            // Sem a tela, a pergunta segue só com o que a atendente escreveu.
+            Log.Error("leitura da tela para a assistente", ex);
+        }
+
+        try
+        {
+            _panel?.View.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "assistant-context-result", id = requestId, screen }, Json));
+        }
+        catch (Exception ex)
+        {
+            Log.Error("resposta à assistente", ex);
+        }
+    }
+
+    // ------------------------------------------------------------- aprendizado com o WhatsApp
+    // Quando a Central pede (no heartbeat), o Terminal registra a conversa de WhatsApp que está aberta: a cada
+    // poucos segundos lê as últimas mensagens e, se algo mudou, manda ao servidor. Assim cada conversa que a
+    // atendente abre entra na análise da assistente. Nada é guardado neste computador; no servidor, a conversa
+    // é apagada depois de analisada.
+
+    private static readonly TimeSpan WhatsAppEvery = TimeSpan.FromSeconds(8);
+    private readonly Dictionary<string, string> _whatsappSent = [];
+    private System.Windows.Threading.DispatcherTimer? _whatsappTimer;
+    private bool _whatsappBusy;
+
+    private void UpdateWhatsAppLearning(bool on)
+    {
+        if (!on)
+        {
+            _whatsappTimer?.Stop();
+            _whatsappSent.Clear();
+            return;
+        }
+
+        if (_whatsappTimer is null)
+        {
+            _whatsappTimer = new System.Windows.Threading.DispatcherTimer { Interval = WhatsAppEvery };
+            _whatsappTimer.Tick += async (_, _) => await CaptureWhatsAppAsync();
+        }
+
+        _whatsappTimer.Start();
+    }
+
+    private async Task CaptureWhatsAppAsync()
+    {
+        if (_whatsappBusy || _api is not { } api || _state != HeartbeatResponse.StateActive)
+        {
+            return;
+        }
+
+        _whatsappBusy = true;
+        try
+        {
+            foreach (var tab in _tabs.Where(t => !t.IsClosed && t.BlockedHost is null && IsWhatsApp(t)).Take(2).ToArray())
+            {
+                if (tab.View.CoreWebView2 is not { } core || await WithinAsync(core.ExecuteScriptAsync(ScreenScript)) is not { Length: > 0 } json)
+                {
+                    continue;
+                }
+
+                using var document = JsonDocument.Parse(json);
+                var root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object
+                    || !root.TryGetProperty("whatsapp", out var flag) || flag.ValueKind != JsonValueKind.True
+                    || !root.TryGetProperty("contact", out var contactValue) || contactValue.GetString() is not { Length: > 0 } contact
+                    || !root.TryGetProperty("text", out var textValue) || textValue.GetString() is not { Length: > 0 } text)
+                {
+                    continue;
+                }
+
+                // Só as mensagens já separadas ("[hora] Cliente: …"). Se a página do WhatsApp mudar e vier texto
+                // solto, nada é mandado: emendar texto solto encheria a análise de repetições.
+                if (!text.StartsWith('[') || (_whatsappSent.TryGetValue(contact, out var sent) && sent == text))
+                {
+                    continue;
+                }
+
+                await api.SendWhatsAppAsync(contact, text, _cts.Token);
+                if (_whatsappSent.Count > 300)
+                {
+                    _whatsappSent.Clear();
+                }
+
+                _whatsappSent[contact] = text;
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Sem rede ou página fechada no meio da leitura: tenta de novo na próxima volta.
+            Log.Error("registro do WhatsApp", ex);
+        }
+        finally
+        {
+            _whatsappBusy = false;
+        }
+    }
+
+    private static bool IsWhatsApp(SiteTab tab) => tab.Target.Contains("whatsapp", StringComparison.OrdinalIgnoreCase);
+
+    private static async Task<T?> WithinAsync<T>(Task<T> task) where T : class =>
+        await Task.WhenAny(task, Task.Delay(ScreenTimeoutMs)) == task ? await task : null;
+
+    private async Task<object> CollectScreenAsync()
+    {
+        var active = _active is { IsClosed: false, BlockedHost: null } ? _active : null;
+        // A aba em uso e, se o WhatsApp estiver aberto em outra aba, a conversa dele também.
+        var tabs = new List<SiteTab>();
+        if (active is not null)
+        {
+            tabs.Add(active);
+        }
+
+        tabs.AddRange(_tabs.Where(t => t != active && !t.IsClosed && t.BlockedHost is null && IsWhatsApp(t)).Take(1));
+
+        var parts = new List<object>();
+        foreach (var tab in tabs)
+        {
+            if (tab.View.CoreWebView2 is not { } core || await WithinAsync(core.ExecuteScriptAsync(ScreenScript)) is not { Length: > 0 } json)
+            {
+                continue;
+            }
+
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            string Field(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
+            var whatsapp = root.TryGetProperty("whatsapp", out var flag) && flag.ValueKind == JsonValueKind.True;
+            parts.Add(new
+            {
+                kind = whatsapp ? "whatsapp" : "page",
+                active = tab == active,
+                name = tab.Name,
+                address = Field("address"),
+                title = Field("title"),
+                contact = Field("contact"),
+                text = Field("text"),
+            });
+        }
+
+        string? image = null;
+        if (active?.View.CoreWebView2 is { } activeCore)
+        {
+            using var stream = new MemoryStream();
+            var capture = activeCore.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Jpeg, stream);
+            if (await Task.WhenAny(capture, Task.Delay(ScreenTimeoutMs)) == capture)
+            {
+                await capture;
+                var bytes = stream.ToArray();
+                image = Convert.ToBase64String(await Task.Run(() => ScreenCapture.Shrink(bytes, ScreenImageWidth, ScreenImageBytes)));
+            }
+        }
+
+        if (active is null)
+        {
+            // Nenhum site em primeiro plano: a atendente está na tela inicial (ou num programa do Windows).
+            var open = AppsInUse();
+            parts.Insert(0, new
+            {
+                kind = "home",
+                active = true,
+                name = "Tela inicial",
+                address = "",
+                title = "",
+                contact = "",
+                text = open.Length > 0 ? "Tela inicial do Terminal. Abertos agora: " + string.Join(", ", open) + "." : "Tela inicial do Terminal, sem nenhum site ou programa aberto.",
+            });
+        }
+
+        return new { parts, image };
     }
 }

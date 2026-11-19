@@ -48,6 +48,42 @@ linha antiga é apagada.
   mais e depois de 20 minutos de conversa parada. Desliga-se na aba Aprendizado.
 - Nenhuma sugestão chega à IA sem aprovação: aprovar cria um conhecimento novo ou acrescenta o texto
   a um que já existe.
+- O aprendizado tem duas partes. A base de conhecimento (regras, roteiros) é uma só para todas. O perfil
+  é individual: `AssistantPrompt.Learned` transforma `AttendantInsights.ProfileJson` em texto e
+  `Personal` o envia só nas perguntas daquela atendente, para a IA adaptar a ajuda a ela. O perfil
+  descreve a pessoa e não vale como fonte de regra.
+
+## Tela e WhatsApp
+
+Desde o Terminal 2.3.0, a assistente recebe o que está aberto na tela no momento da pergunta.
+
+- O programa (`MainWindow.Assistant.cs`, `CollectScreenAsync`) lê a aba em uso e, se o WhatsApp estiver
+  aberto em outra aba, a conversa dele. O script roda dentro da página, só lê e nunca lê campo de senha.
+  Do WhatsApp vêm as últimas 40 mensagens da conversa aberta; dos outros sites, o texto visível, os
+  campos preenchidos e uma foto da aba.
+- A página do chat pede a tela ao programa (`assistant-context`) e a manda no campo `screen` de
+  `POST /device/assistant/messages`.
+- O conteúdo vai para a IA só com aquela pergunta. No banco fica apenas o nome do que estava aberto
+  (`AssistantMessages.Context`, ex.: "WhatsApp, Safra").
+- Três interruptores: na Central (Assistente → "Tela e WhatsApp", chave `assistant.screen`), no chat
+  (a atendente desliga para as próximas perguntas) e a versão do programa (o 2.2.0 não entrega a tela).
+- Para responder, a IA só vê a conversa aberta no momento da pergunta. O aprendizado contínuo é outro caminho (abaixo).
+
+## Aprendizado com o WhatsApp
+
+Desde o Terminal 2.4.0, cada conversa de WhatsApp que a atendente abre entra na análise.
+
+- O servidor avisa o Terminal no heartbeat (`whatsAppLearning`). Ligado, o Terminal lê a conversa aberta a
+  cada 8 segundos (`CaptureWhatsAppAsync`) e, se algo mudou, manda para `POST /device/assistant/whatsapp`.
+- O servidor guarda uma linha por atendente e contato em `WhatsAppCaptures`, emendando o que chega sem
+  repetir mensagens (`MergeTranscript`). É uma fila: a conversa é apagada depois de analisada, ou em 7 dias.
+- A análise (`AssistantAnalysis`) lê as conversas da fila junto com as perguntas feitas à assistente,
+  atualiza o perfil (campo `atendimento`: como ela atende os clientes) e cria sugestões pendentes.
+  Com a base até 60 mil caracteres, o texto da base vai junto para a IA comparar com o que foi dito.
+- Interruptor na Central Neural → Aprendizado → "Aprender com o WhatsApp" (chave
+  `assistant.whatsappLearning`). Desligar apaga a fila.
+- Só são enviadas mensagens já separadas ("[hora] Cliente: …"). Se a página do WhatsApp Web mudar e o
+  Terminal só conseguir texto solto, nada é registrado até o script ser ajustado.
 
 ## Pendências conhecidas
 

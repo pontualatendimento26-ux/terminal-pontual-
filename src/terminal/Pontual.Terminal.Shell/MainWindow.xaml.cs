@@ -692,6 +692,7 @@ public partial class MainWindow : Window
             _maintenance = heartbeat.Maintenance;
             _observationMode = heartbeat.ObservationMode;
             _assistantEnabled = heartbeat.Assistant;
+            UpdateWhatsAppLearning(heartbeat.WhatsAppLearning);
             if (!string.IsNullOrWhiteSpace(heartbeat.AttendantName))
             {
                 _attendantName = heartbeat.AttendantName;

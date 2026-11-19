@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Pontual.Server.Assistant;
+using Pontual.Server.Data;
 
 namespace Pontual.Server.Tests.Api;
 
@@ -51,6 +53,75 @@ public sealed class AssistantTests
         Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
         return [.. raw.Split("\n\n", StringSplitOptions.RemoveEmptyEntries)
             .Select(line => JsonDocument.Parse(line["data: ".Length..]).RootElement.Clone())];
+    }
+
+    [Fact]
+    public async Task Tela_e_whatsapp_acompanham_a_pergunta_e_nao_ficam_gravados()
+    {
+        var model = new FakeModel();
+        using var app = new TestApp { AssistantModel = model };
+        var owner = await app.OwnerAsync();
+        var (deviceId, terminal) = await app.ApprovedDeviceAsync(owner, "PC-01", "Maria Souza");
+        await owner.PutAsJsonAsync("/api/v1/assistant/settings", new { apiKey = Key });
+        Assert.True((await terminal.GetAsync("/api/v1/device/assistant").Json()).GetProperty("screen").GetBoolean());
+
+        static async Task<List<JsonElement>> AskWithAsync(HttpClient client, object body)
+        {
+            var response = await client.PostAsJsonAsync("/api/v1/device/assistant/messages", body);
+            var raw = await response.Content.ReadAsStringAsync();
+            Assert.True(response.IsSuccessStatusCode, $"{(int)response.StatusCode}: {raw}");
+            return [.. raw.Split("\n\n", StringSplitOptions.RemoveEmptyEntries).Select(line => JsonDocument.Parse(line["data: ".Length..]).RootElement.Clone())];
+        }
+
+        object[] parts =
+        [
+            new { kind = "page", active = true, name = "Safra", address = "epfweb.safra.com.br/Proposta", title = "Nova proposta", text = "Erro: margem insuficiente" },
+            new { kind = "whatsapp", active = false, name = "WhatsApp Web", contact = "João Cliente", text = "[10:32] Cliente: quero portabilidade, meu CPF é 123" },
+        ];
+        var jpeg = Convert.ToBase64String([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]);
+        var events = await AskWithAsync(terminal, new { text = "O que respondo para ele?", screen = new { image = jpeg, parts } });
+        Assert.Equal("Safra, WhatsApp", events[0].GetProperty("screen").GetString());
+
+        // A IA recebe o texto da tela, a conversa do WhatsApp e a foto, junto da pergunta e fora do histórico.
+        var request = model.Requests[^1];
+        Assert.Contains("<site nome=\"Safra\" em_primeiro_plano=\"sim\" endereco=\"epfweb.safra.com.br/Proposta\"", request.ScreenText);
+        Assert.Contains("Erro: margem insuficiente", request.ScreenText);
+        Assert.Contains("<whatsapp contato=\"João Cliente\">", request.ScreenText);
+        Assert.Contains("quero portabilidade", request.ScreenText);
+        Assert.Equal(7, request.ScreenImage!.Length);
+        Assert.Equal("O que respondo para ele?", Assert.Single(request.Turns).Text);
+        Assert.DoesNotContain("João", request.SharedInstructions);
+        // A assistente sabe que vê a tela e que as conversas são usadas para ela aprender.
+        Assert.Contains("você recebe a aba que ela está usando e a conversa do WhatsApp", request.SharedInstructions);
+        Assert.Contains("se perguntarem se você aprende com as conversas, a resposta é sim", request.SharedInstructions);
+
+        // A pergunta seguinte, sem tela, não carrega a tela anterior.
+        await AskAsync(terminal, "E depois?");
+        Assert.Null(model.Requests[^1].ScreenText);
+        Assert.Null(model.Requests[^1].ScreenImage);
+        Assert.DoesNotContain(model.Requests[^1].Turns, t => t.Text.Contains("portabilidade"));
+
+        // No histórico fica só o nome do que estava aberto, nunca o conteúdo da tela.
+        var history = (await owner.GetAsync($"/api/v1/assistant/conversations/{deviceId}").Json()).GetRawText();
+        Assert.Contains("Safra, WhatsApp", history);
+        Assert.DoesNotContain("margem insuficiente", history);
+        Assert.DoesNotContain("portabilidade", history);
+        Assert.DoesNotContain("Cliente", history);
+
+        // Foto que não é JPEG é descartada; o texto segue.
+        await AskWithAsync(terminal, new { text = "E esta?", screen = new { image = Convert.ToBase64String([0x89, 0x50, 0x4E, 0x47, 1, 2]), parts } });
+        Assert.Null(model.Requests[^1].ScreenImage);
+        Assert.NotNull(model.Requests[^1].ScreenText);
+
+        // Desligado na Central, o servidor ignora a tela mesmo que o Terminal a mande.
+        await owner.PutAsJsonAsync("/api/v1/assistant/settings", new { screenContext = false });
+        Assert.False((await terminal.GetAsync("/api/v1/device/assistant").Json()).GetProperty("screen").GetBoolean());
+        var off = await AskWithAsync(terminal, new { text = "E agora?", screen = new { image = jpeg, parts } });
+        Assert.Equal("", off[0].GetProperty("screen").GetString());
+        Assert.Null(model.Requests[^1].ScreenText);
+        Assert.Null(model.Requests[^1].ScreenImage);
+        Assert.Contains("você não recebe a tela nem o WhatsApp", model.Requests[^1].SharedInstructions);
+        Assert.Contains("proibiu a assistente de ver a tela", (await owner.GetAsync("/api/v1/audit").Json()).GetRawText());
     }
 
     private static string Answer(IEnumerable<JsonElement> events) =>
@@ -144,6 +215,68 @@ public sealed class AssistantTests
         var conversation = await owner.GetAsync($"/api/v1/assistant/conversations/{deviceId}").Json();
         Assert.Equal(6, conversation.GetArrayLength());
         Assert.Contains("leu as conversas de Maria Souza", (await owner.GetAsync("/api/v1/audit").Json()).GetRawText());
+    }
+
+    [Fact]
+    public async Task O_que_a_analise_aprendeu_de_uma_atendente_vai_so_para_ela()
+    {
+        var model = new FakeModel();
+        using var app = new TestApp { AssistantModel = model };
+        var owner = await app.OwnerAsync();
+        var (deviceId, maria) = await app.ApprovedDeviceAsync(owner, "PC-01", "Maria Souza");
+        var (_, joana) = await app.ApprovedDeviceAsync(owner, "PC-02", "Joana Lima");
+        await owner.PutAsJsonAsync("/api/v1/assistant/settings", new { apiKey = Key });
+
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PontualDb>();
+            db.AttendantInsights.Add(new AttendantInsight
+            {
+                DeviceId = deviceId,
+                ProfileJson = """{"resumo":"Atende rápido.","experiencia":"indefinida","dificuldades":["portabilidade no Safra","margem negativa"],"temas":[],"bancos":[{"nome":"BRB","perguntas":3},{"nome":"Inter","perguntas":1}]}""",
+                UpdatedAt = DateTime.UtcNow,
+            });
+            db.SaveChanges();
+        }
+
+        await AskAsync(maria, "Oi");
+        await AskAsync(joana, "Oi");
+
+        var personal = model.Requests[0].PersonalInstructions;
+        Assert.Contains("Resumo: Atende rápido.", personal);
+        Assert.Contains("Dificuldades: portabilidade no Safra; margem negativa", personal);
+        Assert.DoesNotContain("indefinida", personal);
+        Assert.Contains("Nunca imite o que o perfil aponta como dificuldade", personal);
+        // A regra de respeito ao cliente vale para todas as atendentes.
+        Assert.Contains("Com o cliente, o tom é sempre respeitoso e profissional", model.Requests[0].SharedInstructions);
+        Assert.Contains("não escreva essa resposta", model.Requests[1].SharedInstructions);
+        Assert.Contains("Bancos com que mais trabalha: BRB; Inter", personal);
+        Assert.DoesNotContain("portabilidade no Safra", model.Requests[0].SharedInstructions);
+        // A outra atendente não recebe nada do perfil da Maria.
+        Assert.DoesNotContain("perfil_da_atendente", model.Requests[1].PersonalInstructions);
+        Assert.DoesNotContain("Safra", model.Requests[1].PersonalInstructions);
+
+        Assert.Equal("", AssistantPrompt.Learned("isto não é json"));
+        Assert.Equal("", AssistantPrompt.Learned(null));
+    }
+
+    [Fact]
+    public void Perfil_importado_vale_para_a_atendente_de_mesmo_nome()
+    {
+        var settings = new Dictionary<string, string>
+        {
+            [TextSetting.AssistantImportedProfiles] = """{"Gabriela":{"resumo":"G"},"Ana":{"resumo":"A"},"Ana Paula":{"resumo":"AP"},"Fernanda":{"resumo":"F"}}""",
+        };
+
+        Assert.Contains("\"G\"", AssistantPrompt.ImportedProfile(settings, "GABI"));
+        Assert.Contains("\"G\"", AssistantPrompt.ImportedProfile(settings, "Gabriela Souza"));
+        Assert.Contains("\"F\"", AssistantPrompt.ImportedProfile(settings, "fernanda"));
+        // "Ana" bate exato; "An" é curto demais; nome sem perfil não recebe o de ninguém.
+        Assert.Contains("\"A\"", AssistantPrompt.ImportedProfile(settings, "Ana"));
+        Assert.Equal("", AssistantPrompt.ImportedProfile(settings, "An"));
+        Assert.Equal("", AssistantPrompt.ImportedProfile(settings, "Sarah"));
+        Assert.Equal("", AssistantPrompt.ImportedProfile(settings, null));
+        Assert.Equal("", AssistantPrompt.ImportedProfile(new Dictionary<string, string>(), "Ana"));
     }
 
     [Fact]

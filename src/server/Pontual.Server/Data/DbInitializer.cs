@@ -49,7 +49,7 @@ public static class DbInitializer
         string[] added =
         [
             "TextSettings", "AssistantScripts", "AssistantProfiles", "AssistantMessages",
-            "KnowledgeLinks", "KnowledgeSuggestions", "AssistantFeedback", "AttendantInsights",
+            "KnowledgeLinks", "KnowledgeSuggestions", "AssistantFeedback", "AttendantInsights", "WhatsAppCaptures",
         ];
 
         foreach (var statement in Statements(db))
@@ -229,6 +229,8 @@ public static class DbInitializer
         await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
         await CreateMissingTablesAsync(db);
         await AddMissingColumnsAsync(db, "AssistantScripts");
+        await AddMissingColumnsAsync(db, "AssistantMessages");
+        await AddMissingColumnsAsync(db, "AttendantInsights");
         await SeedScriptsAsync(db, scope.ServiceProvider);
 
         if (!await db.Settings.AnyAsync(s => s.Key == Setting.ConfigVersion))

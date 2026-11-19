@@ -40,6 +40,28 @@ internal static class ScreenCapture
         return result;
     }
 
+    /// <summary>
+    /// Reduz uma imagem já capturada (a foto de uma aba, para a assistente) ao limite de largura e de tamanho.
+    /// </summary>
+    public static byte[] Shrink(byte[] image, int maxWidth, int maxBytes)
+    {
+        using var input = new MemoryStream(image);
+        var source = BitmapFrame.Create(input, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+        source.Freeze();
+        var scale = Math.Min(1.0, (double)maxWidth / source.PixelWidth);
+        byte[] result = [];
+        foreach (var (quality, factor) in new[] { (80, 1.0), (68, 1.0), (58, 0.85), (50, 0.7) })
+        {
+            result = Encode(source, scale * factor, quality);
+            if (result.Length <= maxBytes)
+            {
+                break;
+            }
+        }
+
+        return result;
+    }
+
     private static BitmapSource Capture()
     {
         var x = GetSystemMetrics(SmXVirtualScreen);

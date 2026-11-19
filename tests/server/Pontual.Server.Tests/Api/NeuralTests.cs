@@ -377,7 +377,7 @@ public sealed class NeuralTests
 
         var sentToModel = Assert.Single(model.JsonRequests);
         Assert.Contains("ATENDENTE: Qual a carência do Lume?", sentToModel.Input);
-        Assert.Contains("[roteiro] Finanto - INSS", sentToModel.Input);
+        Assert.Contains("<roteiro titulo=\"Finanto - INSS\"", sentToModel.Input);
         Assert.Equal("claude-opus-5-5", sentToModel.Model);
 
         var attendant = await owner.GetAsync($"/api/v1/neural/attendants/{deviceId}").Json();
@@ -406,6 +406,78 @@ public sealed class NeuralTests
         var audit = (await owner.GetAsync("/api/v1/audit").Json()).GetRawText();
         Assert.Contains("mandou analisar 4 falas de Maria Souza", audit);
         Assert.Contains("leu o perfil de atendimento de Maria Souza", audit);
+    }
+
+    [Fact]
+    public async Task Conversas_do_whatsapp_entram_na_analise_e_sao_apagadas_depois()
+    {
+        var model = new FakeBrain
+        {
+            Json = """
+                {"perfil":{"resumo":"Atende portabilidade.","atendimento":"Responde rápido e pede o banco de origem logo no começo.","estilo":"Direta.","experiencia":"intermediaria",
+                "bancos":[{"nome":"Banrisul","perguntas":1}],"temas":["portabilidade"],"dificuldades":[],"pontos_fortes":["conduz a conversa"],"recomendacoes":[]},
+                "sugestoes":[{"tipo":"gap","titulo":"Portabilidade do Banrisul para maiores de 70","detalhe":"Cliente perguntou e a base não cobre.","banco":"Banrisul","conteudo_sugerido":"","pergunta_exemplo":"Com 70 anos posso portar do Banrisul?","ocorrencias":1,"sugestao_existente":0}]}
+                """,
+        };
+        using var app = new TestApp { AssistantModel = model };
+        var owner = await app.OwnerAsync();
+        var (deviceId, terminal) = await app.ApprovedDeviceAsync(owner, "PC-01", "Maria Souza");
+
+        static async Task<bool> LearningAsync(HttpClient client) =>
+            (await client.PostAsJsonAsync("/api/v1/device/heartbeat", new { appsInUse = Array.Empty<string>(), sessionStartedAt = DateTime.UtcNow }).Json())
+                .GetProperty("whatsAppLearning").GetBoolean();
+        static Task<HttpResponseMessage> SendAsync(HttpClient client, string contact, string text) =>
+            client.PostAsJsonAsync("/api/v1/device/assistant/whatsapp", new { contact, text });
+        async Task<int> QueueAsync() => (await owner.GetAsync("/api/v1/neural").Json()).GetProperty("attendants")[0].GetProperty("whatsappPending").GetInt32();
+
+        // Sem a chave da IA a assistente está desligada: nada é registrado.
+        Assert.False(await LearningAsync(terminal));
+        Assert.Equal(HttpStatusCode.NoContent, (await SendAsync(terminal, "João", "[10:00] Cliente: oi")).StatusCode);
+        Assert.Equal(0, await QueueAsync());
+
+        await owner.PutAsJsonAsync("/api/v1/assistant/settings", new { apiKey = Key });
+        Assert.True(await LearningAsync(terminal));
+
+        // O Terminal manda a conversa aberta várias vezes; o servidor emenda sem repetir mensagens.
+        await SendAsync(terminal, "João da Silva", "[10:31] Cliente: quero portabilidade\n[10:32] Atendente: qual o seu banco?");
+        await SendAsync(terminal, "João da Silva", "[10:32] Atendente: qual o seu banco?\n[10:33] Cliente: Banrisul, tenho 70 anos");
+        await SendAsync(terminal, "João da Silva", "[10:31] Cliente: quero portabilidade\n[10:32] Atendente: qual o seu banco?");
+        await SendAsync(terminal, "Ana Costa", "[11:00] Cliente: bom dia");
+        Assert.Equal(2, await QueueAsync());
+
+        var result = await owner.PostAsync($"/api/v1/neural/attendants/{deviceId}/analyze", null).Json();
+        Assert.Equal(2, result.GetProperty("conversationsRead").GetInt32());
+        Assert.Equal(0, result.GetProperty("messagesRead").GetInt32());
+        Assert.Equal(1, result.GetProperty("newSuggestions").GetInt32());
+
+        var input = Assert.Single(model.JsonRequests).Input;
+        Assert.Contains("[10:31] Cliente: quero portabilidade\n[10:32] Atendente: qual o seu banco?\n[10:33] Cliente: Banrisul, tenho 70 anos\n</conversa>", input);
+        Assert.Contains("[11:00] Cliente: bom dia", input);
+        // Com a base pequena, o texto dos roteiros vai junto para a IA comparar com o que foi dito ao cliente.
+        Assert.Contains("<roteiro titulo=\"Banrisul - INSS\"", input);
+        Assert.Contains("Nenhuma pergunta nova.", input);
+
+        // Lidas pela IA, as conversas saem do servidor; ficam o perfil e a sugestão pendente.
+        Assert.Equal(0, await QueueAsync());
+        var attendant = await owner.GetAsync($"/api/v1/neural/attendants/{deviceId}").Json();
+        Assert.Equal(2, attendant.GetProperty("whatsappAnalyzed").GetInt32());
+        Assert.StartsWith("Responde rápido", attendant.GetProperty("profile").GetProperty("atendimento").GetString());
+        Assert.Single((await owner.GetAsync("/api/v1/neural/suggestions?status=pending").Json()).EnumerateArray());
+        Assert.Contains("mandou analisar 2 conversas de WhatsApp de Maria Souza", (await owner.GetAsync("/api/v1/audit").Json()).GetRawText());
+
+        // Sem nada novo, a IA não é chamada.
+        await owner.PostAsync($"/api/v1/neural/attendants/{deviceId}/analyze", null).Json();
+        Assert.Single(model.JsonRequests);
+
+        // Desligado na Central: o Terminal é avisado, a fila é apagada e novos envios são descartados.
+        await SendAsync(terminal, "Ana Costa", "[11:05] Cliente: ainda aí?");
+        Assert.Equal(1, await QueueAsync());
+        await owner.PutAsJsonAsync("/api/v1/neural/settings", new { whatsAppLearning = false });
+        Assert.False(await LearningAsync(terminal));
+        Assert.Equal(0, await QueueAsync());
+        await SendAsync(terminal, "Ana Costa", "[11:06] Cliente: oi");
+        Assert.Equal(0, await QueueAsync());
+        Assert.Contains("desligou o registro das conversas do WhatsApp", (await owner.GetAsync("/api/v1/audit").Json()).GetRawText());
     }
 
     [Fact]

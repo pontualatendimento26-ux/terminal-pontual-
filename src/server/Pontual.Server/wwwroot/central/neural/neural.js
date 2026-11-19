@@ -219,7 +219,7 @@ function grafo() {
   }
   nos.push({ id: 'r:attendant', pai: 'ia', tipo: 'ramo', ramo: 'attendant', rotulo: 'Atendentes', n: d.attendants.length });
   for (const a of d.attendants) {
-    nos.push({ id: `a:${a.deviceId}`, pai: 'r:attendant', tipo: 'attendant', rotulo: a.name, estado: a.hasProfile ? 'active' : a.questions ? 'pending' : 'disabled', novo: a.newMessages > 0 && a.hasProfile });
+    nos.push({ id: `a:${a.deviceId}`, pai: 'r:attendant', tipo: 'attendant', rotulo: a.name, estado: a.hasProfile ? 'active' : a.questions || a.whatsappPending ? 'pending' : 'disabled', novo: (a.newMessages > 0 || a.whatsappPending > 0) && a.hasProfile });
   }
   nos.push({ id: 'r:suggestion', pai: 'ia', tipo: 'ramo', ramo: 'suggestion', rotulo: 'Aprendizado', n: d.suggestions.pending });
   const agruparSug = d.pendingSuggestions.length > 10;
@@ -273,7 +273,7 @@ function dicaDoNo(no, x, y) {
   const linhas = [];
   if (no.tipo === 'nucleo') linhas.push('O núcleo: a assistente da Pontual.', 'Clique para ver como ela lê a base.');
   else if (no.tipo === 'ramo' || no.tipo === 'grupo') linhas.push(`${plural(no.n ?? no.filhos.length, 'item', 'itens')}. Clique para ${E.mapa.recolhidos.has(no.id) ? 'abrir' : 'fechar'}.`);
-  else if (no.tipo === 'attendant') linhas.push('Atendente', no.estado === 'active' ? 'Perfil montado pela IA' : no.estado === 'pending' ? 'Tem conversas ainda sem análise' : 'Ainda não conversou com a assistente');
+  else if (no.tipo === 'attendant') linhas.push('Atendente', no.estado === 'active' ? 'Perfil montado pela IA' : no.estado === 'pending' ? 'Tem conversas ainda sem análise' : 'Ainda sem conversas para analisar');
   else if (no.tipo === 'suggestion') linhas.push('Sugestão pendente de aprovação');
   else linhas.push(`${TIPOS[no.tipo].um}${no.sub ? ` · ${no.sub}` : ''}`, `${ESTADOS[no.estado] || ''}${no.novo ? ' · atualizado nos últimos 7 dias' : ''}`);
   dica.replaceChildren(el('b', { textContent: no.rotulo }), ...linhas.filter(Boolean).map((l) => el('span', { textContent: l })));
@@ -423,7 +423,7 @@ async function gavetaAtendente(deviceId) {
   if (E.gaveta !== chave) return;
   const p = a.profile;
   const analisar = botao(p ? 'Atualizar o perfil agora' : 'Montar o perfil agora', 'raio', 'btn mini');
-  analisar.disabled = !a.newMessages || !E.d.settings.hasKey;
+  analisar.disabled = !(a.newMessages || a.whatsappPending) || !E.d.settings.hasKey;
   analisar.onclick = () => analisarAtendente(deviceId, a.name, analisar);
   const lista = (itens) => (itens && itens.length ? el('ul', { className: 'pontos' }, ...itens.map((t) => el('li', { textContent: t }))) : el('p', { className: 'nota', textContent: 'Nada registrado.' }));
   const maior = p && p.bancos && p.bancos.length ? Math.max(...p.bancos.map((b) => b.perguntas || 0), 1) : 1;
@@ -435,11 +435,14 @@ async function gavetaAtendente(deviceId) {
     el('dl', { className: 'dados' },
       dado('Computador', a.hostname), dado('Perguntas feitas', mil(a.questions)),
       dado('Falas analisadas', mil(a.messagesAnalyzed)), dado('Falas novas', mil(a.newMessages)),
+      dado('Conversas de WhatsApp analisadas', mil(a.whatsappAnalyzed)), dado('Conversas de WhatsApp na fila', mil(a.whatsappPending)),
       dado('Respostas que ajudaram', mil(a.feedback.helpful)), dado('Respostas corrigidas', mil(a.feedback.notHelpful))),
     el('div', { className: 'botoes' }, analisar),
-    !E.d.settings.hasKey ? el('p', { className: 'aviso', textContent: 'Sem a chave da IA não há análise.' }) : !a.newMessages && !p ? el('p', { className: 'nota', textContent: 'Ela ainda não conversou com a assistente: não há o que analisar.' }) : null,
-    p ? secao('Como ela atende', el('p', { className: 'frase', textContent: p.resumo })) : vazio('Perfil ainda não montado', 'A IA monta o perfil lendo as conversas desta atendente com a assistente.'),
-    p ? secao('Como costuma perguntar', el('p', { className: 'frase', textContent: p.estilo })) : null,
+    !E.d.settings.hasKey ? el('p', { className: 'aviso', textContent: 'Sem a chave da IA não há análise.' }) : !a.newMessages && !a.whatsappPending && !p ? el('p', { className: 'nota', textContent: 'Ainda não há conversas dela para analisar.' }) : null,
+    a.history ? secaoHistorico(a.history, lista) : null,
+    p ? secao('Resumo', el('p', { className: 'frase', textContent: p.resumo })) : a.history ? null : vazio('Perfil ainda não montado', 'A IA monta o perfil lendo as conversas dela com os clientes no WhatsApp e as perguntas que ela faz à assistente.'),
+    p && p.atendimento ? secao('Como atende os clientes', el('p', { className: 'frase', textContent: p.atendimento })) : null,
+    p ? secao('Como pergunta à assistente', el('p', { className: 'frase', textContent: p.estilo })) : null,
     p && p.bancos && p.bancos.length ? secao('Bancos mais consultados', el('div', { className: 'barras' }, ...p.bancos.slice().sort((x, y) => y.perguntas - x.perguntas).slice(0, 8).map((b) => el('div', {}, el('span', { textContent: b.nome }), el('b', { textContent: mil(b.perguntas) }), el('i', { style: `--p:${Math.round((b.perguntas / maior) * 100)}%` }))))) : null,
     p && p.temas && p.temas.length ? secao('Assuntos frequentes', el('div', { className: 'marcas' }, ...p.temas.map((t) => el('span', { textContent: t })))) : null,
     p ? secao('Dificuldades recorrentes', lista(p.dificuldades)) : null,
@@ -447,13 +450,28 @@ async function gavetaAtendente(deviceId) {
     p ? secao('Recomendações para a supervisão', lista(p.recomendacoes)) : null,
     a.instructions ? secao('Orientações escritas para ela', el('p', { className: 'frase', textContent: a.instructions })) : null,
     a.suggestions.length ? secao('Sugestões que vieram dela', el('div', { className: 'lista-simples' }, ...a.suggestions.map((s) => el('div', {}, el('i', { className: 'ponto', style: `--c:${MAPA_CORES.suggestion}` }), el('span', { className: 'nome', textContent: s.title }), selo(`${s.status} liso`, SITUACAO[s.status]))))) : null,
-    p ? el('p', { className: 'nota', textContent: `Perfil montado pela IA em ${quando(a.analyzedAt)}, só com o que ela pergunta à assistente (a IA não vê o atendimento ao cliente). Esta leitura ficou registrada na auditoria.` }) : null);
+    p ? el('p', { className: 'nota', textContent: `Perfil montado pela IA em ${quando(a.analyzedAt)}, a partir de ${plural(a.whatsappAnalyzed, 'conversa de WhatsApp', 'conversas de WhatsApp')} e de ${plural(a.messagesAnalyzed, 'fala', 'falas')} com a assistente. As conversas do WhatsApp são apagadas do servidor depois de analisadas. Esta leitura ficou registrada na auditoria.` }) : null);
+}
+
+// Perfil tirado do histórico de atendimentos com clientes (importado de uma vez, não pela análise diária).
+function secaoHistorico(h, lista) {
+  return secao('Do histórico de atendimentos com clientes',
+    h.resumo ? el('p', { className: 'frase', textContent: h.resumo }) : null,
+    h.atendimento ? el('p', { className: 'frase', textContent: h.atendimento }) : null,
+    h.estilo ? el('p', { className: 'frase', textContent: h.estilo }) : null,
+    h.pontos_fortes && h.pontos_fortes.length ? el('h4', { textContent: 'Pontos fortes' }) : null,
+    h.pontos_fortes && h.pontos_fortes.length ? lista(h.pontos_fortes) : null,
+    h.dificuldades && h.dificuldades.length ? el('h4', { textContent: 'Dificuldades' }) : null,
+    h.dificuldades && h.dificuldades.length ? lista(h.dificuldades) : null,
+    h.recomendacoes && h.recomendacoes.length ? el('h4', { textContent: 'Como a assistente pode ajudá-la' }) : null,
+    h.recomendacoes && h.recomendacoes.length ? lista(h.recomendacoes) : null,
+    el('p', { className: 'nota', textContent: 'Este trecho vai junto para a assistente desta atendente.' }));
 }
 
 async function analisarAtendente(deviceId, nome, alvo) {
   recado(`Analisando as conversas de ${nome}… pode levar até um minuto.`);
   const r = await agir(alvo, () => api('POST', `/neural/attendants/${deviceId}/analyze`),
-    (x) => (x.messagesRead ? `Perfil de ${nome} atualizado: ${plural(x.messagesRead, 'fala lida', 'falas lidas')}, ${plural(x.newSuggestions, 'sugestão nova', 'sugestões novas')}${x.more ? '. Ainda há falas antigas; rode de novo para continuar' : ''}.` : `${nome} não tem falas novas para analisar.`));
+    (x) => (x.messagesRead || x.conversationsRead ? `Perfil de ${nome} atualizado: ${plural(x.conversationsRead, 'conversa de WhatsApp lida', 'conversas de WhatsApp lidas')}, ${plural(x.messagesRead, 'fala com a assistente', 'falas com a assistente')}, ${plural(x.newSuggestions, 'sugestão nova', 'sugestões novas')}${x.more ? '. Ainda há material na fila; rode de novo para continuar' : ''}.` : `${nome} não tem nada novo para analisar.`));
   if (r && E.gaveta === `a:${deviceId}`) gavetaAtendente(deviceId);
 }
 
@@ -724,7 +742,9 @@ function pintarTabela(vista) {
 
 // ============================================================= aprendizado
 function corpoSugestao(s, naGaveta) {
-  const origem = s.source === 'attendant' ? `Enviada por ${s.attendant || 'uma atendente'} pelo chat` : `Encontrada pela IA nas conversas${s.attendant ? ` de ${s.attendant}` : ''}`;
+  const origem = s.source === 'attendant' ? `Enviada por ${s.attendant || 'uma atendente'} pelo chat`
+    : s.source === 'import' ? `Tirada do histórico de conversas com clientes${s.attendant ? ` (${s.attendant})` : ''}`
+    : `Encontrada pela IA nas conversas${s.attendant ? ` de ${s.attendant}` : ''}`;
   const partes = [
     el('h3', { textContent: s.title, style: naGaveta ? 'font:600 19px Sora,Inter,sans-serif;letter-spacing:0;text-transform:none;color:var(--texto)' : null }),
     el('p', { className: 'nota', textContent: `${origem} · ${quando(s.updatedAt)}${s.occurrences > 1 ? ` · apareceu ${mil(s.occurrences)} vezes` : ''}${s.bank ? ` · ${s.bank}` : ''}` }),
@@ -761,6 +781,12 @@ function desenharAprendizado() {
   const auto = el('button', { type: 'button', className: 'interruptor', role: 'switch', 'aria-checked': String(d.settings.autoAnalysis), 'aria-label': 'Análise automática das conversas' });
   auto.onclick = () => agir(auto, () => api('PUT', '/neural/settings', { autoAnalysis: !d.settings.autoAnalysis }), `Análise automática ${d.settings.autoAnalysis ? 'desligada' : 'ligada'}.`);
 
+  const zap = el('button', { type: 'button', className: 'interruptor', role: 'switch', 'aria-checked': String(d.settings.whatsappLearning), 'aria-label': 'Aprender com as conversas do WhatsApp' });
+  zap.onclick = async () => {
+    if (d.settings.whatsappLearning && !(await confirmar({ titulo: 'Parar de aprender com o WhatsApp?', texto: 'Os Terminais deixam de registrar as conversas e o que está na fila, ainda sem análise, é apagado. Os perfis e as sugestões já criados continuam.', botao: 'Desligar' }))) return;
+    agir(zap, () => api('PUT', '/neural/settings', { whatsappLearning: !d.settings.whatsappLearning }), `Aprendizado com o WhatsApp ${d.settings.whatsappLearning ? 'desligado' : 'ligado'}.`);
+  };
+
   const segmento = el('div', { className: 'segmento', role: 'group', 'aria-label': 'Situação das sugestões' }, ...Object.entries({ pending: 'Pendentes', approved: 'Aprovadas', rejected: 'Rejeitadas' }).map(([v, r]) => {
     const b = el('button', { type: 'button', 'aria-pressed': String(E.situacao === v), textContent: r });
     b.onclick = () => { E.situacao = v; desenharAprendizado(); };
@@ -770,11 +796,13 @@ function desenharAprendizado() {
 
   const pessoas = d.attendants.map((a) => {
     const ver = botao(a.hasProfile ? 'Ver o perfil' : 'Abrir', 'abrir'); ver.onclick = () => verNoMapa(`a:${a.deviceId}`);
-    const analisar = botao('Analisar agora', 'raio', 'btn mini'); analisar.disabled = !a.newMessages || !d.settings.hasKey;
-    analisar.title = !d.settings.hasKey ? 'Cadastre a chave da IA primeiro.' : a.newMessages ? 'Lê só as falas novas e atualiza o perfil.' : 'Não há falas novas.';
+    const temNovo = a.newMessages > 0 || a.whatsappPending > 0;
+    const analisar = botao('Analisar agora', 'raio', 'btn mini'); analisar.disabled = !temNovo || !d.settings.hasKey;
+    analisar.title = !d.settings.hasKey ? 'Cadastre a chave da IA primeiro.' : temNovo ? 'Lê só o que é novo e atualiza o perfil.' : 'Não há nada novo.';
     analisar.onclick = () => analisarAtendente(a.deviceId, a.name, analisar);
     return el('div', { className: 'pessoa' },
-      el('div', {}, el('b', { textContent: a.name }), el('small', { textContent: `${plural(a.questions, 'pergunta', 'perguntas')} · ${a.newMessages ? plural(a.newMessages, 'fala nova', 'falas novas') : 'nada novo'}` }),
+      el('div', {}, el('b', { textContent: a.name }), el('small', { textContent: `${plural(a.questions, 'pergunta', 'perguntas')} à assistente · ${a.newMessages ? plural(a.newMessages, 'fala nova', 'falas novas') : 'nenhuma fala nova'}` }),
+        el('small', { textContent: a.whatsappPending ? `${plural(a.whatsappPending, 'conversa de WhatsApp', 'conversas de WhatsApp')} na fila da análise` : 'Nenhuma conversa de WhatsApp na fila' }),
         el('small', { textContent: a.hasProfile ? `Perfil atualizado: ${quando(a.analyzedAt)}` : 'Perfil ainda não montado' })),
       el('div', { className: 'botoes' }, analisar, ver));
   });
@@ -784,9 +812,12 @@ function desenharAprendizado() {
       el('div', { className: 'cartao-topo' }, el('div', {}, el('h2', { textContent: 'Sugestões de conhecimento' }), el('p', { textContent: 'Correções enviadas pelas atendentes e lacunas que a IA encontrou nas conversas. Você revisa, edita e decide.' })), segmento),
       fila),
     el('div', { className: 'cartao' },
-      el('div', { className: 'cartao-topo' }, el('div', {}, el('h2', { textContent: 'Perfil de cada atendente' }), el('p', { textContent: 'A IA lê só as falas novas de cada uma com a assistente, atualiza o perfil de atendimento e aponta lacunas da base.' }))),
-      el('div', { className: 'cartao-corpo' }, el('div', { className: 'linha-opcao' }, el('div', {}, el('b', { textContent: 'Análise automática' }),
-        el('small', { textContent: 'Uma vez por dia por atendente, só quando há pelo menos 4 falas novas e a conversa já terminou. Desligada, a análise roda só pelo botão.' })), auto)),
+      el('div', { className: 'cartao-topo' }, el('div', {}, el('h2', { textContent: 'Perfil de cada atendente' }), el('p', { textContent: 'A IA lê as conversas de cada atendente com os clientes no WhatsApp e as perguntas que ela faz à assistente, atualiza o perfil de atendimento e aponta o que falta na base.' }))),
+      el('div', { className: 'cartao-corpo', style: 'display:grid;gap:16px' },
+        el('div', { className: 'linha-opcao' }, el('div', {}, el('b', { textContent: 'Aprender com o WhatsApp' }),
+          el('small', { textContent: 'O Terminal (versão 2.4.0 ou mais nova) registra cada conversa que a atendente abre no WhatsApp. A conversa fica no servidor só até ser analisada e depois é apagada; o que não for analisado em 7 dias também.' })), zap),
+        el('div', { className: 'linha-opcao' }, el('div', {}, el('b', { textContent: 'Análise automática' }),
+          el('small', { textContent: 'Uma vez por dia por atendente, quando há conversas novas e a última já terminou há 20 minutos. Desligada, a análise roda só pelo botão.' })), auto)),
       pessoas.length ? el('div', { className: 'pessoas' }, ...pessoas) : vazio('Nenhuma atendente ainda', 'As máquinas aprovadas na Central do TI aparecem aqui.')));
   pintarFila();
 }

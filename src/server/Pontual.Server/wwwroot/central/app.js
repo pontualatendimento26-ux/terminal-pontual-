@@ -1202,17 +1202,47 @@ $('aud-verificar').onclick = async () => {
 // ---------------------------------------------------------- administradores
 function desenharAdmins() {
   const lista = S.admins || [];
-  $('adm-frase').textContent = situacaoLista('admins') || `${plural(lista.length, 'conta', 'contas')}. Só o superadministrador cria contas.`;
+  $('adm-frase').textContent = situacaoLista('admins') || `${plural(lista.length, 'conta', 'contas')}. Só o superadministrador cria, apaga e troca a senha de contas.`;
   if (!mudou('admins', [S.admins, S.erro.admins])) return;
-  const colunas = ['Nome', 'E-mail', 'Função', 'Situação'];
-  const cab = el('thead', {}, el('tr', {}, ...colunas.map((t) => el('th', { textContent: t, scope: 'col' }))));
+  const colunas = ['Nome', 'E-mail', 'Função', 'Situação', ''];
+  const cab = el('thead', {}, el('tr', {}, ...colunas.map((t) => (t ? el('th', { textContent: t, scope: 'col' }) : el('th', { scope: 'col', className: 'estreita' }, el('span', { className: 'so-leitor', textContent: 'Ações' }))))));
   const espera = situacaoLista('admins');
-  trocar($('tb-admins'), [cab, el('tbody', {}, ...(espera ? [el('tr', {}, el('td', { colSpan: 4, className: 'vazio', textContent: espera }))] : lista.map((a) => el('tr', {},
+  trocar($('tb-admins'), [cab, el('tbody', {}, ...(espera ? [el('tr', {}, el('td', { colSpan: 5, className: 'vazio', textContent: espera }))] : lista.map((a) => el('tr', {},
     el('td', {}, el('div', { className: 'celula' }, avatar(a.name), el('div', {}, el('b', { textContent: texto(a.name) }), a.id === S.me.id ? el('small', { textContent: 'Você' }) : null))),
     el('td', { textContent: texto(a.email) }),
     el('td', {}, el('span', { textContent: FUNCOES[a.role] || texto(a.role), title: FUNCAO_DICA[a.role] || '' })),
-    el('td', {}, a.active === false ? selo('offline', 'Inativo') : selo('online', 'Ativo'))))))]);
+    el('td', {}, a.active === false ? selo('offline', 'Inativo') : selo('online', 'Ativo')),
+    el('td', { className: 'estreita' }, acoesAdmin(a))))))]);
 }
+// Trocar a senha e apagar: a tela só aparece para o superadministrador, e o servidor confere de novo.
+function acoesAdmin(a) {
+  const nome = texto(a.name), eu = a.id === S.me.id;
+  const senha = el('button', { type: 'button', className: 'redondo', 'aria-label': `Trocar a senha de ${nome}`, title: 'Trocar a senha', 'data-k': `senha:${a.id}` }, ic('lock', 18));
+  senha.onclick = () => trocarSenha(a);
+  if (eu) return el('div', { className: 'acoes-linha' }, senha);
+  const apagar = el('button', { type: 'button', className: 'redondo rubi', 'aria-label': `Apagar a conta de ${nome}`, title: 'Apagar a conta', 'data-k': `apagar:${a.id}` }, ic('trash', 18));
+  apagar.onclick = async () => {
+    const sim = await confirmar({ titulo: `Apagar a conta de ${nome}?`, texto: `${nome} (${texto(a.email)}) não consegue mais entrar na Central e, se estiver logado agora, sai na hora. Isso não pode ser desfeito; para voltar, será preciso criar a conta de novo.`, botao: 'Apagar conta' });
+    if (sim) agir(apagar, () => api('DELETE', `/admins/${encodeURIComponent(a.id)}`), { recarregar: ['admins'], ok: `A conta de ${nome} foi apagada.` });
+  };
+  return el('div', { className: 'acoes-linha' }, senha, apagar);
+}
+let alvoSenha = null;
+function trocarSenha(a) {
+  alvoSenha = a;
+  $('senha-texto').textContent = a.id === S.me.id
+    ? 'Defina a sua senha nova. Você continua logado aqui; outras sessões suas são encerradas.'
+    : `Defina a senha nova de ${texto(a.name)} (${texto(a.email)}). Se a pessoa estiver logada, ela sai e precisa entrar com a senha nova.`;
+  abrirFormulario('dlg-senha', ['senha-nova', 'senha-nova2'], 'senha-erro');
+}
+aoEnviar('dlg-senha', 'senha-erro', async () => {
+  const senha = $('senha-nova').value;
+  exigir(senha.length >= 10, 'A senha precisa ter no mínimo 10 caracteres.');
+  exigir(senha === $('senha-nova2').value, 'As duas senhas não são iguais.');
+  await api('POST', `/admins/${encodeURIComponent(alvoSenha.id)}/password`, { password: senha });
+  $('senha-nova').value = ''; $('senha-nova2').value = '';
+  return alvoSenha.id === S.me.id ? 'Sua senha foi trocada.' : `A senha de ${texto(alvoSenha.name)} foi trocada.`;
+});
 
 // ====================================================== diálogos e formulários
 function confirmar({ titulo, texto: mensagem, botao }) {

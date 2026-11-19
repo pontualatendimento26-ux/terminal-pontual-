@@ -24,6 +24,7 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
     public DbSet<KnowledgeSuggestion> KnowledgeSuggestions => Set<KnowledgeSuggestion>();
     public DbSet<AssistantFeedback> AssistantFeedback => Set<AssistantFeedback>();
     public DbSet<AttendantInsight> AttendantInsights => Set<AttendantInsight>();
+    public DbSet<WhatsAppCapture> WhatsAppCaptures => Set<WhatsAppCapture>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -80,6 +81,8 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
         modelBuilder.Entity<KnowledgeSuggestion>().HasIndex(s => s.Status);
 
         modelBuilder.Entity<AssistantFeedback>().HasIndex(f => new { f.DeviceId, f.MessageId }).IsUnique();
+
+        modelBuilder.Entity<WhatsAppCapture>().HasIndex(c => new { c.DeviceId, c.Contact }).IsUnique();
 
         modelBuilder.Entity<AttendantInsight>(e =>
         {

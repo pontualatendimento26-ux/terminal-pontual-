@@ -72,6 +72,13 @@ public sealed class ServerApi : IDisposable
         await EnsureSuccessAsync(response, ct).ConfigureAwait(false);
     }
 
+    /// <summary>Manda a conversa de WhatsApp que está aberta, para a análise da assistente (o servidor emenda e descarta repetições).</summary>
+    public async Task SendWhatsAppAsync(string contact, string text, CancellationToken ct = default)
+    {
+        using var response = await _http.PostAsJsonAsync("device/assistant/whatsapp", new { contact, text }, Json, ct).ConfigureAwait(false);
+        await EnsureSuccessAsync(response, ct).ConfigureAwait(false);
+    }
+
     /// <summary>Pergunta se o TI abriu a visualização ao vivo da tela desta máquina.</summary>
     public async Task<ScreenRequest> GetScreenRequestAsync(CancellationToken ct = default)
     {

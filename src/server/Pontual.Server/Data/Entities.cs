@@ -193,6 +193,12 @@ public sealed class TextSetting
     public const string AssistantScriptsSeeded = "assistant.scriptsSeeded";
     /// <summary>"0" desliga a análise automática das conversas (perfil das atendentes e sugestões); o padrão é ligada.</summary>
     public const string AssistantAutoAnalysis = "assistant.autoAnalysis";
+    /// <summary>"0" impede a assistente de receber a tela e o WhatsApp da atendente junto com a pergunta; o padrão é ligado.</summary>
+    public const string AssistantScreen = "assistant.screen";
+    /// <summary>"0" impede o Terminal de registrar as conversas do WhatsApp para a análise; o padrão é ligado.</summary>
+    public const string AssistantWhatsAppLearning = "assistant.whatsappLearning";
+    /// <summary>Perfis montados a partir de históricos de conversas importados: objeto JSON nome da atendente → perfil.</summary>
+    public const string AssistantImportedProfiles = "assistant.importedProfiles";
 
     public required string Key { get; set; }
     public string Value { get; set; } = "";
@@ -345,6 +351,24 @@ public sealed class AttendantInsight
     public DateTime UpdatedAt { get; set; }
     public string Model { get; set; } = "";
     public string LastError { get; set; } = "";
+    /// <summary>Quantas conversas de WhatsApp já entraram na análise.</summary>
+    public int WhatsAppAnalyzed { get; set; }
+}
+
+/// <summary>
+/// Conversa de WhatsApp de uma atendente com um cliente, registrada pelo Terminal para a análise.
+/// É uma fila: depois que a IA analisa a conversa, a linha é apagada (ficam só o perfil e as sugestões).
+/// O que não for analisado em 7 dias também é apagado.
+/// </summary>
+public sealed class WhatsAppCapture
+{
+    public long Id { get; set; }
+    public Guid DeviceId { get; set; }
+    /// <summary>Nome do contato como aparece no WhatsApp (ou o telefone).</summary>
+    public required string Contact { get; set; }
+    public string Text { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
 }
 
 /// <summary>Perfil da assistente de uma atendente (uma máquina = uma atendente, ADR 0003).</summary>
@@ -373,6 +397,11 @@ public sealed class AssistantMessage
     public required string Role { get; set; }
     public required string Text { get; set; }
     public DateTime At { get; set; }
+    /// <summary>
+    /// Nomes do que estava aberto na tela quando a pergunta foi feita (ex.: "WhatsApp, Safra").
+    /// O conteúdo da tela vai só para a IA, naquela pergunta, e não é guardado aqui.
+    /// </summary>
+    public string Context { get; set; } = "";
 }
 
 /// <summary>

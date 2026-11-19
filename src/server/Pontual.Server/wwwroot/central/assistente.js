@@ -73,8 +73,14 @@ const Assistente = (() => {
       salvar: (escrito) => api('PUT', '/assistant/settings', { instructions: escrito }), ok: 'As orientações gerais foram salvas.',
     });
 
+    const tela = el('button', { type: 'button', className: 'interruptor', role: 'switch', 'aria-checked': String(c.screenContext === true), 'aria-label': 'A assistente vê a tela e o WhatsApp das atendentes', disabled: !edita, 'data-k': 'ia-tela' });
+    tela.onclick = () => fazer(tela, () => api('PUT', '/assistant/settings', { screenContext: !c.screenContext }),
+      c.screenContext ? 'A assistente deixou de ver a tela e o WhatsApp das atendentes.' : 'A assistente passou a ver a tela e o WhatsApp das atendentes quando elas perguntam.');
+
     trocar($('ia-conexao'), [situacao, botoes,
       el('div', { className: 'ia-grade' },
+        el('div', { className: 'ia-campo' }, el('span', { textContent: 'Tela e WhatsApp' }), tela,
+          el('span', { className: 'dica', textContent: 'Ligado, a assistente recebe a aba aberta e a conversa do WhatsApp no momento em que a atendente pergunta. Esse conteúdo vai para a IA responder e não fica guardado na Central.' })),
         el('label', { className: 'ia-campo' }, 'Modelo de IA', modelo, el('span', { className: 'dica', textContent: 'Modelos mais capazes respondem melhor a roteiros longos e custam mais por pergunta.' })),
         el('div', { className: 'ia-campo' }, el('span', { textContent: 'Orientações gerais' }), orientacoes,
           el('span', { className: 'dica', textContent: c.instructions ? `${mil(c.instructions.length)} caracteres escritos.` : 'Nenhuma orientação geral escrita.' })))]);
@@ -244,7 +250,7 @@ const Assistente = (() => {
     for (const m of lista) {
       if (m.conversationId !== conversa) { conversa = m.conversationId; nos.push(el('div', { className: 'ia-divisa', textContent: quando(m.at) })); }
       nos.push(el('div', { className: `ia-fala ${m.role === 'user' ? 'eu' : 'ia'}` },
-        el('small', { textContent: `${m.role === 'user' ? nome : 'Assistente'} · ${quandoCurto(m.at)}` }), el('p', { textContent: texto(m.text) })));
+        el('small', { textContent: `${m.role === 'user' ? nome : 'Assistente'} · ${quandoCurto(m.at)}${m.context ? ` · com a tela: ${texto(m.context)}` : ''}` }), el('p', { textContent: texto(m.text) })));
     }
     alvo.replaceChildren(...nos);
     alvo.scrollTop = alvo.scrollHeight;

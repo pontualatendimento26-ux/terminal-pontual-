@@ -47,8 +47,16 @@ public static class AssistantEndpoints
     /// <summary>Máquinas com uma resposta em andamento: uma pergunta por vez por atendente.</summary>
     private static readonly ConcurrentDictionary<Guid, byte> Busy = new();
 
-    private sealed record AskBody(string? Text, bool? NewConversation);
-    private sealed record SettingsBody(string? ApiKey, bool? RemoveKey, string? Model, string? Instructions);
+    private sealed record AskBody(string? Text, bool? NewConversation, ScreenBody? Screen);
+    /// <summary>O que o Terminal leu da tela na hora da pergunta: partes em texto e a foto (JPEG em base64) da aba ativa.</summary>
+    private sealed record ScreenBody(List<ScreenPartBody?>? Parts, string? Image);
+    private sealed record ScreenPartBody(string? Kind, bool? Active, string? Name, string? Address, string? Title, string? Contact, string? Text);
+    private sealed record SettingsBody(string? ApiKey, bool? RemoveKey, string? Model, string? Instructions, bool? ScreenContext);
+
+    private const int MaxAskBody = 3 * 1024 * 1024;
+    private const int MaxScreenParts = 4;
+    private const int MaxScreenPart = 14_000;
+    private const int MaxScreenImage = 900_000;
     private sealed record ScriptBody(string? Title, string? Content, bool? Enabled);
     private sealed record ProfileBody(string? Instructions, bool? Enabled);
     private sealed record FeedbackBody(long? MessageId, bool? Helpful, string? Text);
@@ -59,6 +67,7 @@ public static class AssistantEndpoints
         api.MapGet("/device/assistant", StateAsync).Terminal().RequireRateLimiting(TerminalEndpoints.DeviceRateLimit);
         api.MapPost("/device/assistant/messages", AskAsync).Terminal().RequireRateLimiting(RateLimit);
         api.MapPost("/device/assistant/feedback", FeedbackAsync).Terminal().RequireRateLimiting(TerminalEndpoints.DeviceRateLimit);
+        api.MapPost("/device/assistant/whatsapp", WhatsAppAsync).Terminal().RequireRateLimiting(TerminalEndpoints.DeviceRateLimit);
 
         // Central.
         api.MapGet("/assistant", OverviewAsync).Panel(Permission.ConfigRead);
@@ -95,6 +104,9 @@ public static class AssistantEndpoints
             return Results.Ok(new { enabled, attendantName = device.AttendantName, messages = Array.Empty<object>() });
         }
 
+        var screen = await ScreenAllowedAsync(db, ct);
+        var whatsappLearning = await WhatsAppLearningAsync(db, configuration, device, ct);
+
         var messages = await db.AssistantMessages.AsNoTracking()
             .Where(m => m.DeviceId == device.Id)
             .OrderByDescending(m => m.Id)
@@ -108,7 +120,146 @@ public static class AssistantEndpoints
             .Select(f => new { messageId = f.MessageId, helpful = f.Helpful })
             .ToListAsync(ct);
 
-        return Results.Ok(new { enabled, attendantName = device.AttendantName, messages = messages.Select(MessageDto), feedback });
+        return Results.Ok(new { enabled, attendantName = device.AttendantName, messages = messages.Select(MessageDto), feedback, screen, whatsappLearning });
+    }
+
+    /// <summary>A Central permite que a assistente receba a tela e o WhatsApp da atendente? (Ligado, se nunca foi mexido.)</summary>
+    private static async Task<bool> ScreenAllowedAsync(PontualDb db, CancellationToken ct) =>
+        !await db.TextSettings.AsNoTracking().AnyAsync(s => s.Key == TextSetting.AssistantScreen && s.Value == "0", ct);
+
+    private sealed record WhatsAppBody(string? Contact, string? Text);
+
+    private const int MaxTranscript = 40_000;
+
+    /// <summary>O Terminal desta máquina deve registrar as conversas do WhatsApp para a análise?</summary>
+    public static async Task<bool> WhatsAppLearningAsync(PontualDb db, IConfiguration configuration, Device device, CancellationToken ct) =>
+        !await db.TextSettings.AsNoTracking().AnyAsync(s => s.Key == TextSetting.AssistantWhatsAppLearning && s.Value == "0", ct)
+        && await IsEnabledAsync(db, configuration, device, ct);
+
+    /// <summary>
+    /// O Terminal manda, de tempos em tempos, as últimas mensagens da conversa de WhatsApp que está aberta.
+    /// Cada contato tem uma linha na fila; o que chega é emendado ao que já estava. A fila só existe até a
+    /// análise: depois de lida pela IA, a conversa é apagada.
+    /// </summary>
+    private static async Task<IResult> WhatsAppAsync(HttpContext context, PontualDb db, IConfiguration configuration, TimeProvider time, CancellationToken ct)
+    {
+        var device = context.Device();
+        var body = await context.ReadBodyAsync<WhatsAppBody>();
+        var contact = Input.Truncated(body.Contact, 80);
+        var text = Multiline(body.Text);
+        // Desligado na Central (ou conversa vazia): o envio é aceito e descartado, sem erro para o Terminal.
+        if (contact.Length == 0 || text.Length == 0 || !await WhatsAppLearningAsync(db, configuration, device, ct))
+        {
+            return Results.NoContent();
+        }
+
+        if (text.Length > MaxScreenPart)
+        {
+            text = text[^MaxScreenPart..];
+        }
+
+        var now = time.GetUtcNow().UtcDateTime;
+        var capture = await db.WhatsAppCaptures.FirstOrDefaultAsync(c => c.DeviceId == device.Id && c.Contact == contact, ct);
+        if (capture is null)
+        {
+            capture = new WhatsAppCapture { DeviceId = device.Id, Contact = contact, CreatedAt = now };
+            db.WhatsAppCaptures.Add(capture);
+        }
+
+        var merged = MergeTranscript(capture.Text, text);
+        if (merged != capture.Text)
+        {
+            capture.Text = merged.Length > MaxTranscript ? merged[^MaxTranscript..] : merged;
+            capture.UpdatedAt = now;
+            await db.SaveChangesAsync(ct);
+        }
+
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Emenda o trecho novo ao que já estava guardado, sem repetir as mensagens que aparecem nos dois:
+    /// procura o maior final do guardado que seja igual ao começo do novo.
+    /// </summary>
+    internal static string MergeTranscript(string stored, string snapshot)
+    {
+        if (stored.Length == 0)
+        {
+            return snapshot;
+        }
+
+        // A atendente rolou a conversa para cima: o trecho já está inteiro no que foi guardado.
+        if (stored.Contains(snapshot, StringComparison.Ordinal))
+        {
+            return stored;
+        }
+
+        var old = stored.Split('\n');
+        var fresh = snapshot.Split('\n');
+        for (var overlap = Math.Min(old.Length, fresh.Length); overlap > 0; overlap--)
+        {
+            if (old.AsSpan(old.Length - overlap).SequenceEqual(fresh.AsSpan(0, overlap)))
+            {
+                return overlap == fresh.Length ? stored : stored + "\n" + string.Join('\n', fresh[overlap..]);
+            }
+        }
+
+        return stored + "\n" + snapshot;
+    }
+
+    /// <summary>
+    /// Confere e limita o que o Terminal mandou da tela. Devolve o texto que acompanha a pergunta, a foto e a
+    /// nota curta que fica no histórico (só os nomes do que estava aberto; nenhum conteúdo da tela é gravado).
+    /// </summary>
+    private static (string? Text, byte[]? Image, string Note) ReadScreen(ScreenBody? screen)
+    {
+        if (screen is null)
+        {
+            return (null, null, "");
+        }
+
+        var parts = new List<AssistantPrompt.ScreenPart>();
+        foreach (var raw in (screen.Parts ?? []).Take(MaxScreenParts))
+        {
+            if (raw is null)
+            {
+                continue;
+            }
+
+            var kind = raw.Kind is "whatsapp" or "home" ? raw.Kind : "page";
+            var text = Multiline(raw.Text);
+            if (text.Length > MaxScreenPart)
+            {
+                // Do WhatsApp interessa o fim (as mensagens mais recentes); de um site, o começo da página.
+                text = kind == "whatsapp" ? text[^MaxScreenPart..] : text[..MaxScreenPart];
+            }
+
+            parts.Add(new AssistantPrompt.ScreenPart(
+                kind, raw.Active == true, Input.Truncated(raw.Name, 60), Input.Truncated(raw.Address, 200),
+                Input.Truncated(raw.Title, 200), Input.Truncated(raw.Contact, 80), text));
+        }
+
+        byte[]? image = null;
+        if (screen.Image is { Length: > 0 and <= MaxScreenImage * 4 / 3 + 8 } encoded)
+        {
+            try
+            {
+                var bytes = Convert.FromBase64String(encoded);
+                // Só JPEG, que é o que o Terminal manda; qualquer outra coisa é descartada.
+                if (bytes.Length is > 3 and <= MaxScreenImage && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
+                {
+                    image = bytes;
+                }
+            }
+            catch (FormatException)
+            {
+                // Foto ilegível: a pergunta segue só com o texto.
+            }
+        }
+
+        var names = parts.Where(p => p.Kind != "home").Select(p => p.Kind == "whatsapp" ? "WhatsApp" : p.Name).Where(n => n.Length > 0).Distinct().ToList();
+        var note = names.Count > 0 ? string.Join(", ", names) : parts.Count > 0 ? "Tela inicial" : image is not null ? "Tela" : "";
+        return (AssistantPrompt.Screen(parts, image is not null), image, Input.Truncated(note, 120));
     }
 
     /// <summary>
@@ -189,6 +340,12 @@ public static class AssistantEndpoints
     private static async Task<IResult> AskAsync(HttpContext context, PontualDb db, IConfiguration configuration, IAssistantModel model, TimeProvider time, CancellationToken ct)
     {
         var device = context.Device();
+        // A pergunta pode vir com a foto da tela: esta rota aceita um corpo maior que as demais.
+        if (context.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit)
+        {
+            limit.MaxRequestBodySize = MaxAskBody;
+        }
+
         var body = await context.ReadBodyAsync<AskBody>();
         var question = Multiline(body.Text);
         if (question.Length == 0)
@@ -223,17 +380,21 @@ public static class AssistantEndpoints
                 ? Guid.NewGuid()
                 : last.ConversationId;
 
-            var asked = new AssistantMessage { DeviceId = device.Id, ConversationId = conversationId, Role = AssistantRole.User, Text = question, At = now };
+            // A tela só entra se a Central permitir; e só nesta pergunta (as anteriores voltam à IA sem ela).
+            var screen = await ScreenAllowedAsync(db, ct) ? ReadScreen(body.Screen) : (Text: null, Image: null, Note: "");
+
+            var asked = new AssistantMessage { DeviceId = device.Id, ConversationId = conversationId, Role = AssistantRole.User, Text = question, At = now, Context = screen.Note };
             db.AssistantMessages.Add(asked);
             await db.SaveChangesAsync(ct);
 
             // No modo índice a IA consulta a base antes de responder; a atendente vê o que está sendo consultado.
-            var request = await BuildRequestAsync(db, device, apiKey, conversationId, now, status => SendAsync(context, new { status }, ct), ct);
+            var request = await BuildRequestAsync(db, device, apiKey, conversationId, now, status => SendAsync(context, new { status }, ct), ct)
+                with { ScreenText = screen.Text, ScreenImage = screen.Image };
 
             context.Response.ContentType = "text/event-stream";
             context.Response.Headers.CacheControl = "no-store";
             context.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
-            await SendAsync(context, new { conversationId, questionId = asked.Id }, ct);
+            await SendAsync(context, new { conversationId, questionId = asked.Id, screen = screen.Note }, ct);
 
             var answer = new StringBuilder();
             string? error = null;
@@ -314,7 +475,22 @@ public static class AssistantEndpoints
         var scripts = KnowledgeText.Ordered(await db.AssistantScripts.AsNoTracking().Where(s => s.Enabled && s.Content != "").ToListAsync(ct));
         var inline = FitsInline(scripts.Sum(s => (long)s.Content.Length));
         var general = settings.GetValueOrDefault(TextSetting.AssistantInstructions, "");
+        // A assistente sabe o que está ligado na Central, para não negar o que de fato acontece.
+        var about = AssistantPrompt.About(
+            settings.GetValueOrDefault(TextSetting.AssistantScreen, "1") != "0",
+            settings.GetValueOrDefault(TextSetting.AssistantWhatsAppLearning, "1") != "0");
         var profile = await db.AssistantProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.DeviceId == device.Id, ct);
+        // O que a análise aprendeu sobre esta atendente vai só para ela: cada uma tem o seu perfil.
+        var learned = await db.AttendantInsights.AsNoTracking()
+            .Where(i => i.DeviceId == device.Id).Select(i => i.ProfileJson).FirstOrDefaultAsync(ct);
+        // Somam-se o perfil da análise desta máquina e o importado do histórico de atendimentos dela, se houver.
+        var history = AssistantPrompt.Learned(AssistantPrompt.ImportedProfile(settings, device.AttendantName));
+        var learnedText = AssistantPrompt.Learned(learned);
+        if (history.Length > 0)
+        {
+            learnedText = learnedText.Length == 0 ? history
+                : learnedText + "\n\nDo histórico de atendimentos dela com clientes:\n" + history;
+        }
 
         var recent = await db.AssistantMessages.AsNoTracking()
             .Where(m => m.DeviceId == device.Id && m.ConversationId == conversationId)
@@ -326,8 +502,8 @@ public static class AssistantEndpoints
         return new AssistantRequest(
             apiKey,
             ModelOf(settings),
-            inline ? AssistantPrompt.Shared(general, scripts) : AssistantPrompt.Index(general, scripts),
-            AssistantPrompt.Personal(device, profile, now),
+            inline ? AssistantPrompt.Shared(general, scripts, about) : AssistantPrompt.Index(general, scripts, about),
+            AssistantPrompt.Personal(device, profile, now, learnedText),
             Turns(recent),
             inline ? null : new KnowledgeTools(scripts),
             inline ? null : onStatus);
@@ -398,6 +574,7 @@ public static class AssistantEndpoints
                 model = ModelOf(settings),
                 models = Models.Select(m => new { id = m.Id, label = m.Label }),
                 instructions = settings.GetValueOrDefault(TextSetting.AssistantInstructions, ""),
+                screenContext = settings.GetValueOrDefault(TextSetting.AssistantScreen, "1") != "0",
             },
             limits = new { script = MaxScript, allScripts = MaxAllScripts, profileInstructions = MaxProfileInstructions, generalInstructions = MaxGeneralInstructions },
             scripts,
@@ -472,6 +649,13 @@ public static class AssistantEndpoints
             {
                 changes.Add("alterou as orientações gerais da assistente");
             }
+        }
+
+        if (body.ScreenContext is { } screenContext && await SetAsync(db, TextSetting.AssistantScreen, screenContext ? "1" : "0", ct))
+        {
+            changes.Add(screenContext
+                ? "permitiu que a assistente veja a tela e o WhatsApp das atendentes"
+                : "proibiu a assistente de ver a tela e o WhatsApp das atendentes");
         }
 
         if (changes.Count > 0)
@@ -648,7 +832,7 @@ public static class AssistantEndpoints
 
     // ------------------------------------------------------------------ utilidades
 
-    private static object MessageDto(AssistantMessage m) => new { id = m.Id, role = m.Role, text = m.Text, at = m.At, conversationId = m.ConversationId };
+    private static object MessageDto(AssistantMessage m) => new { id = m.Id, role = m.Role, text = m.Text, at = m.At, conversationId = m.ConversationId, context = m.Context };
 
     internal static string ModelOf(Dictionary<string, string> settings) =>
         settings.TryGetValue(TextSetting.AssistantModel, out var model) && Models.Any(m => m.Id == model) ? model : DefaultModel;

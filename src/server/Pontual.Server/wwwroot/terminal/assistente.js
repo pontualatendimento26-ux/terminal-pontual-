@@ -16,6 +16,59 @@
   let atendente = '';
   const avaliadas = new Map(); // id da resposta → true (ajudou) ou false (não ajudou)
 
+  // A assistente pode ver o que está na tela (a aba em uso e a conversa do WhatsApp) na hora da pergunta.
+  // Precisa de três coisas: o programa do Terminal saber entregar a tela (P.screen), a Central permitir
+  // (o servidor diz ao carregar) e a atendente não ter desligado o interruptor acima do campo.
+  const CHAVE_TELA = 'pontual.assistente.tela';
+  const sabeVerTela = Boolean(ponte && P.screen);
+  let telaPermitida = false;
+  let aprendeComWhatsApp = false; // a Central registra as conversas do WhatsApp para a análise
+  let telaLigada = true;
+  try { telaLigada = sessionStorage.getItem(CHAVE_TELA) !== '0'; } catch { /* sem armazenamento: começa ligada */ }
+  const pedidosDeTela = new Map();
+  let numeroDoPedido = 0;
+
+  function pintarTela() {
+    const pode = sabeVerTela && telaPermitida && ligada, botao = $('as-tela');
+    botao.hidden = !pode;
+    botao.setAttribute('aria-checked', String(telaLigada));
+    botao.textContent = telaLigada ? 'Vendo a sua tela e o WhatsApp' : 'Sem ver a sua tela';
+    botao.title = telaLigada ? 'Clique para a assistente não ver a tela nas próximas perguntas.' : 'Clique para a assistente ver a tela e o WhatsApp quando você perguntar.';
+    $('as-nota').textContent = pode && telaLigada
+      ? 'Ao perguntar, a assistente vê a aba aberta e a conversa do WhatsApp. O que você escreve fica registrado; a tela não é guardada.'
+      : 'Não informe CPF nem dados de clientes. As conversas ficam registradas pela Pontual.';
+    if (aprendeComWhatsApp) $('as-nota').textContent += ' Suas conversas no WhatsApp são lidas pela assistente para aprender.';
+  }
+  $('as-tela').onclick = () => {
+    telaLigada = !telaLigada;
+    try { sessionStorage.setItem(CHAVE_TELA, telaLigada ? '1' : '0'); } catch { /* vale só até fechar */ }
+    pintarTela();
+    campo.focus();
+  };
+
+  // Pede a tela ao programa do Terminal. Se ele não responder a tempo, a pergunta segue sem a tela.
+  function pedirTela() {
+    if (!(sabeVerTela && telaPermitida && telaLigada)) return Promise.resolve(null);
+    return new Promise((resolver) => {
+      const id = String(++numeroDoPedido);
+      const prazo = setTimeout(() => { pedidosDeTela.delete(id); resolver(null); }, 8000);
+      pedidosDeTela.set(id, (tela) => { clearTimeout(prazo); resolver(tela); });
+      ponte.postMessage({ type: 'assistant-context', id });
+    });
+  }
+  if (ponte) {
+    ponte.addEventListener('message', (e) => {
+      const m = e.data;
+      if (!m || m.type !== 'assistant-context-result' || !pedidosDeTela.has(m.id)) return;
+      const entregar = pedidosDeTela.get(m.id);
+      pedidosDeTela.delete(m.id);
+      entregar(m.screen && typeof m.screen === 'object' ? m.screen : null);
+    });
+  }
+  function notaDaTela(alvo, contexto) {
+    if (contexto) alvo.after(el('div', 'as-viu', `Com a tela: ${contexto}`));
+  }
+
   // --------------------------------------------------------------- desenho
   function el(tag, classe, texto) {
     const n = document.createElement(tag);
@@ -40,10 +93,11 @@
   }
   function mostrarFalas() { $('as-estado').hidden = true; falas.hidden = false; }
   function divisa(texto) { falas.append(el('div', 'as-divisa', texto)); }
-  function fala(papel, texto, id) {
+  function fala(papel, texto, id, contexto) {
     const n = el('div', `as-fala ${papel === 'user' ? 'eu' : 'ia'}`);
     if (papel === 'user') n.textContent = texto; else formatar(n, texto);
     falas.append(n);
+    if (papel === 'user') notaDaTela(n, contexto);
     if (papel !== 'user' && id) falas.append(avaliacao(id));
     return n;
   }
@@ -122,13 +176,15 @@
       if (!r.ok) throw new Error(await mensagemDeErro(r));
       dados = await r.json();
     } catch (e) {
-      ligada = false; liberar();
+      ligada = false; liberar(); pintarTela();
       estado('Sem conexão', e instanceof TypeError ? 'Não foi possível falar com o servidor da Pontual. Tente de novo em instantes.' : e.message);
       return;
     }
     ligada = dados.enabled === true;
     atendente = typeof dados.attendantName === 'string' ? dados.attendantName : '';
-    liberar();
+    telaPermitida = dados.screen === true;
+    aprendeComWhatsApp = dados.whatsappLearning === true;
+    liberar(); pintarTela();
     if (!ligada) { estado('Assistente desligada', 'A assistente não está ligada para este computador. Fale com o TI.'); return; }
 
     falas.replaceChildren();
@@ -138,7 +194,7 @@
     for (const f of Array.isArray(dados.feedback) ? dados.feedback : []) avaliadas.set(f.messageId, f.helpful === true);
     for (const m of lista) {
       if (m.conversationId !== ultimaConversa) { divisa(dia(m.at)); ultimaConversa = m.conversationId; }
-      fala(m.role, m.text, m.id);
+      fala(m.role, m.text, m.id, m.context);
     }
     if (lista.length) { mostrarFalas(); descer(); } else vazio();
     campo.focus();
@@ -148,7 +204,7 @@
     ocupada = true; erro(''); liberar();
     mostrarFalas();
     if (novaConversa || ultimaConversa === null) divisa(dia(new Date().toISOString()));
-    fala('user', texto);
+    const pergunta = fala('user', texto);
     const resposta = el('div', 'as-fala ia');
     const pontos = el('span', 'as-pontos'); pontos.append(el('i'), el('i'), el('i'));
     // Quando a base é grande, a assistente consulta os roteiros antes de responder e diz qual está lendo.
@@ -159,8 +215,10 @@
 
     let recebido = '', falhou = null, respostaId = null;
     try {
+      // A tela é lida agora, no momento da pergunta, e vai só com ela.
+      const tela = await pedirTela();
       const r = await fetch('/api/v1/device/assistant/messages', {
-        method: 'POST', headers: cabecalhos(true), body: JSON.stringify({ text: texto, newConversation: novaConversa }),
+        method: 'POST', headers: cabecalhos(true), body: JSON.stringify({ text: texto, newConversation: novaConversa, ...(tela ? { screen: tela } : {}) }),
       });
       if (!r.ok) throw new Error(await mensagemDeErro(r));
       novaConversa = false;
@@ -176,7 +234,7 @@
           const linha = resto.slice(0, corte); resto = resto.slice(corte + 2);
           if (!linha.startsWith('data: ')) continue;
           let evento; try { evento = JSON.parse(linha.slice(6)); } catch { continue; }
-          if (evento.conversationId) ultimaConversa = evento.conversationId;
+          if (evento.conversationId) { ultimaConversa = evento.conversationId; if (typeof evento.screen === 'string') notaDaTela(pergunta, evento.screen); }
           if (typeof evento.status === 'string' && !recebido) consultando.textContent = evento.status;
           if (evento.done === true && evento.id) respostaId = evento.id;
           if (typeof evento.delta === 'string') {

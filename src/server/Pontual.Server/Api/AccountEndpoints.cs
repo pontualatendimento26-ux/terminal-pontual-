@@ -22,6 +22,7 @@ public static class AccountEndpoints
     private sealed record SetupBody(string? Name, string? Email, string? Password);
     private sealed record LoginBody(string? Email, string? Password);
     private sealed record NewAdminBody(string? Name, string? Email, string? Password, string? Role);
+    private sealed record PasswordBody(string? Password);
     private sealed record RegisterBody(string? Name, string? Email, string? Password, string? Role, string? AuthEmail, string? AuthPassword);
 
     public static void Map(RouteGroupBuilder api)
@@ -42,6 +43,48 @@ public static class AccountEndpoints
         }).Panel(Permission.AdminsManage);
 
         api.MapPost("/admins", CreateAdminAsync).Panel(Permission.AdminsManage);
+        api.MapDelete("/admins/{id:guid}", DeleteAdminAsync).Panel(Permission.AdminsManage);
+        api.MapPost("/admins/{id:guid}/password", ChangePasswordAsync).Panel(Permission.AdminsManage);
+    }
+
+    /// <summary>Apaga outra conta (só superadministrador). A própria conta não pode ser apagada, o que garante que sempre sobra um superadministrador.</summary>
+    private static async Task<IResult> DeleteAdminAsync(Guid id, HttpContext context, PontualDb db, AuditWriter audit, CancellationToken ct)
+    {
+        var actor = context.Admin();
+        if (id == actor.Id)
+        {
+            throw ApiError.BadRequest("Você não pode apagar a sua própria conta.");
+        }
+
+        var admin = await db.Admins.FirstOrDefaultAsync(a => a.Id == id, ct) ?? throw ApiError.NotFound("Conta não encontrada.");
+
+        // As sessões abertas da conta caem junto: quem estava logado com ela sai na hora.
+        db.Sessions.RemoveRange(await db.Sessions.Where(s => s.AdminId == id).ToListAsync(ct));
+        db.Admins.Remove(admin);
+
+        await audit.SaveAsync(db, AuditInfo.By(actor, "admins.delete",
+            $"{actor.Name} apagou a conta de {admin.Name} ({admin.Email}), que tinha a função {Roles.Label(admin.Role)}", "admin", admin.Id), cancellationToken: ct);
+        return Results.NoContent();
+    }
+
+    /// <summary>Define uma senha nova para qualquer conta (só superadministrador). As outras sessões daquela conta são encerradas.</summary>
+    private static async Task<IResult> ChangePasswordAsync(
+        Guid id, HttpContext context, PontualDb db, AuditWriter audit, IPasswordHasher<Admin> hasher, CancellationToken ct)
+    {
+        var actor = context.Admin();
+        var body = await context.ReadBodyAsync<PasswordBody>();
+        var password = Input.Password(body.Password);
+
+        var admin = await db.Admins.FirstOrDefaultAsync(a => a.Id == id, ct) ?? throw ApiError.NotFound("Conta não encontrada.");
+        admin.PasswordHash = hasher.HashPassword(admin, password);
+
+        // Quem estava logado com a senha antiga precisa entrar de novo; a sessão de quem fez a troca continua.
+        var current = context.Request.Cookies.TryGetValue(CookieName, out var token) && !string.IsNullOrEmpty(token) ? Secrets.Sha256(token) : "";
+        db.Sessions.RemoveRange(await db.Sessions.Where(s => s.AdminId == id && s.TokenHash != current).ToListAsync(ct));
+
+        var whose = admin.Id == actor.Id ? "a própria senha" : $"a senha de {admin.Name} ({admin.Email})";
+        await audit.SaveAsync(db, AuditInfo.By(actor, "admins.password", $"{actor.Name} trocou {whose}", "admin", admin.Id), cancellationToken: ct);
+        return Results.NoContent();
     }
 
     private static async Task<IResult> SetupAsync(

@@ -29,3 +29,6 @@ src/android/terminal/build/
 *.keystore
 .env
 .env.*
+
+# Conversas reais das atendentes (dados de clientes): nunca vão para o git
+conversas/

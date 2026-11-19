@@ -106,4 +106,5 @@ public sealed record ConfigItemDto(Guid Id, string Name, string Kind, string Tar
 public sealed record ConfigDto(long Version, string? AttendantName, bool ObservationMode, IReadOnlyList<ConfigItemDto> Items);
 
 /// <param name="Assistant">A assistente de IA está ligada para esta máquina (o terminal mostra o botão flutuante).</param>
-public sealed record HeartbeatDto(string State, long ConfigVersion, string? AttendantName, MaintenanceDto? Maintenance, bool ObservationMode, bool Assistant);
+/// <param name="WhatsAppLearning">O terminal deve registrar as conversas do WhatsApp para a análise da assistente.</param>
+public sealed record HeartbeatDto(string State, long ConfigVersion, string? AttendantName, MaintenanceDto? Maintenance, bool ObservationMode, bool Assistant, bool WhatsAppLearning);

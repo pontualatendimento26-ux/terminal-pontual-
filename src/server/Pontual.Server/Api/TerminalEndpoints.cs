@@ -96,7 +96,8 @@ public static class TerminalEndpoints
         var version = await ConfigVersionAsync(db, ct);
         var state = !device.Approved ? "pending" : device.InMaintenance(now) ? "maintenance" : "active";
         var assistant = state == "active" && await AssistantEndpoints.IsEnabledAsync(db, configuration, device, ct);
-        return Results.Ok(new HeartbeatDto(state, version, device.AttendantName, MaintenanceDto.From(device, now), device.ObservationMode, assistant));
+        return Results.Ok(new HeartbeatDto(state, version, device.AttendantName, MaintenanceDto.From(device, now), device.ObservationMode, assistant,
+            assistant && await AssistantEndpoints.WhatsAppLearningAsync(db, configuration, device, ct)));
     }
 
     private static async Task<IResult> ConfigAsync(HttpContext context, PontualDb db, CancellationToken ct)

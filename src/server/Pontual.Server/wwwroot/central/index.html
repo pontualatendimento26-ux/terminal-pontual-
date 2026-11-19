@@ -314,7 +314,15 @@
   <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Criar administrador</button></div>
 </form></dialog>
 
-<dialog id="dlg-ia-chave" aria-labelledby="t-ia-chave"><form class="dlg" novalidate>
+<dialog id="dlg-senha" aria-labelledby="t-senha"><form class="dlg" novalidate>
+  <h2 id="t-senha">Trocar a senha</h2><p id="senha-texto"></p>
+  <label>Senha nova<input class="campo" id="senha-nova" type="password" autocomplete="new-password" minlength="10" aria-describedby="senha-dica senha-erro"><span class="dica" id="senha-dica">No mínimo 10 caracteres.</span></label>
+  <label>Repita a senha nova<input class="campo" id="senha-nova2" type="password" autocomplete="new-password" minlength="10" aria-describedby="senha-erro"></label>
+  <p class="erro" id="senha-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Trocar a senha</button></div>
+</form></dialog>
+
+<dialog id="dlg-ia-chave"aria-labelledby="t-ia-chave"><form class="dlg" novalidate>
   <h2 id="t-ia-chave">Chave da IA</h2><p>Crie a chave em console.anthropic.com (API keys) e cole aqui. Ela é guardada cifrada no servidor e não aparece de novo na tela.</p>
   <label>Chave da API<input class="campo" id="ia-chave-valor" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" aria-describedby="ia-chave-erro"></label>
   <p class="erro" id="ia-chave-erro" role="alert" hidden></p>

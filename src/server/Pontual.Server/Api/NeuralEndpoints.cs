@@ -26,7 +26,7 @@ public static class NeuralEndpoints
     private sealed record LinkBody(Guid? From, Guid? To);
     private sealed record SuggestionBody(string? Title, string? Detail, string? ProposedContent, string? Bank, string? Category);
     private sealed record ApproveBody(string? CreateKind, Guid? ItemId, string? Title, string? Content, string? Bank, string? Category, string? Description);
-    private sealed record SettingsBody(bool? AutoAnalysis);
+    private sealed record SettingsBody(bool? AutoAnalysis, bool? WhatsAppLearning);
 
     public static void Map(RouteGroupBuilder api)
     {
@@ -102,6 +102,7 @@ public static class NeuralEndpoints
             .Select(i => new { i.DeviceId, i.UpdatedAt, i.MessagesAnalyzed, HasProfile = i.ProfileJson != "" })
             .ToDictionaryAsync(i => i.DeviceId, ct);
         var waiting = await AssistantAnalysis.PendingAsync(db, ct);
+        var whatsapp = await AssistantAnalysis.WhatsAppPendingAsync(db, ct);
         var devices = await db.Devices.AsNoTracking().Where(d => d.Approved).OrderBy(d => d.AttendantName).ThenBy(d => d.Hostname).ToListAsync(ct);
 
         var byStatus = await db.KnowledgeSuggestions.AsNoTracking()
@@ -134,10 +135,11 @@ public static class NeuralEndpoints
                     hostname = d.Hostname,
                     questions = used?.Questions ?? 0,
                     lastAt = used?.LastAt,
-                    hasProfile = insight?.HasProfile ?? false,
+                    hasProfile = (insight?.HasProfile ?? false) || AssistantPrompt.ImportedProfile(settings, d.AttendantName).Length > 0,
                     analyzedAt = insight?.UpdatedAt,
                     messagesAnalyzed = insight?.MessagesAnalyzed ?? 0,
                     newMessages = waiting.GetValueOrDefault(d.Id),
+                    whatsappPending = whatsapp.GetValueOrDefault(d.Id),
                 };
             }),
             suggestions = new
@@ -162,6 +164,7 @@ public static class NeuralEndpoints
                 hasKey = await AssistantSecrets.ReadKeyAsync(db, configuration, ct) is not null,
                 model = AssistantEndpoints.ModelOf(settings),
                 autoAnalysis = settings.GetValueOrDefault(TextSetting.AssistantAutoAnalysis, "1") != "0",
+                whatsappLearning = settings.GetValueOrDefault(TextSetting.AssistantWhatsAppLearning, "1") != "0",
                 generalInstructions = settings.GetValueOrDefault(TextSetting.AssistantInstructions, "").Length,
             },
             limits = new { item = KnowledgeLimits.Item, upload = KnowledgeLimits.Upload, extensions = DocumentText.Extensions, title = MaxTitle },
@@ -172,21 +175,41 @@ public static class NeuralEndpoints
     {
         var admin = context.Admin();
         var body = await context.ReadBodyAsync<SettingsBody>();
-        if (body.AutoAnalysis is not { } on)
+        if (body.AutoAnalysis is null && body.WhatsAppLearning is null)
         {
-            throw ApiError.BadRequest("Informe se a análise automática fica ligada.");
+            throw ApiError.BadRequest("Informe o que deve ser ligado ou desligado.");
         }
 
-        var setting = await db.TextSettings.FirstOrDefaultAsync(s => s.Key == TextSetting.AssistantAutoAnalysis, ct);
-        if (setting is null)
+        var changes = new List<string>();
+        async Task SetAsync(string key, bool on, string what)
         {
-            setting = new TextSetting { Key = TextSetting.AssistantAutoAnalysis };
-            db.TextSettings.Add(setting);
+            var setting = await db.TextSettings.FirstOrDefaultAsync(s => s.Key == key, ct);
+            if (setting is null)
+            {
+                setting = new TextSetting { Key = key };
+                db.TextSettings.Add(setting);
+            }
+
+            setting.Value = on ? "1" : "0";
+            changes.Add($"{(on ? "ligou" : "desligou")} {what}");
         }
 
-        setting.Value = on ? "1" : "0";
-        await audit.SaveAsync(db, AuditInfo.By(admin, "neural.settings",
-            $"{admin.Name} {(on ? "ligou" : "desligou")} a análise automática das conversas com a assistente"), cancellationToken: ct);
+        if (body.AutoAnalysis is { } auto)
+        {
+            await SetAsync(TextSetting.AssistantAutoAnalysis, auto, "a análise automática das conversas");
+        }
+
+        if (body.WhatsAppLearning is { } learning)
+        {
+            await SetAsync(TextSetting.AssistantWhatsAppLearning, learning, "o registro das conversas do WhatsApp para a análise");
+            if (!learning)
+            {
+                // Desligado: o que estava na fila e ainda não foi lido pela IA é apagado.
+                db.WhatsAppCaptures.RemoveRange(await db.WhatsAppCaptures.ToListAsync(ct));
+            }
+        }
+
+        await audit.SaveAsync(db, AuditInfo.By(admin, "neural.settings", $"{admin.Name} {string.Join(" e ", changes)}"), cancellationToken: ct);
         return Results.NoContent();
     }
 
@@ -798,21 +821,31 @@ public static class NeuralEndpoints
         var insight = await db.AttendantInsights.AsNoTracking().FirstOrDefaultAsync(i => i.DeviceId == deviceId, ct);
         var through = insight?.AnalyzedThroughMessageId ?? 0;
 
-        JsonElement? profile = null;
-        if (insight is { ProfileJson.Length: > 0 })
+        static JsonElement? Parse(string json)
         {
+            if (json.Length == 0)
+            {
+                return null;
+            }
+
             try
             {
-                profile = JsonDocument.Parse(insight.ProfileJson).RootElement.Clone();
+                return JsonDocument.Parse(json).RootElement.Clone();
             }
             catch (JsonException)
             {
-                profile = null;
+                return null;
             }
         }
 
+        var profile = Parse(insight?.ProfileJson ?? "");
+        // Perfil tirado do histórico de atendimentos importado, achado pelo nome da atendente.
+        var history = Parse(AssistantPrompt.ImportedProfile(
+            await db.TextSettings.AsNoTracking().ToDictionaryAsync(s => s.Key, s => s.Value, ct), device.AttendantName));
+
         var questions = await db.AssistantMessages.AsNoTracking().CountAsync(m => m.DeviceId == deviceId && m.Role == AssistantRole.User, ct);
         var newMessages = await db.AssistantMessages.AsNoTracking().CountAsync(m => m.DeviceId == deviceId && m.Id > through, ct);
+        var whatsappPending = await db.WhatsAppCaptures.AsNoTracking().CountAsync(c => c.DeviceId == deviceId, ct);
         var helpful = await db.AssistantFeedback.AsNoTracking().CountAsync(f => f.DeviceId == deviceId && f.Helpful, ct);
         var notHelpful = await db.AssistantFeedback.AsNoTracking().CountAsync(f => f.DeviceId == deviceId && !f.Helpful, ct);
         var suggestions = await db.KnowledgeSuggestions.AsNoTracking()
@@ -821,7 +854,7 @@ public static class NeuralEndpoints
             .ToListAsync(ct);
         var instructions = await db.AssistantProfiles.AsNoTracking().Where(p => p.DeviceId == deviceId).Select(p => p.Instructions).FirstOrDefaultAsync(ct) ?? "";
 
-        if (profile is not null)
+        if (profile is not null || history is not null)
         {
             await audit.SaveAsync(db, AuditInfo.By(admin, "neural.profile.read",
                 $"{admin.Name} leu o perfil de atendimento de {device.Label}", "device", device.Id), cancellationToken: ct);
@@ -833,11 +866,14 @@ public static class NeuralEndpoints
             name = string.IsNullOrWhiteSpace(device.AttendantName) ? device.Hostname : device.AttendantName,
             hostname = device.Hostname,
             profile,
+            history,
             analyzedAt = insight?.UpdatedAt,
             messagesAnalyzed = insight?.MessagesAnalyzed ?? 0,
             model = insight?.Model ?? "",
             questions,
             newMessages,
+            whatsappPending,
+            whatsappAnalyzed = insight?.WhatsAppAnalyzed ?? 0,
             feedback = new { helpful, notHelpful },
             suggestions,
             instructions,
@@ -851,7 +887,7 @@ public static class NeuralEndpoints
         var admin = context.Admin();
         context.Demand(Permission.UsageReadIndividual);
 
-        int read = 0, created = 0, updated = 0;
+        int read = 0, conversations = 0, created = 0, updated = 0;
         var more = true;
         try
         {
@@ -859,6 +895,7 @@ public static class NeuralEndpoints
             {
                 var result = await AssistantAnalysis.RunAsync(db, model, configuration, audit, time, deviceId, admin, ct);
                 read += result.MessagesRead;
+                conversations += result.ConversationsRead;
                 created += result.NewSuggestions;
                 updated += result.UpdatedSuggestions;
                 more = result.More;
@@ -869,6 +906,6 @@ public static class NeuralEndpoints
             throw new ApiError(StatusCodes.Status502BadGateway, failure.Message);
         }
 
-        return Results.Ok(new { messagesRead = read, newSuggestions = created, updatedSuggestions = updated, more });
+        return Results.Ok(new { messagesRead = read, conversationsRead = conversations, newSuggestions = created, updatedSuggestions = updated, more });
     }
 }
