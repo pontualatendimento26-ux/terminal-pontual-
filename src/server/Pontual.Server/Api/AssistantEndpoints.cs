@@ -47,7 +47,9 @@ public static class AssistantEndpoints
     /// <summary>Máquinas com uma resposta em andamento: uma pergunta por vez por atendente.</summary>
     private static readonly ConcurrentDictionary<Guid, byte> Busy = new();
 
-    private sealed record AskBody(string? Text, bool? NewConversation, ScreenBody? Screen);
+    private sealed record AskBody(string? Text, bool? NewConversation, ScreenBody? Screen, List<AppBody?>? Apps = null);
+    /// <summary>Um site ou programa liberado no Terminal desta máquina, que a assistente pode abrir a pedido da atendente.</summary>
+    private sealed record AppBody(string? Name, string? Kind);
     /// <summary>O que o Terminal leu da tela na hora da pergunta: partes em texto e a foto (JPEG em base64) da aba ativa.</summary>
     private sealed record ScreenBody(List<ScreenPartBody?>? Parts, string? Image);
     private sealed record ScreenPartBody(string? Kind, bool? Active, string? Name, string? Address, string? Title, string? Contact, string? Text);
@@ -211,6 +213,27 @@ public static class AssistantEndpoints
     /// Confere e limita o que o Terminal mandou da tela. Devolve o texto que acompanha a pergunta, a foto e a
     /// nota curta que fica no histórico (só os nomes do que estava aberto; nenhum conteúdo da tela é gravado).
     /// </summary>
+    private const int MaxApps = 60;
+
+    /// <summary>
+    /// A lista do que a assistente pode abrir neste Terminal. Só os nomes: quem abre é o próprio Terminal,
+    /// que confere o nome na configuração dele (a IA não escolhe endereço).
+    /// </summary>
+    private static string? AppsText(List<AppBody?>? apps)
+    {
+        var names = (apps ?? []).OfType<AppBody>()
+            .Select(a => (Name: Input.Truncated(a.Name, 60), Program: a.Kind == "program"))
+            .Where(a => a.Name.Length > 0)
+            .DistinctBy(a => a.Name)
+            .Take(MaxApps)
+            .Select(a => a.Program ? a.Name + " (programa)" : a.Name)
+            .ToList();
+        return names.Count == 0 ? null
+            : "<terminal_pode_abrir>\n" + string.Join("\n", names) + "\n</terminal_pode_abrir>";
+    }
+
+    private static string? Join(string? a, string? b) => a is null ? b : b is null ? a : a + "\n\n" + b;
+
     private static (string? Text, byte[]? Image, string Note) ReadScreen(ScreenBody? screen)
     {
         if (screen is null)
@@ -389,7 +412,7 @@ public static class AssistantEndpoints
 
             // No modo índice a IA consulta a base antes de responder; a atendente vê o que está sendo consultado.
             var request = await BuildRequestAsync(db, device, apiKey, conversationId, now, status => SendAsync(context, new { status }, ct), ct)
-                with { ScreenText = screen.Text, ScreenImage = screen.Image };
+                with { ScreenText = Join(screen.Text, AppsText(body.Apps)), ScreenImage = screen.Image };
 
             context.Response.ContentType = "text/event-stream";
             context.Response.Headers.CacheControl = "no-store";
@@ -480,17 +503,7 @@ public static class AssistantEndpoints
             settings.GetValueOrDefault(TextSetting.AssistantScreen, "1") != "0",
             settings.GetValueOrDefault(TextSetting.AssistantWhatsAppLearning, "1") != "0");
         var profile = await db.AssistantProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.DeviceId == device.Id, ct);
-        // O que a análise aprendeu sobre esta atendente vai só para ela: cada uma tem o seu perfil.
-        var learned = await db.AttendantInsights.AsNoTracking()
-            .Where(i => i.DeviceId == device.Id).Select(i => i.ProfileJson).FirstOrDefaultAsync(ct);
-        // Somam-se o perfil da análise desta máquina e o importado do histórico de atendimentos dela, se houver.
-        var history = AssistantPrompt.Learned(AssistantPrompt.ImportedProfile(settings, device.AttendantName));
-        var learnedText = AssistantPrompt.Learned(learned);
-        if (history.Length > 0)
-        {
-            learnedText = learnedText.Length == 0 ? history
-                : learnedText + "\n\nDo histórico de atendimentos dela com clientes:\n" + history;
-        }
+        var learnedText = await LearnedAsync(db, device, settings, ct);
 
         var recent = await db.AssistantMessages.AsNoTracking()
             .Where(m => m.DeviceId == device.Id && m.ConversationId == conversationId)
@@ -507,6 +520,24 @@ public static class AssistantEndpoints
             Turns(recent),
             inline ? null : new KnowledgeTools(scripts),
             inline ? null : onStatus);
+    }
+
+    /// <summary>
+    /// O que se aprendeu sobre esta atendente, em texto para as instruções: o perfil da análise desta máquina
+    /// somado ao importado do histórico de atendimentos dela. Vai só para ela; cada uma tem o seu.
+    /// </summary>
+    internal static async Task<string> LearnedAsync(PontualDb db, Device device, IReadOnlyDictionary<string, string> settings, CancellationToken ct)
+    {
+        var learned = await db.AttendantInsights.AsNoTracking()
+            .Where(i => i.DeviceId == device.Id).Select(i => i.ProfileJson).FirstOrDefaultAsync(ct);
+        var history = AssistantPrompt.Learned(AssistantPrompt.ImportedProfile(settings, device.AttendantName));
+        var text = AssistantPrompt.Learned(learned);
+        if (history.Length > 0)
+        {
+            text = text.Length == 0 ? history : text + "\n\nDo histórico de atendimentos dela com clientes:\n" + history;
+        }
+
+        return text;
     }
 
     /// <summary>

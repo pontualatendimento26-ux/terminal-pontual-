@@ -121,6 +121,9 @@ public static class ItemEndpoints
         var (audience, labels) = await AudienceAsync(db, body.Audience, ct);
         await EnsureNameIsFreeAsync(db, name, null, ct);
 
+        // Decisão do dono (20/11/2026): o superadmin libera programa direto, sem a aprovação de outro administrador.
+        // Continua pedindo senha e motivo, e a auditoria registra que não houve segunda aprovação.
+        var direct = admin.Role == Role.SuperAdmin;
         var now = time.GetUtcNow().UtcDateTime;
         var item = new Item
         {
@@ -130,7 +133,7 @@ public static class ItemEndpoints
             Target = path,
             Group = Input.Groups[2],
             Audience = audience,
-            Pending = true,
+            Pending = !direct,
             ProposedById = admin.Id,
             ProposedByName = admin.Name,
             ProposedAt = now,
@@ -139,6 +142,14 @@ public static class ItemEndpoints
             CreatedAt = now,
         };
         db.Items.Add(item);
+
+        if (direct)
+        {
+            await audit.SaveAsync(db, AuditInfo.By(admin, "item.program.create",
+                $"{admin.Name} liberou o programa {name} ({path}) para {DescribeAudience(audience, labels)} direto, como superadmin, sem segunda aprovação: {reason}",
+                "item", item.Id, reason), bumpConfig: true, ct);
+            return Results.Ok(ItemDto.From(item));
+        }
 
         // Proposta pendente não chega ao terminal, então a versão da configuração não muda.
         await audit.SaveAsync(db, AuditInfo.By(admin, "item.program.propose",
@@ -162,7 +173,7 @@ public static class ItemEndpoints
     {
         var admin = context.Admin();
         var item = await FindPendingAsync(db, id, ct);
-        if (item.ProposedById == admin.Id)
+        if (item.ProposedById == admin.Id && admin.Role != Role.SuperAdmin)
         {
             throw ApiError.Forbidden("Quem propôs o programa não pode aprová-lo. Peça a outro administrador.");
         }
@@ -171,11 +182,14 @@ public static class ItemEndpoints
         Input.ProgramPath(item.Target);
 
         var proposer = item.ProposedByName;
+        var own = item.ProposedById == admin.Id;
         item.Pending = false;
         item.Enabled = true;
 
         await audit.SaveAsync(db, AuditInfo.By(admin, "item.program.approve",
-            $"{admin.Name} aprovou o programa {item.Name} ({item.Target}), proposto por {proposer}", "item", item.Id), bumpConfig: true, ct);
+            own
+                ? $"{admin.Name} aprovou o próprio programa {item.Name} ({item.Target}), como superadmin, sem segunda aprovação"
+                : $"{admin.Name} aprovou o programa {item.Name} ({item.Target}), proposto por {proposer}", "item", item.Id), bumpConfig: true, ct);
 
         return Results.Ok(ItemDto.From(item));
     }

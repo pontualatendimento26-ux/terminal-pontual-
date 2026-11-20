@@ -155,8 +155,9 @@ public partial class MainWindow
         ApplySettings(core, isHome: true);
 
         // O mesmo objeto window.PONTUAL da tela inicial, com o token da máquina, e só para a página do próprio servidor.
-        // "screen" avisa à página que este programa sabe entregar o que está na tela (as versões antigas não sabem).
-        var data = new { token = _enrollment.Token, hostname = Environment.MachineName, hosted = true, locked = _locked, screen = true };
+        // "screen" avisa à página que este programa sabe entregar o que está na tela (as versões antigas não sabem);
+        // "actions", que sabe abrir os sites e programas liberados quando a IA pede.
+        var data = new { token = _enrollment.Token, hostname = Environment.MachineName, hosted = true, locked = _locked, screen = true, actions = true };
         await core.AddScriptToExecuteOnDocumentCreatedAsync(
             "(function(){if(window.top!==window||location.origin!==" + JsonSerializer.Serialize(_homeOrigin) + ")return;" +
             "Object.defineProperty(window,'PONTUAL',{value:Object.freeze(" + JsonSerializer.Serialize(data, Json) + "),writable:false,configurable:false});})();");
@@ -205,7 +206,16 @@ public partial class MainWindow
             else if (type.GetString() == "assistant-context"
                 && root.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String && id.GetString() is { Length: > 0 and <= 40 } requestId)
             {
-                _ = SendScreenAsync(requestId);
+                // Páginas antigas não mandam "screen": para elas o pedido é sempre da tela.
+                var wantsScreen = !root.TryGetProperty("screen", out var flag) || flag.ValueKind != JsonValueKind.False;
+                _ = SendScreenAsync(requestId, wantsScreen);
+            }
+            else if (type.GetString() == "assistant-action"
+                && root.TryGetProperty("id", out var actionId) && actionId.GetString() is { Length: > 0 and <= 40 } actionRequest
+                && root.TryGetProperty("action", out var action) && action.GetString() is "open" or "search"
+                && root.TryGetProperty("value", out var value) && value.GetString() is { Length: > 0 and <= 200 } target)
+            {
+                RunAssistantAction(actionRequest, action.GetString()!, target);
             }
         }
         catch (Exception ex)
@@ -274,12 +284,12 @@ public partial class MainWindow
         } catch (e) { return null; } })()
         """;
 
-    private async Task SendScreenAsync(string requestId)
+    private async Task SendScreenAsync(string requestId, bool wantsScreen = true)
     {
         object? screen = null;
         try
         {
-            screen = await CollectScreenAsync();
+            screen = wantsScreen ? await CollectScreenAsync() : null;
         }
         catch (Exception ex)
         {
@@ -289,7 +299,7 @@ public partial class MainWindow
 
         try
         {
-            _panel?.View.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "assistant-context-result", id = requestId, screen }, Json));
+            _panel?.View.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(new { type = "assistant-context-result", id = requestId, screen, apps = AssistantApps() }, Json));
         }
         catch (Exception ex)
         {

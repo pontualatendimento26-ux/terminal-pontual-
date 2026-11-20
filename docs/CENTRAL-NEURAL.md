@@ -85,6 +85,32 @@ Desde o Terminal 2.4.0, cada conversa de WhatsApp que a atendente abre entra na 
 - Só são enviadas mensagens já separadas ("[hora] Cliente: …"). Se a página do WhatsApp Web mudar e o
   Terminal só conseguir texto solto, nada é registrado até o script ser ajustado.
 
+## Cobertura de ausência
+
+Desde o Terminal 2.5.0. Quando uma atendente falta, a assistente responde os clientes dela no WhatsApp, como ela.
+
+- Liga na Central Neural, na ficha da atendente: **Desligada**, **Ensaio** (escreve a resposta e não envia) ou
+  **Ligada** (`AssistantProfiles.Coverage`: "", "test", "on"). O heartbeat entrega o modo ao Terminal só de segunda
+  a sexta, das 8h às 18h de Brasília (`Coverage.WithinHours`), e só com a assistente ligada para a máquina.
+- O Terminal (`MainWindow.Coverage.cs`) roda a cada 20 segundos, só com o computador parado há 90 segundos: acha uma
+  conversa não lida na lista do WhatsApp, abre, confere o nome do contato e manda a conversa para
+  `POST /device/assistant/coverage`. Abrir a conversa a marca como lida, também no ensaio.
+- O servidor (`CoverageEndpoints`) separa as mensagens do cliente que vieram depois da última resposta
+  (`Coverage.Incoming`), não responde duas vezes a mesma fala (`Fingerprint`) e pede à IA uma decisão em JSON:
+  `enviar` (o simples, vai sozinho), `fila` (valor, prazo, proposta, reclamação, dúvida fora da base: espera
+  aprovação, com um aviso curto ao cliente na hora) ou `nada`. As instruções são as da assistente, a base, o perfil
+  da atendente e as regras de `Coverage.Rules`, que valem por cima.
+- Tetos: 40 envios sozinhos por hora por máquina (acima disso vai para aprovação) e 90 segundos entre duas
+  mensagens ao mesmo cliente.
+- O que espera aprovação aparece na ficha da atendente, com a conversa; aprovar (o texto pode ser editado) põe na
+  caixa de saída (`GET /device/assistant/coverage/outbox`), e o Terminal envia na volta seguinte. O Terminal conta
+  se saiu (`/result`); ele confere a mensagem na conversa antes de dar como enviada.
+- Os registros (`CoverageReplies`) ficam 30 dias.
+- As mensagens saem como da atendente. Se o cliente perguntar direto se é robô, a assistente não nega: diz que é o
+  atendimento da Pontual continuando o dela, e a resposta vai para aprovação.
+- Os seletores do WhatsApp Web (lista `#pane-side`, selo de não lida, campo `#main footer [contenteditable]`, botão
+  de enviar) não foram testados na página real. Use o ensaio primeiro.
+
 ## Pendências conhecidas
 
 - **PDF escaneado:** o arquivo é guardado com `FileStatus = no_text`, sem texto e desligado. Falta

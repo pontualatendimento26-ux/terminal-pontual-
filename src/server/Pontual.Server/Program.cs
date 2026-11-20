@@ -198,6 +198,8 @@ TerminalEndpoints.Map(api);
 ScreenEndpoints.Map(api);
 AssistantEndpoints.Map(api);
 NeuralEndpoints.Map(api);
+CoverageEndpoints.Map(api);
+ChromeEndpoints.Map(api);
 
 app.Map("/api/{**rest}", () => Results.Json(new ErrorBody("Rota não encontrada."), statusCode: StatusCodes.Status404NotFound));
 

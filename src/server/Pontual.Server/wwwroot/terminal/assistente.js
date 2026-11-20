@@ -46,24 +46,54 @@
     campo.focus();
   };
 
-  // Pede a tela ao programa do Terminal. Se ele não responder a tempo, a pergunta segue sem a tela.
+  // Pede ao programa do Terminal a tela (se permitida) e a lista do que ele pode abrir. Se ele não
+  // responder a tempo, a pergunta segue sem isso.
+  const sabeAbrir = Boolean(ponte && P.actions);
   function pedirTela() {
-    if (!(sabeVerTela && telaPermitida && telaLigada)) return Promise.resolve(null);
+    const querTela = sabeVerTela && telaPermitida && telaLigada;
+    if (!querTela && !sabeAbrir) return Promise.resolve({ screen: null, apps: null });
     return new Promise((resolver) => {
       const id = String(++numeroDoPedido);
-      const prazo = setTimeout(() => { pedidosDeTela.delete(id); resolver(null); }, 8000);
-      pedidosDeTela.set(id, (tela) => { clearTimeout(prazo); resolver(tela); });
-      ponte.postMessage({ type: 'assistant-context', id });
+      const prazo = setTimeout(() => { pedidosDeTela.delete(id); resolver({ screen: null, apps: null }); }, 8000);
+      pedidosDeTela.set(id, (m) => { clearTimeout(prazo); resolver(m); });
+      ponte.postMessage({ type: 'assistant-context', id, screen: querTela });
     });
   }
+  const pedidosDeAcao = new Map();
   if (ponte) {
     ponte.addEventListener('message', (e) => {
       const m = e.data;
+      if (m && m.type === 'assistant-action-result' && pedidosDeAcao.has(m.id)) {
+        const nota = pedidosDeAcao.get(m.id); pedidosDeAcao.delete(m.id);
+        nota.textContent = typeof m.message === 'string' ? m.message : (m.ok ? 'Pronto.' : 'Não consegui abrir.');
+        nota.classList.toggle('falha', !m.ok);
+        return;
+      }
       if (!m || m.type !== 'assistant-context-result' || !pedidosDeTela.has(m.id)) return;
       const entregar = pedidosDeTela.get(m.id);
       pedidosDeTela.delete(m.id);
-      entregar(m.screen && typeof m.screen === 'object' ? m.screen : null);
+      entregar({
+        screen: m.screen && typeof m.screen === 'object' ? m.screen : null,
+        apps: Array.isArray(m.apps) ? m.apps : null,
+      });
     });
+  }
+
+  // A IA pede para abrir algo escrevendo, na última linha, [[abrir: Nome]] ou [[pesquisar: texto]].
+  // Essa linha não aparece na conversa; vai para o Terminal, que só abre o que está liberado nele.
+  const ACAO = /\[\[\s*(abrir|pesquisar)\s*:\s*([^\]\n]{1,200})\]\]/i;
+  function semAcao(texto) {
+    return String(texto).replace(/\[\[\s*(abrir|pesquisar)\s*:[^\]\n]*\]\]/gi, '').replace(/\[\[[^\]\n]*$/, '').trimEnd();
+  }
+  function executar(resposta, texto) {
+    const achada = sabeAbrir ? ACAO.exec(texto) : null;
+    if (!achada) return;
+    const id = String(++numeroDoPedido);
+    const nota = el('div', 'as-viu as-acao', achada[1].toLowerCase() === 'abrir' ? `Abrindo ${achada[2].trim()}…` : `Pesquisando no Google: ${achada[2].trim()}…`);
+    resposta.after(nota);
+    pedidosDeAcao.set(id, nota);
+    setTimeout(() => { if (pedidosDeAcao.delete(id)) { nota.textContent = 'O Terminal não respondeu.'; nota.classList.add('falha'); } }, 10000);
+    ponte.postMessage({ type: 'assistant-action', id, action: achada[1].toLowerCase() === 'abrir' ? 'open' : 'search', value: achada[2].trim() });
   }
   function notaDaTela(alvo, contexto) {
     if (contexto) alvo.after(el('div', 'as-viu', `Com a tela: ${contexto}`));
@@ -79,7 +109,7 @@
   // Só **negrito** é interpretado; o resto aparece como veio (as quebras de linha valem pelo CSS).
   function formatar(alvo, texto) {
     alvo.replaceChildren();
-    const partes = String(texto).replace(/^#{1,6}\s+/gm, '').split(/\*\*([^*\n]+)\*\*/);
+    const partes = semAcao(texto).replace(/^#{1,6}\s+/gm, '').split(/\*\*([^*\n]+)\*\*/);
     partes.forEach((parte, i) => { if (parte) alvo.append(i % 2 ? el('strong', '', parte) : parte); });
   }
   function noFim() { return corpo.scrollHeight - corpo.scrollTop - corpo.clientHeight < 80; }
@@ -216,9 +246,9 @@
     let recebido = '', falhou = null, respostaId = null;
     try {
       // A tela é lida agora, no momento da pergunta, e vai só com ela.
-      const tela = await pedirTela();
+      const { screen: tela, apps } = await pedirTela();
       const r = await fetch('/api/v1/device/assistant/messages', {
-        method: 'POST', headers: cabecalhos(true), body: JSON.stringify({ text: texto, newConversation: novaConversa, ...(tela ? { screen: tela } : {}) }),
+        method: 'POST', headers: cabecalhos(true), body: JSON.stringify({ text: texto, newConversation: novaConversa, ...(tela ? { screen: tela } : {}), ...(apps ? { apps } : {}) }),
       });
       if (!r.ok) throw new Error(await mensagemDeErro(r));
       novaConversa = false;
@@ -255,6 +285,7 @@
       if (recebido) { erro(falhou); } else { resposta.classList.add('falha'); resposta.textContent = falhou; }
     }
     if (respostaId && recebido) { const colado = noFim(); resposta.after(avaliacao(respostaId)); if (colado) descer(); }
+    if (recebido && !falhou) executar(resposta, recebido);
     ocupada = false; liberar();
     campo.focus();
   }

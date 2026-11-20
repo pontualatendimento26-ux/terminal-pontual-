@@ -26,10 +26,18 @@ public sealed class TestApp : WebApplicationFactory<Program>
         {
             builder.ConfigureTestServices(services => services.AddSingleton(model));
         }
+
+        if (Clock is { } clock)
+        {
+            builder.ConfigureTestServices(services => services.AddSingleton(clock));
+        }
     }
 
     /// <summary>IA de mentira para os testes da assistente; definir antes de criar o primeiro cliente.</summary>
     public Pontual.Server.Assistant.IAssistantModel? AssistantModel { get; init; }
+
+    /// <summary>Relógio do servidor nos testes que dependem de hora (a cobertura só responde em horário comercial).</summary>
+    public TimeProvider? Clock { get; init; }
 
     protected override void Dispose(bool disposing)
     {

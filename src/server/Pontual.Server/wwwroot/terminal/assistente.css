@@ -58,3 +58,5 @@ body.as { display: flex; flex-direction: column; background: var(--fundo); overf
 .as-caixa button:disabled { background: var(--linha-forte); cursor: not-allowed; transform: none; }
 .as-nota { margin-top: 6px; font-size: 11.5px; color: var(--apagado); text-align: center; }
 .as-erro { margin: 0 4px 6px; font-size: 13px; font-weight: 500; color: var(--rubi-700); }
+.as-acao { align-self: flex-start; margin: -6px 0 0 4px; }
+.as-acao.falha { color: var(--rubi-700); }

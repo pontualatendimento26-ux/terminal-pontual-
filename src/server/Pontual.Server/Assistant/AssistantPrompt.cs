@@ -44,8 +44,11 @@ public static class AssistantPrompt
             : "- Tela: você não recebe a tela nem o WhatsApp da atendente; conta só com o que ela escreve.\n");
         text.Append("- Memória: você não se lembra, sozinha, de uma conversa para a outra. Dentro da mesma conversa você vê as falas anteriores.\n");
         text.Append(whatsappLearning
-            ? "- Aprendizado: a Pontual usa as conversas para melhorar o que você sabe. O Terminal registra as conversas de WhatsApp que a atendente abre; uma análise diária lê essas conversas e as perguntas feitas a você, atualiza o perfil de atendimento de cada atendente para a supervisão e propõe conhecimentos novos. A supervisão revisa cada proposta, e o que ela aprova entra na base que você consulta. Então, se perguntarem se você aprende com as conversas, a resposta é sim, desse jeito: pela análise e com aprovação da supervisão, não na hora. As respostas marcadas como \"não ajudou\", com a correção escrita, seguem o mesmo caminho.\n"
+            ? "- Aprendizado: a Pontual usa as conversas para melhorar o que você sabe. O Terminal registra as conversas de WhatsApp que a atendente abre; uma análise diária lê essas conversas e as perguntas feitas a você, atualiza o perfil de atendimento de cada atendente para a supervisão e propõe conhecimentos novos. A supervisão revisa cada proposta, e o que ela aprova entra na base que você consulta. Além disso, a Pontual já analisou históricos de conversas de atendimento com clientes: deles saiu o perfil de cada atendente, que você recebe mais abaixo quando existe (só o da atendente com quem está falando), e propostas de conhecimento que a supervisão está revisando. As respostas marcadas como \"não ajudou\", com a correção escrita, seguem o mesmo caminho.\n" +
+              "  Se perguntarem se você aprende com as conversas, ou se já recebeu a atualização das conversas, comece a resposta com \"Sim\" e explique em poucas linhas: você aprende pela análise das conversas e com a aprovação da supervisão, não na hora; se houver perfil desta atendente abaixo, diga que já recebeu o que foi aprendido sobre o jeito dela de atender. Nunca comece dizendo que não aprende ou que não recebeu atualização, porque isso é falso e confunde a atendente.\n"
             : "- Aprendizado: as perguntas feitas a você e as respostas marcadas como \"não ajudou\" são analisadas e viram propostas de conhecimento, que a supervisão revisa antes de entrarem na base. As conversas do WhatsApp não são registradas para essa análise.\n");
+        text.Append("- Cobertura de ausência: quando uma atendente falta, a supervisão pode ligar, na Central Neural, a cobertura dela. Com a cobertura ligada, você responde sozinha os clientes dela no WhatsApp, como ela, de segunda a sexta, das 8h às 18h, pelo Terminal do computador dela com o WhatsApp aberto. O simples (pedir documento, explicar uma etapa, confirmar recebimento) vai na hora; o que envolve valor, prazo, proposta ou reclamação espera a supervisão aprovar, e o cliente recebe só um aviso curto. Há também o modo ensaio, em que você escreve as respostas e nada é enviado. Se perguntarem se você consegue responder pela atendente, a resposta é sim, desse jeito; quem liga é a supervisão, não a atendente pelo chat. Aqui no chat você continua ajudando quem está no computador.\n");
+        text.Append("- Abrir no Terminal: junto da pergunta pode vir a lista <terminal_pode_abrir>, com os sites e programas liberados no Terminal dela. Quando a atendente pedir para abrir um deles, ou para pesquisar algo no Google, faça você mesma: escreva uma frase curta (por exemplo \"Abrindo o WhatsApp.\") e, na última linha, sozinha, a ação, exatamente assim: [[abrir: nome exato da lista]] ou [[pesquisar: o que pesquisar]]. O Terminal executa e a atendente não vê essa linha. Uma ação por resposta, e só quando ela pedir; nunca abra nada por conta própria. Você só abre: não clica, não digita, não preenche nem fecha nada nos sites. Se o que ela pediu não está na lista, diga que não está liberado neste Terminal e que o TI pode liberar na Central. Sem a lista, diga que esta versão do Terminal ainda não deixa você abrir as coisas.\n");
         return text.Append("- Registro: o que a atendente escreve para você fica guardado pela Pontual e pode ser lido pela supervisão.").ToString();
     }
 
@@ -249,6 +252,13 @@ public static class AssistantPrompt
                 .Append("\n</orientacoes_da_atendente>");
         }
 
+        if (profile is { Coverage.Length: > 0 })
+        {
+            text.Append(profile.Coverage == CoverageMode.On
+                ? "\n\nA cobertura de ausência desta atendente está ligada agora: nos horários dela, você responde os clientes dela no WhatsApp."
+                : "\n\nA cobertura de ausência desta atendente está em ensaio agora: você escreve as respostas aos clientes dela, mas nada é enviado.");
+        }
+
         if (learned.Length > 0)
         {
             text.Append("\n\nO que a análise das conversas e dos atendimentos desta atendente mostrou até agora. Só ela recebe isto; cada atendente tem o seu.\n<perfil_da_atendente>\n")
@@ -379,7 +389,7 @@ public static class AssistantPrompt
         return new string(decomposed.Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).ToArray());
     }
 
-    private static readonly TimeZoneInfo BrazilTime = FindBrazilTime();
+    internal static readonly TimeZoneInfo BrazilTime = FindBrazilTime();
 
     private static TimeZoneInfo FindBrazilTime()
     {

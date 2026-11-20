@@ -25,7 +25,9 @@ $ProgramasFixos = @(
     # PDF: o Edge (que vem no Windows, travado mais abaixo para so abrir arquivos do computador) ou o Adobe Reader.
     'msedge.exe', 'AcroRd32.exe', 'Acrobat.exe',
     # Planilhas: Excel ou LibreOffice, se estiverem instalados.
-    'EXCEL.EXE', 'soffice.exe', 'soffice.bin', 'scalc.exe'
+    'EXCEL.EXE', 'soffice.exe', 'soffice.bin', 'scalc.exe',
+    # Google Chrome: as atendentes usam os perfis dele (um WhatsApp em cada). O Terminal vigia os enderecos.
+    'chrome.exe'
 )
 
 function Mensagem([string]$Texto, [string]$Icone = 'Information', [string]$Botoes = 'OK') {
@@ -156,14 +158,39 @@ function PoliticasDoBloqueio([string]$Comando) {
         @('Software\Policies\Microsoft\Edge\URLBlocklist', '1', '*'),
         @('Software\Policies\Microsoft\Edge\URLAllowlist', '1', 'file://*'),
         # Excel: macros desligadas, porque uma macro consegue abrir outros programas.
-        @('Software\Policies\Microsoft\Office\16.0\Excel\Security', 'VBAWarnings', 4)
+        @('Software\Policies\Microsoft\Office\16.0\Excel\Security', 'VBAWarnings', 4),
+        # Google Chrome: perfis continuam liberados; sem janela anonima, sem modo convidado e sem ferramentas
+        # de desenvolvedor. Os sites abertos nele sao vigiados pelo Terminal, que avisa a Central do TI.
+        @('Software\Policies\Google\Chrome', 'IncognitoModeAvailability', 1),
+        @('Software\Policies\Google\Chrome', 'BrowserGuestModeEnabled', 0),
+        @('Software\Policies\Google\Chrome', 'DeveloperToolsAvailability', 2)
     )
 }
 
 $ChaveRestrictRun = 'Software\Microsoft\Windows\CurrentVersion\Policies\Explorer\RestrictRun'
 
+# Sites que o TI bloqueou no Chrome pela Central. Quem grava a lista e o proprio Terminal, que roda na conta da
+# atendente; por isso SO esta chave recebe permissao de escrita para a conta (as outras politicas continuam so de administrador).
+$ChaveBloqueioChrome = 'Software\Policies\Google\Chrome\URLBlocklist'
+
+function LiberarListaDoChrome([string]$Raiz, [string]$Sid) {
+    $usuarios = [Microsoft.Win32.Registry]::Users
+    $usuarios.CreateSubKey("$Raiz\$ChaveBloqueioChrome").Close()
+    $direitosAbertura = [System.Security.AccessControl.RegistryRights]'ReadKey, ChangePermissions'
+    $chave = $usuarios.OpenSubKey("$Raiz\$ChaveBloqueioChrome", [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree, $direitosAbertura)
+    try {
+        $acl = $chave.GetAccessControl()
+        $quem = New-Object Security.Principal.SecurityIdentifier($Sid)
+        $direitos = [System.Security.AccessControl.RegistryRights]'QueryValues, SetValue, EnumerateSubKeys, Notify, ReadPermissions'
+        $regra = New-Object System.Security.AccessControl.RegistryAccessRule($quem, $direitos, 'None', 'None', 'Allow')
+        $acl.AddAccessRule($regra)
+        $chave.SetAccessControl($acl)
+    }
+    finally { $chave.Close() }
+}
+
 # Grava o bloqueio no registro da conta. $Raiz e o nome da chave dentro de HKEY_USERS.
-function GravarBloqueio([string]$Raiz, [string]$Comando, [string[]]$ProgramasExtras) {
+function GravarBloqueio([string]$Raiz, [string]$Comando, [string[]]$ProgramasExtras, [string]$Sid) {
     $usuarios = [Microsoft.Win32.Registry]::Users
     foreach ($politica in (PoliticasDoBloqueio $Comando)) {
         $chave = $usuarios.CreateSubKey("$Raiz\$($politica[0])")
@@ -184,17 +211,74 @@ function GravarBloqueio([string]$Raiz, [string]$Comando, [string[]]$ProgramasExt
         }
     }
     finally { $lista.Close() }
+
+    if ($Sid) { LiberarListaDoChrome $Raiz $Sid }
 }
 
 # Desfaz GravarBloqueio: a conta volta a ser uma conta comum do Windows.
 function RemoverBloqueio([string]$Raiz) {
     $usuarios = [Microsoft.Win32.Registry]::Users
     $usuarios.DeleteSubKeyTree("$Raiz\$ChaveRestrictRun", $false)
+    $usuarios.DeleteSubKeyTree("$Raiz\$ChaveBloqueioChrome", $false)
     foreach ($politica in (PoliticasDoBloqueio '')) {
         $chave = $usuarios.OpenSubKey("$Raiz\$($politica[0])", $true)
         if ($chave) {
             try { $chave.DeleteValue($politica[1], $false) } finally { $chave.Close() }
         }
+    }
+}
+
+# ----- Atualizacao pelo botao "Atualizar" do Terminal
+# Tarefa agendada que roda Atualizar-Terminal.ps1 como SISTEMA. So a conta da atendente (e os
+# administradores) podem dispara-la; ninguem alem dos administradores pode muda-la.
+$TarefaAtualizar = 'Terminal Pontual - Atualizar'
+$PastaPedidoAtualizacao = Join-Path $env:ProgramData 'Pontual\Atualizacao'
+
+function RegistrarAtualizacao([string]$Sid) {
+    # Pasta em que o Terminal deixa o pedido (endereco da Central) e le o andamento.
+    $pasta = $PastaPedidoAtualizacao
+    if (Test-Path -LiteralPath $pasta) {
+        $item = Get-Item -LiteralPath $pasta -Force
+        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { [IO.Directory]::Delete($pasta, $false) }
+    }
+    New-Item -ItemType Directory -Force -Path $pasta | Out-Null
+    $acl = New-Object System.Security.AccessControl.DirectorySecurity
+    $acl.SetAccessRuleProtection($true, $false)
+    $heranca = 'ContainerInherit,ObjectInherit'
+    foreach ($dono in 'S-1-5-18', 'S-1-5-32-544') {
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($dono)), 'FullControl', $heranca, 'None', 'Allow')))
+    }
+    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier($Sid)), 'Modify', $heranca, 'None', 'Allow')))
+    Set-Acl -LiteralPath $pasta -AclObject $acl
+
+    $servico = New-Object -ComObject Schedule.Service
+    $servico.Connect()
+    $definicao = $servico.NewTask(0)
+    $definicao.RegistrationInfo.Description = 'Instala a versão nova do Terminal Pontual publicada na Central do TI e reinicia o computador. Disparada pelo botão Atualizar do Terminal.'
+    $definicao.Settings.Enabled = $true
+    $definicao.Settings.AllowDemandStart = $true
+    $definicao.Settings.DisallowStartIfOnBatteries = $false
+    $definicao.Settings.StopIfGoingOnBatteries = $false
+    $definicao.Settings.ExecutionTimeLimit = 'PT30M'
+    $definicao.Settings.MultipleInstances = 2   # ignora um segundo clique enquanto a primeira roda
+    $definicao.Principal.RunLevel = 1
+    $acao = $definicao.Actions.Create(0)
+    $acao.Path = $PowerShellExe
+    $acao.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $Destino 'Atualizar-Terminal.ps1')`""
+    # Permissoes da tarefa: administradores e SISTEMA tudo; a conta da atendente so ler e executar.
+    $permissoes = "D:P(A;;FA;;;BA)(A;;FA;;;SY)(A;;GRGX;;;$Sid)"
+    # 6 = criar ou atualizar; 5 = conta de servico (SISTEMA).
+    $servico.GetFolder('\').RegisterTaskDefinition($TarefaAtualizar, $definicao, 6, 'SYSTEM', $null, 5, $permissoes) | Out-Null
+}
+
+function RemoverAtualizacao {
+    try {
+        $servico = New-Object -ComObject Schedule.Service
+        $servico.Connect()
+        $servico.GetFolder('\').DeleteTask($TarefaAtualizar, 0)
+    } catch { }
+    foreach ($pasta in $PastaPedidoAtualizacao, (Join-Path $env:ProgramData 'Pontual\Atualizacao-sistema')) {
+        if (Test-Path -LiteralPath $pasta) { Remove-Item -LiteralPath $pasta -Recurse -Force -Confirm:$false -ErrorAction SilentlyContinue }
     }
 }
 
@@ -208,6 +292,14 @@ function ApagarConta([string]$Conta, [string]$Sid) {
         Get-CimInstance -ClassName Win32_UserProfile -Filter "SID='$Sid'" -ErrorAction SilentlyContinue | Remove-CimInstance -Confirm:$false -ErrorAction SilentlyContinue
     }
     if (SidDaConta $Conta) {
-        ([ADSI]"WinNT://$env:COMPUTERNAME,computer").Delete('user', $Conta)
+        # Em alguns computadores o ADSI (WinNT://) falha; Remove-LocalUser e net.exe ficam de reserva.
+        try { Remove-LocalUser -Name $Conta -ErrorAction Stop }
+        catch {
+            try { ([ADSI]"WinNT://$env:COMPUTERNAME,computer").Delete('user', $Conta) }
+            catch {
+                & net.exe user "$Conta" /delete 2>&1 | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw "Não foi possível apagar a conta `"$Conta`"." }
+            }
+        }
     }
 }

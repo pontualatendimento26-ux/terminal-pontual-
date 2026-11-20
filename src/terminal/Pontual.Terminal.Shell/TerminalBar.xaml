@@ -17,11 +17,69 @@
                 </StackPanel>
             </Button>
 
+            <!-- Pesquisar: sempre visível, em todos os monitores. Procura só entre os sites e programas liberados. -->
+            <Grid DockPanel.Dock="Left" Margin="8,0,0,0" VerticalAlignment="Center">
+                <Button x:Name="SearchButton" Style="{StaticResource BotaoClaro}" MinHeight="38" Padding="16,0" FontSize="14"
+                        Click="OnSearch" AutomationProperties.Name="Pesquisar" ToolTip="Pesquisar sites e programas liberados">
+                    <StackPanel Orientation="Horizontal">
+                        <Viewbox Width="18" Height="18" Margin="0,0,8,0">
+                            <Canvas Width="24" Height="24">
+                                <Ellipse Canvas.Left="4" Canvas.Top="4" Width="13" Height="13" Stroke="{StaticResource Tinta}" StrokeThickness="2" />
+                                <Path Data="M15.5 15.5 20 20" Stroke="{StaticResource Tinta}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock Text="Pesquisar" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Popup x:Name="SearchPopup" PlacementTarget="{Binding ElementName=SearchButton}" Placement="Top" VerticalOffset="-8"
+                       StaysOpen="False" AllowsTransparency="True" Opened="OnSearchOpened">
+                    <Border Width="380" Background="White" BorderBrush="{StaticResource Linha}" BorderThickness="1" CornerRadius="12" Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="Digite o nome do site ou programa" FontSize="12" Foreground="{StaticResource Suave}" Margin="2,0,0,6" />
+                            <TextBox x:Name="SearchBox" FontSize="15" Padding="8,6" TextChanged="OnSearchText" PreviewKeyDown="OnSearchKey"
+                                     AutomationProperties.Name="O que você procura" />
+                            <ListBox x:Name="SearchResults" Margin="0,8,0,0" MaxHeight="320" BorderThickness="0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     PreviewKeyDown="OnResultsKey" PreviewMouseLeftButtonUp="OnResultClick"
+                                     AutomationProperties.Name="Resultados da pesquisa">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="2,4" AutomationProperties.Name="{Binding Name}">
+                                            <Border Width="30" Height="30" CornerRadius="9" Background="{Binding Color}">
+                                                <TextBlock Text="{Binding Initials}" Foreground="White" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Name}" FontWeight="Medium" Foreground="{StaticResource Tinta}" />
+                                                <TextBlock Text="{Binding Detail}" FontSize="12" Foreground="{StaticResource Suave}" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock x:Name="SearchEmpty" Margin="4,10,4,4" FontSize="13" Foreground="{StaticResource Suave}" TextWrapping="Wrap" Visibility="Collapsed" />
+                        </StackPanel>
+                    </Border>
+                </Popup>
+            </Grid>
+
             <!-- Aviso fixo e discreto, sempre visível, no canto da barra. -->
             <TextBlock DockPanel.Dock="Left" Text="As atividades serão monitoradas" VerticalAlignment="Center" Margin="14,0,0,0"
                        FontSize="11" Foreground="{StaticResource Apagado}" />
 
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <!-- Só no modo bloqueado com Central: instala a versão nova publicada na Central e reinicia o computador. -->
+                <Button x:Name="UpdateButton" Style="{StaticResource BotaoClaro}" MinHeight="38" Padding="14,0" FontSize="14" Margin="0,0,12,0"
+                        VerticalAlignment="Center" Click="OnUpdate" Visibility="Collapsed"
+                        AutomationProperties.Name="Atualizar o Terminal" ToolTip="Instala a versão nova do Terminal e reinicia o computador">
+                    <StackPanel Orientation="Horizontal">
+                        <Viewbox Width="18" Height="18" Margin="0,0,8,0">
+                            <Canvas Width="24" Height="24">
+                                <Path Data="M12 4v11M7 10l5 5 5-5M5 20h14" Stroke="{StaticResource Tinta}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock Text="Atualizar" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
                 <TextBlock x:Name="ClockText" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource Tinta}" VerticalAlignment="Center" Margin="0,0,10,0" Text="--:--" />
                 <Button x:Name="HelpButton" Style="{StaticResource BotaoLimpo}" Width="44" Height="44" Click="OnHelp"
                         AutomationProperties.Name="Chamar o TI" ToolTip="Chamar o TI">

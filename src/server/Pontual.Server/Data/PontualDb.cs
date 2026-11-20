@@ -14,6 +14,7 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<HistoryEntry> History => Set<HistoryEntry>();
     public DbSet<ObservedHost> ObservedHosts => Set<ObservedHost>();
+    public DbSet<ChromeSite> ChromeSites => Set<ChromeSite>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<AuditRecord> Audit => Set<AuditRecord>();
     public DbSet<TextSetting> TextSettings => Set<TextSetting>();
@@ -25,6 +26,7 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
     public DbSet<AssistantFeedback> AssistantFeedback => Set<AssistantFeedback>();
     public DbSet<AttendantInsight> AttendantInsights => Set<AttendantInsight>();
     public DbSet<WhatsAppCapture> WhatsAppCaptures => Set<WhatsAppCapture>();
+    public DbSet<CoverageReply> CoverageReplies => Set<CoverageReply>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -64,6 +66,8 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
 
         modelBuilder.Entity<ObservedHost>().HasIndex(o => o.Host).IsUnique();
 
+        modelBuilder.Entity<ChromeSite>().HasIndex(c => c.Host).IsUnique();
+
         modelBuilder.Entity<Setting>().HasKey(s => s.Key);
 
         modelBuilder.Entity<TextSetting>().HasKey(s => s.Key);
@@ -83,6 +87,11 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
         modelBuilder.Entity<AssistantFeedback>().HasIndex(f => new { f.DeviceId, f.MessageId }).IsUnique();
 
         modelBuilder.Entity<WhatsAppCapture>().HasIndex(c => new { c.DeviceId, c.Contact }).IsUnique();
+        modelBuilder.Entity<CoverageReply>(e =>
+        {
+            e.HasIndex(r => new { r.DeviceId, r.Status });
+            e.HasIndex(r => new { r.DeviceId, r.Contact });
+        });
 
         modelBuilder.Entity<AttendantInsight>(e =>
         {

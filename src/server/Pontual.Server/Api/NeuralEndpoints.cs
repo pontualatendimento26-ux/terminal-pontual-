@@ -103,6 +103,9 @@ public static class NeuralEndpoints
             .ToDictionaryAsync(i => i.DeviceId, ct);
         var waiting = await AssistantAnalysis.PendingAsync(db, ct);
         var whatsapp = await AssistantAnalysis.WhatsAppPendingAsync(db, ct);
+        var coverage = await db.AssistantProfiles.AsNoTracking().Where(p => p.Coverage != "").ToDictionaryAsync(p => p.DeviceId, p => p.Coverage, ct);
+        var coveragePending = await db.CoverageReplies.AsNoTracking().Where(r => r.Status == CoverageStatus.Pending)
+            .GroupBy(r => r.DeviceId).Select(g => new { DeviceId = g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.DeviceId, g => g.Count, ct);
         var devices = await db.Devices.AsNoTracking().Where(d => d.Approved).OrderBy(d => d.AttendantName).ThenBy(d => d.Hostname).ToListAsync(ct);
 
         var byStatus = await db.KnowledgeSuggestions.AsNoTracking()
@@ -140,6 +143,8 @@ public static class NeuralEndpoints
                     messagesAnalyzed = insight?.MessagesAnalyzed ?? 0,
                     newMessages = waiting.GetValueOrDefault(d.Id),
                     whatsappPending = whatsapp.GetValueOrDefault(d.Id),
+                    coverage = coverage.GetValueOrDefault(d.Id, ""),
+                    coveragePending = coveragePending.GetValueOrDefault(d.Id),
                 };
             }),
             suggestions = new
@@ -877,6 +882,7 @@ public static class NeuralEndpoints
             feedback = new { helpful, notHelpful },
             suggestions,
             instructions,
+            coverage = await CoverageEndpoints.ListAsync(db, deviceId, ct),
         });
     }
 

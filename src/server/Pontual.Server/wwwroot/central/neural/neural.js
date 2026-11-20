@@ -439,6 +439,7 @@ async function gavetaAtendente(deviceId) {
       dado('Respostas que ajudaram', mil(a.feedback.helpful)), dado('Respostas corrigidas', mil(a.feedback.notHelpful))),
     el('div', { className: 'botoes' }, analisar),
     !E.d.settings.hasKey ? el('p', { className: 'aviso', textContent: 'Sem a chave da IA não há análise.' }) : !a.newMessages && !a.whatsappPending && !p ? el('p', { className: 'nota', textContent: 'Ainda não há conversas dela para analisar.' }) : null,
+    secaoCobertura(deviceId, a),
     a.history ? secaoHistorico(a.history, lista) : null,
     p ? secao('Resumo', el('p', { className: 'frase', textContent: p.resumo })) : a.history ? null : vazio('Perfil ainda não montado', 'A IA monta o perfil lendo as conversas dela com os clientes no WhatsApp e as perguntas que ela faz à assistente.'),
     p && p.atendimento ? secao('Como atende os clientes', el('p', { className: 'frase', textContent: p.atendimento })) : null,
@@ -451,6 +452,67 @@ async function gavetaAtendente(deviceId) {
     a.instructions ? secao('Orientações escritas para ela', el('p', { className: 'frase', textContent: a.instructions })) : null,
     a.suggestions.length ? secao('Sugestões que vieram dela', el('div', { className: 'lista-simples' }, ...a.suggestions.map((s) => el('div', {}, el('i', { className: 'ponto', style: `--c:${MAPA_CORES.suggestion}` }), el('span', { className: 'nome', textContent: s.title }), selo(`${s.status} liso`, SITUACAO[s.status]))))) : null,
     p ? el('p', { className: 'nota', textContent: `Perfil montado pela IA em ${quando(a.analyzedAt)}, a partir de ${plural(a.whatsappAnalyzed, 'conversa de WhatsApp', 'conversas de WhatsApp')} e de ${plural(a.messagesAnalyzed, 'fala', 'falas')} com a assistente. As conversas do WhatsApp são apagadas do servidor depois de analisadas. Esta leitura ficou registrada na auditoria.` }) : null);
+}
+
+// ============================================================= cobertura de ausência
+// Quando a atendente falta, a assistente responde os clientes dela no WhatsApp, como ela. O simples vai
+// sozinho; o que envolve dinheiro fica aqui esperando aprovação. "Ensaio" escreve as respostas sem enviar.
+const MODOS_COBERTURA = { '': 'Desligada', test: 'Ensaio', on: 'Ligada' };
+const SITUACAO_COBERTURA = {
+  draft: ['Ensaio (não enviada)', 'liso'], pending: ['Esperando aprovação', 'pending'], approved: ['Aprovada, enviando', 'approved'],
+  sending: ['Enviando', 'approved'], sent: ['Enviada', 'active'], rejected: ['Recusada', 'rejected'], failed: ['Não saiu', 'error'], skipped: ['Sem resposta', 'disabled'],
+};
+const DECISAO_COBERTURA = { send: 'a IA enviaria sozinha', queue: 'pede aprovação', none: 'não precisava responder' };
+
+function secaoCobertura(deviceId, a) {
+  const c = a.coverage || { mode: '', replies: [] };
+  const segmento = el('div', { className: 'segmento', role: 'group', 'aria-label': 'Cobertura de ausência' }, ...Object.entries(MODOS_COBERTURA).map(([modo, rotulo]) => {
+    const b = el('button', { type: 'button', textContent: rotulo, 'aria-pressed': String(c.mode === modo) });
+    b.onclick = async () => {
+      if (modo === c.mode) return;
+      if (modo === 'on' && !confirm(`Ligar a cobertura? A assistente vai abrir as conversas não lidas do WhatsApp de ${a.name} e responder sozinha, como ${a.name}, o que for simples. O que envolver valor, prazo ou proposta espera a sua aprovação aqui. Funciona de segunda a sexta, das 8h às 18h, com o WhatsApp aberto no Terminal desse computador.`)) return;
+      if (await agir(b, () => api('PUT', `/neural/attendants/${deviceId}/coverage`, { mode }), `Cobertura de ${a.name}: ${rotulo.toLowerCase()}.`)) gavetaAtendente(deviceId);
+    };
+    return b;
+  }));
+  const explica = {
+    '': `Desligada: a assistente só ajuda quem está no computador. Ligue quando ${a.name} faltar.`,
+    test: 'Ensaio: a assistente lê as mensagens novas e escreve a resposta, mas nada vai para o cliente. Use para conferir antes de ligar.',
+    on: `Ligada: a assistente responde sozinha, como ${a.name}, o que é simples. O que envolve dinheiro espera aprovação abaixo, com um aviso curto ao cliente na hora.`,
+  }[c.mode];
+  const pendentes = c.replies.filter((r) => r.status === 'pending' || r.status === 'failed');
+  const outras = c.replies.filter((r) => !pendentes.includes(r)).slice(0, 25);
+  return secao('Cobertura de ausência',
+    segmento,
+    el('p', { className: 'nota', textContent: explica }),
+    pendentes.length ? el('h4', { textContent: `Esperando aprovação (${pendentes.length})` }) : null,
+    ...pendentes.map((r) => cartaoCobertura(deviceId, r, true)),
+    outras.length ? el('h4', { textContent: 'Últimas respostas' }) : null,
+    ...outras.map((r) => cartaoCobertura(deviceId, r, false)),
+    !c.replies.length && c.mode ? el('p', { className: 'nota', textContent: 'Nenhuma mensagem tratada ainda. As conversas aparecem aqui assim que chegar mensagem nova de cliente no WhatsApp desse computador.' }) : null);
+}
+
+function cartaoCobertura(deviceId, r, editavel) {
+  const [rotulo, classe] = SITUACAO_COBERTURA[r.status] || [r.status, 'liso'];
+  const partes = [
+    el('header', {}, selo(classe, rotulo), el('b', { textContent: r.contact }), el('small', { textContent: quando(r.sentAt || r.createdAt) })),
+    el('div', { className: 'citacao' }, el('b', { textContent: 'Cliente escreveu' }), r.incoming),
+  ];
+  if (r.holding) partes.push(el('div', { className: 'citacao' }, el('b', { textContent: 'Aviso enviado na hora' }), r.holding));
+  if (editavel) {
+    const campo = el('textarea', { className: 'campo', value: r.reply, 'aria-label': `Resposta para ${r.contact}` });
+    const aprovar = botao('Aprovar e enviar', null, 'btn mini');
+    aprovar.onclick = async () => { if (await agir(aprovar, () => api('POST', `/neural/coverage/${r.id}/approve`, { message: campo.value }), 'Aprovada. O Terminal envia na próxima volta.')) gavetaAtendente(deviceId); };
+    const recusar = botao('Recusar', null);
+    recusar.onclick = async () => { if (await agir(recusar, () => api('POST', `/neural/coverage/${r.id}/reject`), 'Resposta recusada. Nada foi enviado.')) gavetaAtendente(deviceId); };
+    partes.push(el('b', { textContent: 'Resposta proposta (você pode editar)' }), campo, el('div', { className: 'botoes' }, aprovar, recusar));
+  } else if (r.reply) {
+    partes.push(el('div', { className: 'citacao' }, el('b', { textContent: r.status === 'draft' ? `Resposta escrita (${DECISAO_COBERTURA[r.decision] || ''})` : 'Resposta' }), r.reply));
+  }
+  if (r.reason) partes.push(el('p', { className: 'nota', textContent: `Motivo: ${r.reason}${r.reviewedBy ? ` · aprovada por ${r.reviewedBy}` : ''}` }));
+  if (r.error) partes.push(el('p', { className: 'erro', textContent: r.error }));
+  partes.push(el('details', {}, el('summary', { textContent: 'Ver a conversa como estava' }), el('div', { className: 'citacao', textContent: r.transcript })));
+  return el('div', { className: 'sugestao' }, ...partes);
 }
 
 // Perfil tirado do histórico de atendimentos com clientes (importado de uma vez, não pela análise diária).
@@ -803,7 +865,8 @@ function desenharAprendizado() {
     return el('div', { className: 'pessoa' },
       el('div', {}, el('b', { textContent: a.name }), el('small', { textContent: `${plural(a.questions, 'pergunta', 'perguntas')} à assistente · ${a.newMessages ? plural(a.newMessages, 'fala nova', 'falas novas') : 'nenhuma fala nova'}` }),
         el('small', { textContent: a.whatsappPending ? `${plural(a.whatsappPending, 'conversa de WhatsApp', 'conversas de WhatsApp')} na fila da análise` : 'Nenhuma conversa de WhatsApp na fila' }),
-        el('small', { textContent: a.hasProfile ? `Perfil atualizado: ${quando(a.analyzedAt)}` : 'Perfil ainda não montado' })),
+        el('small', { textContent: a.hasProfile ? `Perfil atualizado: ${quando(a.analyzedAt)}` : 'Perfil ainda não montado' }),
+        a.coverage ? el('small', { className: a.coveragePending ? 'aviso' : null, textContent: `Cobertura de ausência: ${MODOS_COBERTURA[a.coverage].toLowerCase()}${a.coveragePending ? ` · ${plural(a.coveragePending, 'resposta esperando', 'respostas esperando')} aprovação` : ''}` }) : null),
       el('div', { className: 'botoes' }, analisar, ver));
   });
 

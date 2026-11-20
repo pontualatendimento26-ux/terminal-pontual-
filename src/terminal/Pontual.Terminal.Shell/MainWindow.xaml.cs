@@ -437,6 +437,7 @@ public partial class MainWindow : Window
 
         Record(DeviceEvent.SessionStarted);
         _ = RunLoopAsync(_cts.Token);
+        _ = ChromeLoopAsync(_cts.Token);
         if (!_local)
         {
             _ = ScreenLoopAsync(_cts.Token);
@@ -686,13 +687,15 @@ public partial class MainWindow : Window
         var api = _api!;
         try
         {
-            var heartbeat = await api.HeartbeatAsync(AppsInUse(), _sessionStartedAt, ct);
+            var heartbeat = await api.HeartbeatAsync(AppsInUse(), _sessionStartedAt, ct, Short(CurrentVersion));
             _online = true;
             _state = heartbeat.State;
             _maintenance = heartbeat.Maintenance;
             _observationMode = heartbeat.ObservationMode;
             _assistantEnabled = heartbeat.Assistant;
             UpdateWhatsAppLearning(heartbeat.WhatsAppLearning);
+            UpdateCoverage(heartbeat.Coverage ?? "");
+            _ = AutoUpdateAsync();
             if (!string.IsNullOrWhiteSpace(heartbeat.AttendantName))
             {
                 _attendantName = heartbeat.AttendantName;
@@ -813,6 +816,7 @@ public partial class MainWindow : Window
     {
         _config = config;
         _policy = config is null ? HostPolicy.Empty : HostPolicy.FromConfig(config);
+        ApplyChromeConfig(config);
         if (!_local && config is not null && !string.IsNullOrWhiteSpace(config.AttendantName))
         {
             _attendantName = config.AttendantName;
@@ -1246,9 +1250,29 @@ public partial class MainWindow : Window
         bar.HelpClick += CallHelp;
         bar.FilesClick += OpenFiles;
         bar.PowerClick += () => ShowPowerMenu((Window?)monitor ?? this);
+        bar.ShowUpdate(_locked && !_local);
+        bar.UpdateClick += () => StartUpdate((Window?)monitor ?? this);
         bar.TabClick += tab => ShowTab(tab, monitor);
         bar.TabCloseClick += CloseTab;
         bar.WindowClick += window => OtherWindows.BringToFront(window.Handle);
+
+        // Pesquisar: só o que está liberado agora; com a tela de bloqueio (manutenção, erro) não lista nem abre nada.
+        bar.SearchItems = () => CurrentOverlay() is null ? _config?.Items ?? [] : [];
+        bar.SearchPick += item =>
+        {
+            if (CurrentOverlay() is not null || _config?.Find(item.Id) is null)
+            {
+                return;
+            }
+
+            if (_tabs.FirstOrDefault(t => t.Id == item.Id) is { } open)
+            {
+                ShowTab(open, monitor);
+                return;
+            }
+
+            OpenItem(item.Id);
+        };
     }
 
     private void OnDisplayChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(SyncMonitors);

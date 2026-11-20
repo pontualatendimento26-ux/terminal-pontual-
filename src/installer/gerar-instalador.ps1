@@ -9,10 +9,18 @@
 # Central do TI, que passa a oferece-lo em http://<endereco da Central>:5080/baixar/
 # Uso: powershell -ExecutionPolicy Bypass -File src\installer\gerar-instalador.ps1 -Bloqueio
 
-param([string]$Versao = '', [switch]$Bloqueio)
+#
+# Atualizacao pelo botao "Atualizar" do Terminal (so com -Bloqueio): o pacote vai para a Central em
+# /baixar/atualizacao/, ASSINADO com a chave guardada neste computador (fora do repositorio):
+#   %APPDATA%\Pontual\chave-atualizacao-terminal.xml
+# Na primeira vez a chave e criada. GUARDE UMA COPIA DELA: sem ela os computadores ja instalados
+# recusam as atualizacoes e cada um tera de ser reinstalado pelo instalador.
+
+param([string]$Versao = '', [switch]$Bloqueio, [string]$Chave = '')
 
 if (-not $Versao) { $Versao = if ($Bloqueio) { '2.0.0' } else { '1.0.0' } }
-$Scripts = if ($Bloqueio) { 'Instalar-Bloqueio.ps1', 'Remover-Bloqueio.ps1', 'Bloqueio-Comum.ps1' } else { 'Instalar.ps1', 'Desinstalar.ps1' }
+if (-not $Chave) { $Chave = Join-Path $env:APPDATA 'Pontual\chave-atualizacao-terminal.xml' }
+$Scripts = if ($Bloqueio) { 'Instalar-Bloqueio.ps1', 'Remover-Bloqueio.ps1', 'Bloqueio-Comum.ps1', 'Atualizar-Terminal.ps1' } else { 'Instalar.ps1', 'Desinstalar.ps1' }
 
 $ErrorActionPreference = 'Stop'
 $Raiz = Resolve-Path (Join-Path $PSScriptRoot '..\..')
@@ -41,6 +49,37 @@ $comBom = New-Object System.Text.UTF8Encoding($true)
 foreach ($script in $Scripts) {
     $texto = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot $script), [System.Text.Encoding]::UTF8)
     [System.IO.File]::WriteAllText((Join-Path $Pacote $script), $texto, $comBom)
+}
+
+# Pacote de atualizacao assinado (botao "Atualizar" do Terminal).
+$Atualizacao = Join-Path $Trabalho 'atualizacao'
+if ($Bloqueio) {
+    Write-Host '3b/5 Assinando o pacote de atualizacao...'
+    $rsa = New-Object System.Security.Cryptography.RSACryptoServiceProvider(3072)
+    if (Test-Path $Chave) {
+        $rsa.FromXmlString([System.IO.File]::ReadAllText($Chave))
+        if ($rsa.PublicOnly) { throw "O arquivo $Chave nao tem a parte privada da chave." }
+    } else {
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Chave) | Out-Null
+        [System.IO.File]::WriteAllText($Chave, $rsa.ToXmlString($true), [System.Text.Encoding]::ASCII)
+        Write-Warning "Chave de atualizacao criada em $Chave. GUARDE UMA COPIA (pendrive ou cofre): sem ela as atualizacoes param de funcionar."
+    }
+    [System.IO.File]::WriteAllText((Join-Path $Pacote 'chave-publica.xml'), $rsa.ToXmlString($false), [System.Text.Encoding]::ASCII)
+
+    # Conteudo: o programa publicado, os scripts do bloqueio e a chave publica (o mesmo que o instalador deixa na pasta).
+    $conteudo = Join-Path $Trabalho 'atualizacao-conteudo'
+    New-Item -ItemType Directory -Force -Path $conteudo, $Atualizacao | Out-Null
+    Copy-Item -Path (Join-Path $Publicado '*') -Destination $conteudo -Recurse -Force
+    foreach ($arquivo in 'Remover-Bloqueio.ps1', 'Bloqueio-Comum.ps1', 'Atualizar-Terminal.ps1', 'chave-publica.xml') {
+        Copy-Item -Path (Join-Path $Pacote $arquivo) -Destination $conteudo -Force
+    }
+    $zip = Join-Path $Atualizacao 'terminal.zip'
+    Compress-Archive -Path (Join-Path $conteudo '*') -DestinationPath $zip -CompressionLevel Optimal
+    $hashZip = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToUpperInvariant()
+    $versaoAssinada = ([version]$Versao).ToString()
+    $assinatura = [Convert]::ToBase64String($rsa.SignData([System.Text.Encoding]::UTF8.GetBytes("Terminal Pontual|$versaoAssinada|$hashZip"), 'SHA256'))
+    $manifesto = '{"versao":"' + $versaoAssinada + '","sha256":"' + $hashZip + '","assinatura":"' + $assinatura + '"}'
+    [System.IO.File]::WriteAllText((Join-Path $Atualizacao 'versao.json'), $manifesto, (New-Object System.Text.UTF8Encoding($false)))
 }
 
 Write-Host '4/5 Baixando o instalador do WebView2 Runtime (Microsoft)...'
@@ -95,7 +134,6 @@ if (-not (Test-Path $alvo)) {
 
 $tamanho = [Math]::Round((Get-Item $alvo).Length / 1MB, 1)
 $hash = (Get-FileHash -Path $alvo -Algorithm SHA256).Hash
-Remove-Item -Path $Trabalho -Recurse -Force -Confirm:$false
 
 # Versao com bloqueio: a Central do TI oferece o instalador por link (pagina /baixar/).
 # O nome do arquivo na Central e fixo, para a pagina nao depender do numero da versao.
@@ -115,10 +153,18 @@ if ($Bloqueio) {
             Write-Warning 'Nenhum .apk em dist\; o app do celular nao foi copiado para a Central (rode src\android\terminal\compilar.ps1).'
         }
         Write-Host ('Link na Central: /baixar/  (' + $pastaCentral + ')')
+        # Botao "Atualizar" dos Terminais: o pacote assinado. O versao.json vai por ultimo, para
+        # nenhum Terminal ver a versao nova antes de o pacote estar inteiro no lugar.
+        $pastaAtualizacao = Join-Path $pastaCentral 'atualizacao'
+        New-Item -ItemType Directory -Force -Path $pastaAtualizacao | Out-Null
+        Copy-Item -Path (Join-Path $Atualizacao 'terminal.zip') -Destination $pastaAtualizacao -Force
+        Copy-Item -Path (Join-Path $Atualizacao 'versao.json') -Destination $pastaAtualizacao -Force
+        Write-Host ('Atualizacao ' + $versaoAssinada + ' pronta para o botao Atualizar: /baixar/atualizacao/  (publique a Central para valer)')
     } else {
         Write-Warning 'A pasta dist\Central-do-TI nao existe; o instalador nao foi copiado para a Central.'
     }
 }
+Remove-Item -Path $Trabalho -Recurse -Force -Confirm:$false
 
 Write-Host ''
 Write-Host ('Instalador: ' + $alvo)

@@ -146,11 +146,50 @@ function EscolherConta($Contas) {
     $janela.AcceptButton = $ok; $janela.CancelButton = $cancelar
 
     if ($janela.ShowDialog() -ne 'OK' -or $lista.SelectedIndex -lt 0) { return $null }
-    $escolhida = $Contas[$lista.SelectedIndex]
+    $escolhida = @($Contas)[$lista.SelectedIndex]
+    if (-not $escolhida -or -not $escolhida.Sid) { throw 'Não consegui identificar a conta escolhida. Rode o instalador de novo.' }
     return @{ Conta = $escolhida.Nome; Sid = $escolhida.Sid; Aberta = $escolhida.Aberta; Programas = $campoProgramas.Text }
 }
 
+# Cria a conta tentando tres caminhos do Windows, do mais confiavel ao mais antigo: em alguns computadores
+# o ADSI (WinNT://) falha ja no Create, e em outros o modulo LocalAccounts nao carrega.
 function CriarConta([string]$Conta, [string]$Senha) {
+    if (-not $Conta) { throw 'O nome da conta ficou vazio.' }
+    $erros = @()
+    try { CriarContaLocalAccounts $Conta $Senha; return } catch { $erros += "LocalAccounts: $($_.Exception.Message)" }
+    if (SidDaConta $Conta) { ApagarContaParcial $Conta }
+    try { CriarContaNetUser $Conta $Senha; return } catch { $erros += "net user: $($_.Exception.Message)" }
+    if (SidDaConta $Conta) { ApagarContaParcial $Conta }
+    try { CriarContaAdsi $Conta $Senha; return } catch { $erros += "ADSI: $($_.Exception.Message)" }
+    throw ($erros -join "`n")
+}
+
+function ApagarContaParcial([string]$Conta) {
+    try { & net.exe user "$Conta" /delete 2>&1 | Out-Null } catch { }
+}
+
+function AdicionarAoGrupoUsuarios([string]$Conta) {
+    try { Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $Conta -ErrorAction Stop; return } catch { }
+    try { & net.exe localgroup "$(NomeDoGrupo 'S-1-5-32-545')" "$Conta" /add 2>&1 | Out-Null } catch { }
+}
+
+function CriarContaLocalAccounts([string]$Conta, [string]$Senha) {
+    Import-Module Microsoft.PowerShell.LocalAccounts -ErrorAction Stop
+    $comum = @{ Name = $Conta; FullName = $Conta; Description = 'Conta de atendimento, bloqueada pelo Terminal Pontual'; AccountNeverExpires = $true; ErrorAction = 'Stop' }
+    if ($Senha) { New-LocalUser @comum -Password (ConvertTo-SecureString $Senha -AsPlainText -Force) -PasswordNeverExpires | Out-Null }
+    else { New-LocalUser @comum -NoPassword | Out-Null; Set-LocalUser -Name $Conta -PasswordNeverExpires $true -ErrorAction SilentlyContinue }
+    AdicionarAoGrupoUsuarios $Conta
+}
+
+function CriarContaNetUser([string]$Conta, [string]$Senha) {
+    # net.exe devolve codigo diferente de 0 quando falha.
+    $saida = & net.exe user "$Conta" "$Senha" /add /fullname:"$Conta" /passwordchg:no /expires:never 2>&1
+    if ($LASTEXITCODE -ne 0) { throw (($saida | Out-String).Trim()) }
+    try { & wmic.exe useraccount where "name='$Conta'" set PasswordExpires=false 2>&1 | Out-Null } catch { }
+    AdicionarAoGrupoUsuarios $Conta
+}
+
+function CriarContaAdsi([string]$Conta, [string]$Senha) {
     $computador = [ADSI]"WinNT://$env:COMPUTERNAME,computer"
     $usuario = $computador.Create('user', $Conta)
     $usuario.SetPassword($Senha)
@@ -208,7 +247,8 @@ try {
 
         if ($modo -eq 'Yes') {
             # Conta existente: aplica o bloqueio nela, sem criar conta. ContaCriada fica 0 (a remocao nao apaga a conta).
-            $contas = ContasExistentes
+            # @(...): com uma conta so, o PowerShell devolveria o item solto em vez de uma lista, e a escolha viria vazia.
+            $contas = @(ContasExistentes)
             if (-not $contas -or @($contas).Count -eq 0) {
                 Mensagem 'Não encontrei contas de pessoas já criadas neste computador. Rode de novo e escolha "Não" para criar uma conta nova para a atendente.' 'Warning' | Out-Null
                 exit 1
@@ -223,6 +263,8 @@ try {
             }
             $conta = $sel.Conta
             $sid = $sel.Sid
+            # Conta existente: nunca cai na criacao de conta nova mais abaixo.
+            if (-not $sid) { throw "Não consegui identificar a conta `"$conta`" neste computador." }
             $confirmar = Mensagem ("Aplicar o bloqueio na conta `"$conta`"?`n`n" +
                 "Ao entrar nela, o computador abre direto o Terminal Pontual, sem área de trabalho, e só os programas liberados abrem. Os e-mails e arquivos dessa conta continuam lá." +
                 $(if ($sel.Aberta) { "`n`nEssa conta está aberta agora: o bloqueio passa a valer quando ela for aberta de novo (ou após reiniciar)." } else { '' })) 'Question' 'YesNo'
@@ -261,6 +303,11 @@ try {
     if (-not (Test-Path $Exe)) { throw "A cópia dos arquivos falhou: o programa não está em $Destino." }
     if ($configAntiga) { [System.IO.File]::WriteAllText($caminhoConfig, $configAntiga, (New-Object System.Text.UTF8Encoding($false))) }
     foreach ($script in 'Remover-Bloqueio.ps1', 'Bloqueio-Comum.ps1') { Copy-Item -Path (Join-Path $Origem $script) -Destination $Destino -Force }
+    # Atualizacao pelo botao do Terminal: o script e a chave publica que confere os pacotes da Central.
+    foreach ($arquivo in 'Atualizar-Terminal.ps1', 'chave-publica.xml') {
+        $caminho = Join-Path $Origem $arquivo
+        if (Test-Path $caminho) { Copy-Item -Path $caminho -Destination $Destino -Force }
+    }
 
     # 2. Componente da Microsoft de que o programa precisa
     $avisoWebView = ''
@@ -286,7 +333,7 @@ try {
 
     # 4. Bloqueio, gravado so no registro dessa conta
     $comando = '"' + $Exe + '" --bloqueado'
-    ComRegistroDaConta $sid { param($raiz) GravarBloqueio $raiz $comando $programas }
+    ComRegistroDaConta $sid { param($raiz) GravarBloqueio $raiz $comando $programas $sid }
 
     # 5. Anotacoes para a remocao
     $versao = (Get-Item $Exe).VersionInfo.ProductVersion
@@ -315,6 +362,13 @@ try {
     }
     finally { $remocao.Close() }
 
+    # 6. Botao "Atualizar" do Terminal: tarefa do Windows que instala as versoes novas publicadas na Central.
+    $avisoAtualizacao = ''
+    if (Test-Path (Join-Path $Destino 'chave-publica.xml')) {
+        try { RegistrarAtualizacao $sid }
+        catch { $avisoAtualizacao = "`n`nATENÇÃO: o botão Atualizar do Terminal não foi configurado ($($_.Exception.Message)). As próximas versões terão de ser instaladas por este instalador." }
+    }
+
     $inicio = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) $Nome
     New-Item -ItemType Directory -Force -Path $inicio | Out-Null
     Atalho (Join-Path $inicio "Remover o $Nome (bloqueio).lnk") $PowerShellExe "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $Destino 'Remover-Bloqueio.ps1')`"" 'Remove o Terminal Pontual e o bloqueio da conta da atendente'
@@ -334,7 +388,7 @@ try {
         "PARA SAIR DA CONTA BLOQUEADA`n" +
         "Atalho Ctrl + Alt + Espaço + P, ou botão `"Desligar ou sair`" do Terminal, ou Ctrl + Alt + Del > Sair. Depois entre na sua conta de sempre.`n`n" +
         "PARA REMOVER`n" +
-        "Entre numa conta de administrador > menu Iniciar > $Nome > Remover.$avisoWebView") | Out-Null
+        "Entre numa conta de administrador > menu Iniciar > $Nome > Remover.$avisoWebView$avisoAtualizacao") | Out-Null
 }
 catch {
     # Nao deixa para tras uma conta criada pela metade.

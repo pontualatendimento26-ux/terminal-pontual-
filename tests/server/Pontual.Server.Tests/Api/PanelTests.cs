@@ -276,10 +276,11 @@ public sealed class PanelTests
     {
         using var app = new TestApp();
         var owner = await app.OwnerAsync();
-        var other = await app.AdminAsync(owner, "Bia", "admin");
+        var proposer = await app.AdminAsync(owner, "Bia", "admin");
+        var other = await app.AdminAsync(owner, "Caio", "admin");
         var (deviceId, terminal) = await app.ApprovedDeviceAsync(owner, "PC-04", "Marina Alves");
 
-        var proposed = await owner.PostAsJsonAsync("/api/v1/items/programs", new
+        var proposed = await proposer.PostAsJsonAsync("/api/v1/items/programs", new
         {
             name = "Excel",
             path = @"C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE",
@@ -289,14 +290,14 @@ public sealed class PanelTests
         var id = proposed.GetProperty("id").GetGuid();
         Assert.Equal("pending", proposed.GetProperty("status").GetString());
         Assert.Equal("program", proposed.GetProperty("kind").GetString());
-        Assert.Equal("Paulo", proposed.GetProperty("proposal").GetProperty("by").GetString());
+        Assert.Equal("Bia", proposed.GetProperty("proposal").GetProperty("by").GetString());
         Assert.Equal("Planilhas de comissão", proposed.GetProperty("proposal").GetProperty("reason").GetString());
 
         // Pendente não chega ao terminal.
         var before = await terminal.GetAsync("/api/v1/device/config").Json();
         Assert.DoesNotContain(before.GetProperty("items").EnumerateArray(), i => i.GetProperty("name").GetString() == "Excel");
 
-        var self = await owner.PostAsync($"/api/v1/items/{id}/approve", null);
+        var self = await proposer.PostAsync($"/api/v1/items/{id}/approve", null);
         Assert.Equal(HttpStatusCode.Forbidden, self.StatusCode);
 
         var approved = await other.PostAsync($"/api/v1/items/{id}/approve", null).Json();
@@ -313,6 +314,34 @@ public sealed class PanelTests
         Assert.Equal(HttpStatusCode.BadRequest, (await other.PatchAsJsonAsync($"/api/v1/items/{id}", new { name = "Outro" })).StatusCode);
         var blocked = await other.PatchAsJsonAsync($"/api/v1/items/{id}", new { enabled = false, audience = new[] { deviceId } }).Json();
         Assert.Equal("blocked", blocked.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task Superadmin_libera_programa_sem_segunda_aprovacao()
+    {
+        using var app = new TestApp();
+        var owner = await app.OwnerAsync();
+        var (_, terminal) = await app.ApprovedDeviceAsync(owner, "PC-04", "Marina Alves");
+
+        var created = await owner.PostAsJsonAsync("/api/v1/items/programs", new
+        {
+            name = "Google Chrome",
+            path = @"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            reason = "Perfis do WhatsApp",
+        }).Json();
+        Assert.Equal("active", created.GetProperty("status").GetString());
+
+        var config = await terminal.GetAsync("/api/v1/device/config").Json();
+        Assert.Contains(config.GetProperty("items").EnumerateArray(), i => i.GetProperty("name").GetString() == "Google Chrome");
+        var audit = await owner.GetAsync("/api/v1/audit").Json();
+        Assert.Contains(audit.EnumerateArray(), a => a.GetProperty("text").GetString()!.Contains("sem segunda aprovação"));
+
+        // Proposta de administrador comum continua pendente; o superadmin pode aprová-la.
+        var bia = await app.AdminAsync(owner, "Bia", "admin");
+        var pending = await bia.PostAsJsonAsync("/api/v1/items/programs", new { name = "Calculadora", path = @"C:\Windows\System32\calc.exe", reason = "Contas" }).Json();
+        Assert.Equal("pending", pending.GetProperty("status").GetString());
+        var approved = await owner.PostAsync($"/api/v1/items/{pending.GetProperty("id").GetGuid()}/approve", null).Json();
+        Assert.Equal("active", approved.GetProperty("status").GetString());
     }
 
     [Theory]
@@ -343,7 +372,8 @@ public sealed class PanelTests
     {
         using var app = new TestApp();
         var owner = await app.OwnerAsync();
-        var proposed = await owner.PostAsJsonAsync("/api/v1/items/programs",
+        var bia = await app.AdminAsync(owner, "Bia", "admin");
+        var proposed = await bia.PostAsJsonAsync("/api/v1/items/programs",
             new { name = "Calculadora", path = @"C:\Windows\System32\calc.exe", reason = "Contas" }).Json();
         var id = proposed.GetProperty("id").GetGuid();
 

@@ -39,6 +39,7 @@ try {
     }
 
     FecharTerminal
+    RemoverAtualizacao
     $inicio = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) $Nome
     if (Test-Path $inicio) { Remove-Item -Path $inicio -Recurse -Force -Confirm:$false }
     ApagarChaveMaquina $ChaveRemocao

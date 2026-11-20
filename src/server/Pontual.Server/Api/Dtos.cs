@@ -35,7 +35,8 @@ public sealed record DeviceDto(
     DateTime? LastSeenAt,
     int OpenAlerts,
     MaintenanceDto? Maintenance,
-    bool ObservationMode)
+    bool ObservationMode,
+    string TerminalVersion = "")
 {
     /// <summary>Sem sinal há mais de 45 segundos = fora do ar.</summary>
     public static readonly TimeSpan OfflineAfter = TimeSpan.FromSeconds(45);
@@ -62,7 +63,8 @@ public sealed record DeviceDto(
             device.LastSeenAt,
             openAlerts,
             MaintenanceDto.From(device, now),
-            device.ObservationMode);
+            device.ObservationMode,
+            device.TerminalVersion);
     }
 
     public static async Task<DeviceDto> LoadAsync(PontualDb db, Device device, DateTime now, CancellationToken ct)
@@ -103,8 +105,11 @@ public sealed record ItemDto(
 
 public sealed record ConfigItemDto(Guid Id, string Name, string Kind, string Target, string Group, IReadOnlyList<string> Hosts);
 
-public sealed record ConfigDto(long Version, string? AttendantName, bool ObservationMode, IReadOnlyList<ConfigItemDto> Items);
+/// <param name="ChromeAllowed">Domínios que o TI liberou no Google Chrome (não geram aviso).</param>
+/// <param name="ChromeBlocked">Domínios que o TI bloqueou no Google Chrome (o Terminal grava na política do Chrome).</param>
+public sealed record ConfigDto(long Version, string? AttendantName, bool ObservationMode, IReadOnlyList<ConfigItemDto> Items,
+    IReadOnlyList<string> ChromeAllowed, IReadOnlyList<string> ChromeBlocked);
 
 /// <param name="Assistant">A assistente de IA está ligada para esta máquina (o terminal mostra o botão flutuante).</param>
 /// <param name="WhatsAppLearning">O terminal deve registrar as conversas do WhatsApp para a análise da assistente.</param>
-public sealed record HeartbeatDto(string State, long ConfigVersion, string? AttendantName, MaintenanceDto? Maintenance, bool ObservationMode, bool Assistant, bool WhatsAppLearning);
+public sealed record HeartbeatDto(string State, long ConfigVersion, string? AttendantName, MaintenanceDto? Maintenance, bool ObservationMode, bool Assistant, bool WhatsAppLearning, string Coverage = "");

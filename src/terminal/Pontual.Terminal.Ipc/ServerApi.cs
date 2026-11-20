@@ -52,9 +52,9 @@ public sealed class ServerApi : IDisposable
         return response;
     }
 
-    public async Task<HeartbeatResponse> HeartbeatAsync(IEnumerable<string> appsInUse, DateTimeOffset sessionStartedAt, CancellationToken ct = default)
+    public async Task<HeartbeatResponse> HeartbeatAsync(IEnumerable<string> appsInUse, DateTimeOffset sessionStartedAt, CancellationToken ct = default, string? version = null)
     {
-        var body = new { appsInUse = appsInUse.ToArray(), sessionStartedAt = sessionStartedAt.ToUniversalTime() };
+        var body = new { appsInUse = appsInUse.ToArray(), sessionStartedAt = sessionStartedAt.ToUniversalTime(), version };
         var response = await PostAsync<HeartbeatResponse>("device/heartbeat", body, ct).ConfigureAwait(false);
         return response with { State = response.State ?? "" };
     }
@@ -77,6 +77,24 @@ public sealed class ServerApi : IDisposable
     {
         using var response = await _http.PostAsJsonAsync("device/assistant/whatsapp", new { contact, text }, Json, ct).ConfigureAwait(false);
         await EnsureSuccessAsync(response, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Cobertura de ausência: manda a conversa não lida e recebe o que fazer (enviar, esperar ou nada).</summary>
+    public Task<CoverageAction> AskCoverageAsync(string contact, string text, CancellationToken ct = default) =>
+        PostAsync<CoverageAction>("device/assistant/coverage", new { contact, text }, ct);
+
+    /// <summary>Conta ao servidor se a mensagem da cobertura saiu.</summary>
+    public async Task ReportCoverageAsync(Guid id, bool sent, bool holding, string? error, CancellationToken ct = default)
+    {
+        using var response = await _http.PostAsJsonAsync($"device/assistant/coverage/{id}/result", new { sent, holding, error }, Json, ct).ConfigureAwait(false);
+        await EnsureSuccessAsync(response, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Respostas da cobertura aprovadas na Central, esperando envio.</summary>
+    public async Task<IReadOnlyList<CoverageOutgoing>> GetCoverageOutboxAsync(CancellationToken ct = default)
+    {
+        using var response = await _http.GetAsync("device/assistant/coverage/outbox", ct).ConfigureAwait(false);
+        return await ReadAsync<List<CoverageOutgoing>>(response, ct).ConfigureAwait(false);
     }
 
     /// <summary>Pergunta se o TI abriu a visualização ao vivo da tela desta máquina.</summary>
@@ -107,7 +125,10 @@ public sealed class ServerApi : IDisposable
                 Hosts = (i.Hosts ?? []).Where(h => !string.IsNullOrWhiteSpace(h)).ToArray(),
             })
             .ToArray();
-        return config with { Items = items };
+        return config with { Items = items, ChromeAllowed = Hosts(config.ChromeAllowed), ChromeBlocked = Hosts(config.ChromeBlocked) };
+
+        static string[] Hosts(IReadOnlyList<string>? raw) =>
+            [.. (raw ?? []).Select(HostPolicy.NormalizeHost).OfType<string>().Distinct(StringComparer.Ordinal).Take(2000)];
     }
 
     public void Dispose() => _http.Dispose();

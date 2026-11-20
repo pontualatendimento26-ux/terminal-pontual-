@@ -32,6 +32,8 @@ public sealed class Device
     public Guid Id { get; set; }
     public required string Hostname { get; set; }
     public string? Windows { get; set; }
+    /// <summary>Versão do Terminal informada no último heartbeat (vazio nas versões que não informam).</summary>
+    public string TerminalVersion { get; set; } = "";
     /// <summary>SHA-256 (hex) do token; o token em si nunca é gravado.</summary>
     public required string TokenHash { get; set; }
     public string? AttendantName { get; set; }
@@ -170,6 +172,32 @@ public sealed class ObservedHost
     public string ItemName { get; set; } = "";
     public int Count { get; set; }
     public DateTime LastAt { get; set; }
+}
+
+/// <summary>
+/// Domínio que uma atendente abriu no Google Chrome e que não faz parte dos sites operacionais dela.
+/// O TI decide na Central: liberar (o Terminal para de avisar) ou bloquear (o Chrome recusa o site).
+/// A decisão vale para todos os computadores e também para os subdomínios.
+/// </summary>
+public sealed class ChromeSite
+{
+    public const string StatusPending = "pending";
+    public const string StatusAllowed = "allowed";
+    public const string StatusBlocked = "blocked";
+
+    public Guid Id { get; set; }
+    public required string Host { get; set; }
+    public string Status { get; set; } = StatusPending;
+    /// <summary>Último computador que abriu o domínio.</summary>
+    public Guid DeviceId { get; set; }
+    /// <summary>Quantas vezes o domínio apareceu na tela (cada volta depois de alguns minutos fora conta de novo).</summary>
+    public int Visits { get; set; }
+    /// <summary>Minutos, aproximados, em que o domínio ficou aberto na aba visível do Chrome.</summary>
+    public int Minutes { get; set; }
+    public DateTime FirstAt { get; set; }
+    public DateTime LastAt { get; set; }
+    public string? DecidedBy { get; set; }
+    public DateTime? DecidedAt { get; set; }
 }
 
 public sealed class Setting
@@ -371,6 +399,66 @@ public sealed class WhatsAppCapture
     public DateTime UpdatedAt { get; set; }
 }
 
+/// <summary>Modo da cobertura de ausência de uma atendente.</summary>
+public static class CoverageMode
+{
+    public const string Off = "";
+    /// <summary>Ensaio: a assistente lê as mensagens novas e escreve a resposta, mas nada é enviado ao cliente.</summary>
+    public const string Test = "test";
+    /// <summary>Ligada: envia sozinha o que é simples; o que envolve dinheiro espera aprovação.</summary>
+    public const string On = "on";
+
+    public static readonly string[] All = [Off, Test, On];
+}
+
+/// <summary>Situação de uma resposta da cobertura.</summary>
+public static class CoverageStatus
+{
+    /// <summary>Escrita no modo ensaio; não vai ao cliente.</summary>
+    public const string Draft = "draft";
+    /// <summary>Envolve dinheiro ou algo sensível: espera uma pessoa aprovar.</summary>
+    public const string Pending = "pending";
+    /// <summary>Aprovada na Central; o Terminal envia na próxima volta.</summary>
+    public const string Approved = "approved";
+    /// <summary>A assistente decidiu enviar; o Terminal está enviando.</summary>
+    public const string Sending = "sending";
+    public const string Sent = "sent";
+    public const string Rejected = "rejected";
+    public const string Failed = "failed";
+    /// <summary>Não pedia resposta (um "ok", uma figurinha).</summary>
+    public const string Skipped = "skipped";
+}
+
+/// <summary>
+/// Uma mensagem de cliente tratada pela cobertura de ausência: o que o cliente escreveu, o que a assistente
+/// respondeu (ou propôs) e o que aconteceu. Fica 30 dias para a supervisão conferir; depois é apagada.
+/// </summary>
+public sealed class CoverageReply
+{
+    public Guid Id { get; set; }
+    public Guid DeviceId { get; set; }
+    public required string Contact { get; set; }
+    /// <summary>As últimas mensagens do cliente que pediram resposta.</summary>
+    public string Incoming { get; set; } = "";
+    /// <summary>A conversa como estava na tela, para quem for aprovar entender o contexto.</summary>
+    public string Transcript { get; set; } = "";
+    /// <summary>Resposta escrita pela assistente (ou corrigida por quem aprovou).</summary>
+    public string Reply { get; set; } = "";
+    /// <summary>Aviso curto enviado na hora enquanto a resposta espera aprovação ("vou verificar e já te retorno").</summary>
+    public string Holding { get; set; } = "";
+    /// <summary>"send", "queue" ou "none": o que a assistente decidiu.</summary>
+    public string Decision { get; set; } = "";
+    public string Reason { get; set; } = "";
+    public required string Status { get; set; }
+    /// <summary>Marca das mensagens do cliente já tratadas, para não responder duas vezes a mesma coisa.</summary>
+    public string Fingerprint { get; set; } = "";
+    public string Error { get; set; } = "";
+    public string ReviewedByName { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public DateTime? SentAt { get; set; }
+}
+
 /// <summary>Perfil da assistente de uma atendente (uma máquina = uma atendente, ADR 0003).</summary>
 public sealed class AssistantProfile
 {
@@ -378,6 +466,8 @@ public sealed class AssistantProfile
     /// <summary>Orientações da supervisão só para esta atendente.</summary>
     public string Instructions { get; set; } = "";
     public bool Enabled { get; set; } = true;
+    /// <summary>Cobertura da ausência: a assistente responde os clientes desta atendente no WhatsApp (ver <see cref="CoverageMode"/>).</summary>
+    public string Coverage { get; set; } = "";
     public DateTime UpdatedAt { get; set; }
 }
 

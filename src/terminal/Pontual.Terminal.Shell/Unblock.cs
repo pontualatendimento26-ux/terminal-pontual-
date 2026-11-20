@@ -36,6 +36,9 @@ internal static class Unblock
         (@"Software\Policies\Microsoft\Edge\URLBlocklist", "1"),
         (@"Software\Policies\Microsoft\Edge\URLAllowlist", "1"),
         (@"Software\Policies\Microsoft\Office\16.0\Excel\Security", "VBAWarnings"),
+        (@"Software\Policies\Google\Chrome", "IncognitoModeAvailability"),
+        (@"Software\Policies\Google\Chrome", "BrowserGuestModeEnabled"),
+        (@"Software\Policies\Google\Chrome", "DeveloperToolsAvailability"),
     ];
 
     /// <summary>SID da conta logada agora (para a remoção elevada achar o registro certo em HKEY_USERS).</summary>
@@ -62,10 +65,11 @@ internal static class Unblock
         var users = Registry.Users;
         var ok = true;
 
-        // A lista de programas liberados (RestrictRun) é uma subchave inteira.
+        // A lista de programas liberados (RestrictRun) e a de sites bloqueados no Chrome são subchaves inteiras.
         try
         {
             users.DeleteSubKeyTree($@"{sid}\{RestrictRunRelative}", throwOnMissingSubKey: false);
+            users.DeleteSubKeyTree($@"{sid}\{ChromePolicy.BlocklistKey}", throwOnMissingSubKey: false);
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or System.Security.SecurityException)
         {

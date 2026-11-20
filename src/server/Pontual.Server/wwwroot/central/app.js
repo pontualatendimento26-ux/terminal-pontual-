@@ -144,7 +144,7 @@ const S = {};
 function zerarEstado() {
   Object.assign(S, {
     me: null, secao: 'visao', visao: 'lista', sel: null, aba: 'resumo', fTipo: 'Todos',
-    devices: null, alerts: null, notifs: null, items: null, observed: null, audit: null, admins: null,
+    devices: null, alerts: null, notifs: null, items: null, observed: null, chrome: null, audit: null, admins: null,
     erro: {}, mut: 0, hist: { id: null, linhas: null, erro: null },
     rascunho: new Map(), erroLinha: new Map(), novas: new Set(), notifInicial: true,
     verificacao: null, assin: {}, pendente: false, focoAntes: null, marcando: false,
@@ -206,7 +206,7 @@ async function api(metodo, caminho, corpo) {
 
 const FONTES = {
   devices: ['/devices', 'devices.read'], alerts: ['/alerts', 'alerts.read'], notifs: ['/notifications', 'devices.read'],
-  items: ['/items', 'apps.read'], observed: ['/observed-hosts', 'apps.read'], audit: ['/audit', 'audit.read'], admins: ['/admins', 'admins.manage'],
+  items: ['/items', 'apps.read'], observed: ['/observed-hosts', 'apps.read'], chrome: ['/chrome-sites', 'apps.read'], audit: ['/audit', 'audit.read'], admins: ['/admins', 'admins.manage'],
   // A seção Assistente carrega os próprios dados (assistente.js); esta linha só diz qual permissão a abre.
   assistente: ['/assistant', 'config.read'],
 };
@@ -425,9 +425,9 @@ function iniciarCiclo() {
   };
   relogioCiclo = setTimeout(passo, 4000);
 }
-// Máquinas, alertas e notificações a cada 4 s. O resto, só o que está na tela, a cada 12 s.
+// Máquinas, alertas, notificações e sites do Chrome a cada 4 s. O resto, só o que está na tela, a cada 12 s.
 async function atualizar(lento) {
-  const nomes = ['devices', 'alerts', 'notifs'];
+  const nomes = ['devices', 'alerts', 'notifs', 'chrome'];
   if (lento) {
     if (S.secao === 'apps' || (S.sel && S.aba === 'acesso')) nomes.push('items', 'observed');
     if (S.secao === 'auditoria') nomes.push('audit');
@@ -507,7 +507,7 @@ async function marcarLidas() {
 }
 
 // ============================================================== navegação
-const SECOES = { visao: 'devices', apps: 'items', alertas: 'alerts', notificacoes: 'notifs', assistente: 'assistente', auditoria: 'audit', admins: 'admins' };
+const SECOES = { visao: 'devices', apps: 'items', chrome: 'chrome', alertas: 'alerts', notificacoes: 'notifs', assistente: 'assistente', auditoria: 'audit', admins: 'admins' };
 function irSecao(secao) {
   if (!pode(FONTES[SECOES[secao]][1])) secao = 'visao';
   if (S.secao === 'notificacoes' && secao !== 'notificacoes') S.novas.clear();
@@ -518,7 +518,7 @@ function irSecao(secao) {
   esconderRecado();
   desenhar();
   window.scrollTo(0, 0);
-  const extras = { apps: ['items', 'observed'], auditoria: ['audit'], admins: ['admins'] }[secao];
+  const extras = { apps: ['items', 'observed'], chrome: ['chrome'], auditoria: ['audit'], admins: ['admins'] }[secao];
   if (extras) carregar(...extras).then(() => { if (S.secao === secao) desenhar(); });
   if (secao === 'notificacoes') marcarLidas();
   if (secao === 'assistente') Assistente.abrir();
@@ -578,6 +578,7 @@ function desenhar() {
   desenharTopo();
   if (S.secao === 'visao') { desenharVisao(); desenharPendentes(); }
   if (S.secao === 'apps') { desenharPropostas(); desenharApps(); desenharObservados(); }
+  if (S.secao === 'chrome') desenharChrome();
   if (S.secao === 'alertas') desenharAlertas();
   if (S.secao === 'notificacoes') desenharNotificacoes();
   if (S.secao === 'auditoria') desenharAuditoria();
@@ -594,6 +595,8 @@ function situacaoLista(nome) {
 function desenharTopo() {
   const abertos = (S.alerts || []).length;
   $('conta-alertas').hidden = abertos === 0; $('conta-alertas').textContent = abertos;
+  const esperando = (S.chrome || []).filter((c) => c.status === 'pending').length;
+  $('conta-chrome').hidden = esperando === 0; $('conta-chrome').textContent = esperando;
   const naoLidas = (S.notifs || []).filter((n) => !n.read).length;
   $('conta-notif').hidden = naoLidas === 0; $('conta-notif').textContent = naoLidas; $('sino-ponto').hidden = naoLidas === 0;
   $('sino').setAttribute('aria-label', naoLidas ? `Ver notificações: ${plural(naoLidas, 'nova', 'novas')}` : 'Ver notificações');
@@ -631,7 +634,7 @@ function desenharVisao() {
     trocar($('linhas'), vazio ? [el('li', { className: 'vazio', textContent: vazio })] : lista.map((d) => {
       const e = estadoDe(d), apps = d.appsInUse || [];
       const b = el('button', { type: 'button', className: 'pessoa', 'data-k': `maq:${d.id}` }, avatar(nomeDe(d), 'g'),
-        el('span', {}, el('b', { textContent: nomeDe(d) }), el('small', { textContent: [d.hostname, d.windows].filter(Boolean).join(', ') })),
+        el('span', {}, el('b', { textContent: nomeDe(d) }), el('small', { textContent: [d.hostname, d.windows, d.terminalVersion ? `Terminal ${d.terminalVersion}` : ''].filter(Boolean).join(', ') })),
         el('span', { className: 'col-2' }, selo(e.selo, e.rotulo)),
         el('span', { className: 'uso', textContent: apps.length ? apps.join(', ') : USO_VAZIO[d.state] || 'Nenhum aplicativo aberto' }),
         el('small', { className: 'col-4 num', textContent: haQuanto(d.lastSeenAt) }), ic('chevron', 20));
@@ -916,7 +919,8 @@ function desenharGaveta() {
       dado('Em uso agora', apps.length ? el('div', { className: 'tags' }, ...apps.map((a) => el('span', { className: 'selo s-neutro', textContent: texto(a) }))) : 'Nenhum aplicativo aberto', true),
       dado('Tempo de atividade', semSessao ? 'Sem sessão' : duracao(Date.now() - dataDe(d.sessionStartedAt).getTime())),
       dado('Última comunicação', el('span', { className: 'num', textContent: haQuanto(d.lastSeenAt) })),
-      dado('Windows', texto(d.windows) || 'Não informado'), dado('Alertas abertos', String(d.openAlerts || 0))));
+      dado('Windows', texto(d.windows) || 'Não informado'), dado('Alertas abertos', String(d.openAlerts || 0)),
+      dado('Versão do Terminal', d.terminalVersion ? texto(d.terminalVersion) : 'Antiga (não informa a versão)')));
 
     const meus = (S.alerts || []).filter((a) => a.deviceId === d.id);
     if (meus.length) {
@@ -1143,6 +1147,69 @@ function desenharObservados() {
 }
 
 // --------------------------------------------- alertas, notificações, auditoria
+// ======================================================= sites no Chrome
+// O Terminal avisa quando a atendente abre no Chrome um site que não é operacional; o TI libera ou bloqueia.
+function decidirChrome(botao, host, decisao) {
+  const liberar = decisao === 'allow';
+  return agir(botao, () => api('POST', '/chrome-sites/decide', { host, decision: decisao }), {
+    recarregar: ['chrome', 'alerts'],
+    ok: liberar ? `${texto(host)} foi liberado no Chrome. O Terminal para de avisar.` : `${texto(host)} foi bloqueado no Chrome de todas as atendentes.`,
+  });
+}
+function desenharChrome() {
+  const permite = pode('apps.websites.manage');
+  const lista = S.chrome || [];
+  const pendentes = lista.filter((c) => c.status === 'pending'), decididos = lista.filter((c) => c.status !== 'pending');
+  const espera = situacaoLista('chrome');
+  $('chrome-frase').textContent = espera || (pendentes.length
+    ? `${plural(pendentes.length, 'site espera', 'sites esperam')} a sua decisão. Enquanto você não decide, o site continua abrindo.`
+    : 'Nenhum site esperando decisão. Quando uma atendente abrir no Chrome um site fora da lista, ele aparece aqui.');
+  $('chrome-novo').hidden = !permite;
+  if (!mudou('chrome', [S.chrome, S.erro.chrome, permite, new Date().toDateString()])) return;
+
+  const cabecalho = (colunas) => el('thead', {}, el('tr', {}, ...colunas.map((t) => (t ? el('th', { textContent: t, scope: 'col' }) : el('th', { scope: 'col', className: 'estreita' }, el('span', { className: 'so-leitor', textContent: 'Ações' }))))));
+  const linhaUnica = (n, mensagem) => el('tbody', {}, el('tr', {}, el('td', { colSpan: n, className: 'vazio', textContent: mensagem })));
+  const tempo = (min) => (!min ? 'menos de 1 min' : min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`);
+  const botao = (c, decisao) => {
+    const liberar = decisao === 'allow';
+    const b = el('button', { type: 'button', className: liberar ? 'btn claro p' : 'btn perigo p', 'data-k': `chrome:${decisao}:${c.host}` }, ic(liberar ? 'check' : 'lock', 16), liberar ? 'Liberar' : 'Bloquear');
+    b.setAttribute('aria-label', `${liberar ? 'Liberar' : 'Bloquear'} ${texto(c.host)} no Chrome`);
+    b.onclick = () => decidirChrome(b, c.host, decisao);
+    return b;
+  };
+  const acoes = (...botoes) => el('td', { className: 'estreita' }, permite ? el('div', { style: 'display:flex;gap:8px' }, ...botoes) : null);
+  const nada = '\u2014';
+
+  const colP = ['Domínio', 'Último computador', 'Vezes', 'Tempo aberto', 'Última vez', ''];
+  trocar($('tb-chrome-pendentes'), [cabecalho(colP), espera ? linhaUnica(colP.length, espera) : !pendentes.length ? linhaUnica(colP.length, 'Tudo decidido.') : el('tbody', {}, ...pendentes.map((c) => el('tr', {},
+    el('td', {}, el('span', { className: 'dominio', textContent: texto(c.host) })),
+    el('td', { textContent: texto(c.deviceLabel) || nada }),
+    el('td', { className: 'num', textContent: texto(c.visits) }),
+    el('td', { className: 'num', textContent: tempo(c.minutes) }),
+    el('td', { textContent: c.lastAt ? quando(c.lastAt) : nada }),
+    acoes(botao(c, 'block'), botao(c, 'allow')))))]);
+
+  const colD = ['Domínio', 'Situação', 'Decidido por', 'Quando', 'Último computador', ''];
+  trocar($('tb-chrome-decididos'), [cabecalho(colD), espera ? linhaUnica(colD.length, espera) : !decididos.length ? linhaUnica(colD.length, 'Nenhum domínio decidido ainda.') : el('tbody', {}, ...decididos.map((c) => {
+    const bloqueado = c.status === 'blocked';
+    return el('tr', {},
+      el('td', {}, el('span', { className: 'dominio', textContent: texto(c.host) })),
+      el('td', {}, bloqueado ? selo('bloqueado', 'Bloqueado') : selo('online', 'Liberado')),
+      el('td', { textContent: texto(c.decidedBy) || nada }),
+      el('td', { textContent: c.decidedAt ? quando(c.decidedAt) : nada }),
+      el('td', { textContent: texto(c.deviceLabel) || nada }),
+      acoes(botao(c, bloqueado ? 'allow' : 'block')));
+  }))]);
+}
+$('chrome-novo').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const decisao = e.submitter && e.submitter.dataset.decisao;
+  const campo = $('chrome-dominio'), host = campo.value.trim();
+  if (!decisao) return;
+  if (!host) { recado('Escreva o domínio, por exemplo jogos.com.', true); campo.focus(); return; }
+  decidirChrome(e.submitter, host, decisao).then((feito) => { if (feito) campo.value = ''; });
+});
+
 function desenharAlertas() {
   const espera = situacaoLista('alerts'), lista = S.alerts || [], n = lista.length;
   $('alertas-frase').textContent = espera || (n ? `${plural(n, 'alerta aberto', 'alertas abertos')}. Resolva cada um depois de verificar.` : 'Nenhum alerta aberto no momento.');
@@ -1336,10 +1403,11 @@ aoEnviar('dlg-prog', 'prog-erro', async () => {
   exigir(!/(^|[\\/])(cmd|powershell|pwsh|wscript|cscript|mshta|regedit|rundll32|msiexec|bash|wsl|wt)\.exe$/i.test(caminho), 'Este programa está na lista fixa de bloqueio e não pode ser liberado.');
   exigir(motivo, 'A justificativa é obrigatória.');
   const audience = lerQuem('prog-quem');
-  await api('POST', '/items/programs', { name: nome, path: caminho, reason: motivo, audience });
+  const criado = await api('POST', '/items/programs', { name: nome, path: caminho, reason: motivo, audience });
   S.mut += 1;
   await carregar('items');
   if (S.secao !== 'apps') { fecharGaveta(); irSecao('apps'); }
+  if (criado && criado.status === 'active') return `${nome} foi liberado direto (superadmin) e já aparece no Terminal.`;
   return `Proposta enviada. ${nome} só fica disponível depois que outro administrador aprovar.`;
 });
 

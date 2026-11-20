@@ -93,7 +93,9 @@ public sealed class AssistantTests
         Assert.DoesNotContain("João", request.SharedInstructions);
         // A assistente sabe que vê a tela e que as conversas são usadas para ela aprender.
         Assert.Contains("você recebe a aba que ela está usando e a conversa do WhatsApp", request.SharedInstructions);
-        Assert.Contains("se perguntarem se você aprende com as conversas, a resposta é sim", request.SharedInstructions);
+        Assert.Contains("Se perguntarem se você aprende com as conversas", request.SharedInstructions);
+        Assert.Contains("comece a resposta com \"Sim\"", request.SharedInstructions);
+        Assert.Contains("Se perguntarem se você consegue responder pela atendente, a resposta é sim", request.SharedInstructions);
 
         // A pergunta seguinte, sem tela, não carrega a tela anterior.
         await AskAsync(terminal, "E depois?");
@@ -258,6 +260,32 @@ public sealed class AssistantTests
 
         Assert.Equal("", AssistantPrompt.Learned("isto não é json"));
         Assert.Equal("", AssistantPrompt.Learned(null));
+    }
+
+    [Fact]
+    public async Task Lista_do_que_o_terminal_pode_abrir_vai_com_a_pergunta()
+    {
+        var model = new FakeModel { Answer = "Abrindo o WhatsApp.\n[[abrir: WhatsApp]]" };
+        using var app = new TestApp { AssistantModel = model };
+        var owner = await app.OwnerAsync();
+        var (_, terminal) = await app.ApprovedDeviceAsync(owner, "PC-01", "Maria Souza");
+        await owner.PutAsJsonAsync("/api/v1/assistant/settings", new { apiKey = Key });
+
+        var response = await terminal.PostAsJsonAsync("/api/v1/device/assistant/messages", new
+        {
+            text = "abre o whatsapp",
+            apps = new object[] { new { name = "WhatsApp", kind = "site" }, new { name = "Google", kind = "site" }, new { name = "Excel", kind = "program" }, new { name = "", kind = "site" } },
+        });
+        Assert.True(response.IsSuccessStatusCode);
+        await response.Content.ReadAsStringAsync();
+
+        var request = Assert.Single(model.Requests);
+        Assert.Equal("<terminal_pode_abrir>\nWhatsApp\nGoogle\nExcel (programa)\n</terminal_pode_abrir>", request.ScreenText);
+        Assert.Contains("[[abrir: nome exato da lista]]", request.SharedInstructions);
+
+        // Sem a lista (Terminal antigo), nada vai junto.
+        await AskAsync(terminal, "abre o whatsapp");
+        Assert.Null(model.Requests[1].ScreenText);
     }
 
     [Fact]

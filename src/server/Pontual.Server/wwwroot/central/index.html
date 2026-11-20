@@ -93,6 +93,7 @@
     <nav class="menu" aria-label="Seções">
       <button type="button" data-secao="visao" aria-current="page">Visão geral</button>
       <button type="button" data-secao="apps">Sites e programas</button>
+      <button type="button" data-secao="chrome">Sites no Chrome<span class="conta" id="conta-chrome" hidden></span></button>
       <button type="button" data-secao="alertas">Alertas<span class="conta" id="conta-alertas" hidden></span></button>
       <button type="button" data-secao="notificacoes">Notificações<span class="conta azul" id="conta-notif" hidden></span></button>
       <button type="button" data-secao="assistente">Assistente</button>
@@ -162,6 +163,25 @@
       <div class="quadro depois" id="quadro-observados">
         <div class="quadro-topo"><div><h2>Domínios observados</h2><p>Endereços fora da lista que as atendentes acessaram com o modo de observação ligado. Permita os que fazem parte do trabalho.</p></div></div>
         <div class="rolagem-x"><table id="tb-observados"></table></div>
+      </div>
+    </section>
+
+    <section data-painel="chrome" hidden aria-labelledby="t-chrome">
+      <div class="abertura baixa"><h1 id="t-chrome">Sites no Chrome</h1><p>As atendentes usam o Google Chrome com vários perfis, um WhatsApp em cada. Quando uma delas abre um site que não é operacional, o Terminal avisa aqui, sem mostrar nada para ela. Você decide se o site fica liberado ou bloqueado; a decisão vale para todos os computadores e para os subdomínios.</p></div>
+      <div class="quadro">
+        <div class="quadro-topo"><div><h2>Esperando decisão</h2><p id="chrome-frase"></p></div></div>
+        <div class="rolagem-x"><table id="tb-chrome-pendentes"></table></div>
+      </div>
+      <div class="quadro depois">
+        <div class="quadro-topo">
+          <div><h2>Já decididos</h2><p>Mude a decisão quando quiser. O bloqueio chega ao Chrome das atendentes em até meio minuto.</p></div>
+        </div>
+        <form class="ferramentas" id="chrome-novo" novalidate>
+          <label class="busca"><span data-ic="globe"></span><input class="campo" id="chrome-dominio" placeholder="Decidir um domínio, ex.: jogos.com" aria-label="Domínio para liberar ou bloquear" autocomplete="off" spellcheck="false"></label>
+          <button type="submit" class="btn perigo" data-decisao="block"><span data-ic="lock"></span>Bloquear</button>
+          <button type="submit" class="btn claro" data-decisao="allow"><span data-ic="check"></span>Liberar</button>
+        </form>
+        <div class="rolagem-x"><table id="tb-chrome-decididos"></table></div>
       </div>
     </section>
 
@@ -267,7 +287,7 @@
 </form></dialog>
 
 <dialog id="dlg-prog" aria-labelledby="t-prog"><form class="dlg" novalidate>
-  <h2 id="t-prog">Adicionar programa</h2><p>Programas do Windows exigem duas pessoas: você propõe e outro administrador aprova.</p>
+  <h2 id="t-prog">Adicionar programa</h2><p>Programas do Windows exigem duas pessoas: você propõe e outro administrador aprova. O superadmin libera direto.</p>
   <label>Nome do programa<input class="campo" id="prog-nome" maxlength="60" placeholder="Ex.: Leitor de PDF" aria-describedby="prog-erro"></label>
   <label>Caminho do executável<input class="campo" id="prog-caminho" autocomplete="off" spellcheck="false" placeholder="Ex.: C:\Program Files\Leitor\leitor.exe" aria-describedby="prog-erro"></label>
   <label>Justificativa<input class="campo" id="prog-motivo" maxlength="300" placeholder="Por que as atendentes precisam dele" aria-describedby="prog-erro"></label>
