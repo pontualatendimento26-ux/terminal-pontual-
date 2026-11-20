@@ -12,8 +12,11 @@ public sealed record ConfigItem(string Id, string Name, string Kind, string Targ
 /// <summary>Resposta de <c>GET /device/config</c>; também é o formato do arquivo <c>config-local.json</c>.</summary>
 /// <param name="ChromeAllowed">Domínios que o TI liberou no Google Chrome: não geram aviso (servidor antigo não manda).</param>
 /// <param name="ChromeBlocked">Domínios que o TI bloqueou no Google Chrome: vão para a política do Chrome desta conta.</param>
+/// <param name="AppsAllowed">Aplicativos do computador (nome do .exe) que o TI liberou: abrem sem pedido (servidor antigo não manda).</param>
+/// <param name="AppsBlocked">Aplicativos do computador (nome do .exe) que o TI bloqueou: o Terminal não abre e fecha se estiver aberto.</param>
 public sealed record TerminalConfig(int Version, string? AttendantName, bool ObservationMode, IReadOnlyList<ConfigItem> Items,
-    IReadOnlyList<string>? ChromeAllowed = null, IReadOnlyList<string>? ChromeBlocked = null)
+    IReadOnlyList<string>? ChromeAllowed = null, IReadOnlyList<string>? ChromeBlocked = null,
+    IReadOnlyList<string>? AppsAllowed = null, IReadOnlyList<string>? AppsBlocked = null)
 {
     public ConfigItem? Find(string id) => Items.FirstOrDefault(i => string.Equals(i.Id, id, StringComparison.Ordinal));
 }
@@ -57,4 +60,9 @@ public sealed record DeviceEvent(string Type, string? Item, string? Detail, Date
     public const string ChromeVisit = "chrome_visit";
     /// <summary>O mesmo domínio continua na tela do Chrome: um a cada minuto (detail = domínio).</summary>
     public const string ChromeStay = "chrome_stay";
+    /// <summary>
+    /// A atendente abriu, pela lista "Aplicativos" do Terminal, um aplicativo do computador que o TI ainda não decidiu
+    /// (item = nome do aplicativo, detail = caminho do .exe). Na primeira vez vira um pedido de liberação na Central.
+    /// </summary>
+    public const string AppOpened = "app_opened";
 }

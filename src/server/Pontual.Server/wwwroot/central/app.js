@@ -144,7 +144,7 @@ const S = {};
 function zerarEstado() {
   Object.assign(S, {
     me: null, secao: 'visao', visao: 'lista', sel: null, aba: 'resumo', fTipo: 'Todos',
-    devices: null, alerts: null, notifs: null, items: null, observed: null, chrome: null, audit: null, admins: null,
+    devices: null, alerts: null, notifs: null, items: null, observed: null, chrome: null, aplicativos: null, audit: null, admins: null,
     erro: {}, mut: 0, hist: { id: null, linhas: null, erro: null },
     rascunho: new Map(), erroLinha: new Map(), novas: new Set(), notifInicial: true,
     verificacao: null, assin: {}, pendente: false, focoAntes: null, marcando: false,
@@ -206,7 +206,8 @@ async function api(metodo, caminho, corpo) {
 
 const FONTES = {
   devices: ['/devices', 'devices.read'], alerts: ['/alerts', 'alerts.read'], notifs: ['/notifications', 'devices.read'],
-  items: ['/items', 'apps.read'], observed: ['/observed-hosts', 'apps.read'], chrome: ['/chrome-sites', 'apps.read'], audit: ['/audit', 'audit.read'], admins: ['/admins', 'admins.manage'],
+  items: ['/items', 'apps.read'], observed: ['/observed-hosts', 'apps.read'], chrome: ['/chrome-sites', 'apps.read'], aplicativos: ['/device-apps', 'apps.read'],
+  audit: ['/audit', 'audit.read'], admins: ['/admins', 'admins.manage'],
   // A seção Assistente carrega os próprios dados (assistente.js); esta linha só diz qual permissão a abre.
   assistente: ['/assistant', 'config.read'],
 };
@@ -425,9 +426,9 @@ function iniciarCiclo() {
   };
   relogioCiclo = setTimeout(passo, 4000);
 }
-// Máquinas, alertas, notificações e sites do Chrome a cada 4 s. O resto, só o que está na tela, a cada 12 s.
+// Máquinas, alertas, notificações, sites nos navegadores e aplicativos a cada 4 s. O resto, só o que está na tela, a cada 12 s.
 async function atualizar(lento) {
-  const nomes = ['devices', 'alerts', 'notifs', 'chrome'];
+  const nomes = ['devices', 'alerts', 'notifs', 'chrome', 'aplicativos'];
   if (lento) {
     if (S.secao === 'apps' || (S.sel && S.aba === 'acesso')) nomes.push('items', 'observed');
     if (S.secao === 'auditoria') nomes.push('audit');
@@ -507,7 +508,7 @@ async function marcarLidas() {
 }
 
 // ============================================================== navegação
-const SECOES = { visao: 'devices', apps: 'items', chrome: 'chrome', alertas: 'alerts', notificacoes: 'notifs', assistente: 'assistente', auditoria: 'audit', admins: 'admins' };
+const SECOES = { visao: 'devices', apps: 'items', chrome: 'chrome', aplicativos: 'aplicativos', alertas: 'alerts', notificacoes: 'notifs', assistente: 'assistente', auditoria: 'audit', admins: 'admins' };
 function irSecao(secao) {
   if (!pode(FONTES[SECOES[secao]][1])) secao = 'visao';
   if (S.secao === 'notificacoes' && secao !== 'notificacoes') S.novas.clear();
@@ -518,7 +519,7 @@ function irSecao(secao) {
   esconderRecado();
   desenhar();
   window.scrollTo(0, 0);
-  const extras = { apps: ['items', 'observed'], chrome: ['chrome'], auditoria: ['audit'], admins: ['admins'] }[secao];
+  const extras = { apps: ['items', 'observed'], chrome: ['chrome'], aplicativos: ['aplicativos'], auditoria: ['audit'], admins: ['admins'] }[secao];
   if (extras) carregar(...extras).then(() => { if (S.secao === secao) desenhar(); });
   if (secao === 'notificacoes') marcarLidas();
   if (secao === 'assistente') Assistente.abrir();
@@ -579,6 +580,7 @@ function desenhar() {
   if (S.secao === 'visao') { desenharVisao(); desenharPendentes(); }
   if (S.secao === 'apps') { desenharPropostas(); desenharApps(); desenharObservados(); }
   if (S.secao === 'chrome') desenharChrome();
+  if (S.secao === 'aplicativos') desenharAplicativos();
   if (S.secao === 'alertas') desenharAlertas();
   if (S.secao === 'notificacoes') desenharNotificacoes();
   if (S.secao === 'auditoria') desenharAuditoria();
@@ -597,6 +599,8 @@ function desenharTopo() {
   $('conta-alertas').hidden = abertos === 0; $('conta-alertas').textContent = abertos;
   const esperando = (S.chrome || []).filter((c) => c.status === 'pending').length;
   $('conta-chrome').hidden = esperando === 0; $('conta-chrome').textContent = esperando;
+  const appsEsperando = (S.aplicativos || []).filter((a) => a.status === 'pending').length;
+  $('conta-aplicativos').hidden = appsEsperando === 0; $('conta-aplicativos').textContent = appsEsperando;
   const naoLidas = (S.notifs || []).filter((n) => !n.read).length;
   $('conta-notif').hidden = naoLidas === 0; $('conta-notif').textContent = naoLidas; $('sino-ponto').hidden = naoLidas === 0;
   $('sino').setAttribute('aria-label', naoLidas ? `Ver notificações: ${plural(naoLidas, 'nova', 'novas')}` : 'Ver notificações');
@@ -1147,6 +1151,113 @@ function desenharObservados() {
 }
 
 // --------------------------------------------- alertas, notificações, auditoria
+// ======================================================= aplicativos do computador
+// O Terminal deixa a atendente abrir os aplicativos do computador; na primeira vez o pedido chega aqui. O TI libera ou
+// bloqueia só para aquela atendente ou para todas; a decisão de uma atendente vale mais que a decisão para todas.
+const nomeApp = (a) => { const d = a.deviceId && maquina(a.deviceId); return d ? nomeDe(d) : texto(a.deviceLabel) || 'a atendente'; };
+// "Vale para" escolhido em cada linha esperando decisão (sobrevive à atualização da tabela a cada 4 s).
+const quemApp = {};
+function decidirAplicativo(botao, exe, decisao, deviceId = null, quem = '', nome = '') {
+  const corpo = { exe, decision: decisao };
+  if (deviceId) corpo.deviceId = deviceId;
+  if (nome) corpo.name = nome;
+  const para = deviceId ? `só para ${quem}` : 'para todas as atendentes';
+  const rotulo = nome ? `${texto(nome)} (${texto(exe)})` : texto(exe);
+  const ok = decisao === 'reset' ? `${rotulo}: ${quem} volta a seguir a decisão para todas.`
+    : decisao === 'allow' ? `${rotulo} foi liberado ${para}.` : `${rotulo} foi bloqueado ${para}.`;
+  return agir(botao, () => api('POST', '/device-apps/decide', corpo), { recarregar: ['aplicativos', 'alerts'], ok });
+}
+function desenharAplicativos() {
+  const permite = pode('apps.executables.approve');
+  const lista = S.aplicativos || [];
+  const pendentes = lista.filter((a) => a.status === 'pending'), decididos = lista.filter((a) => a.status !== 'pending');
+  const espera = situacaoLista('aplicativos');
+  $('aplicativos-frase').textContent = espera || (pendentes.length
+    ? `${plural(pendentes.length, 'pedido espera', 'pedidos esperam')} a sua decisão. Enquanto você não decide, o aplicativo continua como está: abrindo, ou bloqueado se já estava bloqueado para todas.`
+    : 'Nenhum aplicativo esperando decisão. Quando uma atendente abrir pela primeira vez um aplicativo que não é programa cadastrado, ele aparece aqui com o nome dela.');
+  $('aplicativos-novo').hidden = !permite;
+
+  // Atendentes do formulário "Decidir um aplicativo" (mantém a escolha atual).
+  const seletor = $('aplicativos-quem'), atual = seletor.value;
+  const maquinas = aprovadas().map((d) => [d.id, nomeDe(d)]).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+  if (mudou('aplicativos-quem', maquinas)) {
+    trocar(seletor, [el('option', { value: 'all', textContent: 'Todas as atendentes' }), ...maquinas.map(([id, nome]) => el('option', { value: id, textContent: `Só ${nome}` }))]);
+    seletor.value = maquinas.some(([id]) => id === atual) ? atual : 'all';
+  }
+
+  if (!mudou('aplicativos', [S.aplicativos, S.erro.aplicativos, permite, maquinas, new Date().toDateString()])) return;
+  desenharTabelasAplicativos(pendentes, decididos, espera, permite);
+}
+$('aplicativos-novo').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const decisao = e.submitter && e.submitter.dataset.decisao;
+  const campo = $('aplicativos-exe'), exe = campo.value.trim();
+  const id = $('aplicativos-quem').value, d = id !== 'all' ? maquina(id) : null;
+  if (!decisao) return;
+  if (!exe) { recado('Escreva o nome do aplicativo, por exemplo spotify.exe.', true); campo.focus(); return; }
+  decidirAplicativo(e.submitter, exe, decisao, d ? id : null, d ? nomeDe(d) : '').then((feito) => { if (feito) campo.value = ''; });
+});
+
+// As duas tabelas da aba Aplicativos: esperando decisão e já decididos.
+function desenharTabelasAplicativos(pendentes, decididos, espera, permite) {
+  const cabecalho = (colunas) => el('thead', {}, el('tr', {}, ...colunas.map((t) => (t ? el('th', { textContent: t, scope: 'col' }) : el('th', { scope: 'col', className: 'estreita' }, el('span', { className: 'so-leitor', textContent: 'Ações' }))))));
+  const linhaUnica = (n, mensagem) => el('tbody', {}, el('tr', {}, el('td', { colSpan: n, className: 'vazio', textContent: mensagem })));
+  const chave = (a) => `${a.scope}:${a.deviceId || ''}:${a.exe}`;
+  // escopo(): devolve o deviceId (só ela) ou null (todas) no momento do clique.
+  const botao = (a, decisao, escopo, quem) => {
+    const liberar = decisao === 'allow', voltar = decisao === 'reset';
+    const b = el('button', { type: 'button', className: voltar || liberar ? 'btn claro p' : 'btn perigo p', 'data-k': `aplicativos:${decisao}:${chave(a)}` },
+      ic(voltar ? 'x' : liberar ? 'check' : 'lock', 16), voltar ? 'Tirar' : liberar ? 'Liberar' : 'Bloquear');
+    b.setAttribute('aria-label', voltar ? `Tirar a decisão de ${texto(a.exe)} só para ${quem}` : `${liberar ? 'Liberar' : 'Bloquear'} ${texto(a.exe)}`);
+    if (voltar) b.title = `Tira a decisão só para ${quem}: volta a valer a decisão para todas.`;
+    b.onclick = () => decidirAplicativo(b, a.exe, decisao, escopo(), quem, a.name);
+    return b;
+  };
+  const acoes = (...botoes) => el('td', { className: 'estreita' }, permite ? el('div', { style: 'display:flex;gap:8px' }, ...botoes) : null);
+  const nada = '—';
+  const arquivo = (a) => { const t = el('span', { className: 'dominio', textContent: texto(a.exe) }); if (a.path) t.title = texto(a.path, 300); return t; };
+  const nome = (a) => el('b', { textContent: texto(a.name) || texto(a.exe) });
+
+  const colP = ['Aplicativo', 'Arquivo', 'Atendente', 'Vezes', 'Última vez', 'Vale para', ''];
+  trocar($('tb-aplicativos-pendentes'), [cabecalho(colP), espera ? linhaUnica(colP.length, espera) : !pendentes.length ? linhaUnica(colP.length, 'Tudo decidido.') : el('tbody', {}, ...pendentes.map((a) => {
+    const quem = nomeApp(a), k = chave(a);
+    const ela = a.scope === 'device' && a.deviceId;
+    let vale = null;
+    if (ela) {
+      vale = el('select', { className: 'campo', 'data-k': `aplicativos-vale:${k}` },
+        el('option', { value: 'one', textContent: `Só ${quem}` }), el('option', { value: 'all', textContent: 'Todas as atendentes' }));
+      vale.setAttribute('aria-label', `Para quem vale a decisão sobre ${texto(a.exe)}`);
+      vale.value = quemApp[k] || 'one';
+      vale.disabled = !permite;
+      vale.onchange = () => { quemApp[k] = vale.value; };
+    }
+    const escopo = () => (ela && (quemApp[k] || 'one') === 'one' ? a.deviceId : null);
+    return el('tr', {},
+      el('td', {}, nome(a), a.blockedForAll ? el('div', { style: 'margin-top:4px' }, selo('bloqueado', 'Bloqueado para todas: ela pediu')) : null),
+      el('td', {}, arquivo(a)),
+      el('td', { textContent: a.deviceLabel ? quem : nada }),
+      el('td', { className: 'num', textContent: String(a.opens || 0) }),
+      el('td', { textContent: a.lastAt ? quando(a.lastAt) : nada }),
+      el('td', {}, vale || 'Todas as atendentes'),
+      acoes(botao(a, 'block', escopo, quem), botao(a, 'allow', escopo, quem)));
+  }))]);
+
+  const colD = ['Aplicativo', 'Arquivo', 'Vale para', 'Situação', 'Decidido por', 'Quando', ''];
+  trocar($('tb-aplicativos-decididos'), [cabecalho(colD), espera ? linhaUnica(colD.length, espera) : !decididos.length ? linhaUnica(colD.length, 'Nenhum aplicativo decidido ainda.') : el('tbody', {}, ...decididos.map((a) => {
+    const bloqueado = a.status === 'blocked', ela = a.scope === 'device' && a.deviceId, quem = nomeApp(a);
+    const escopo = () => (ela ? a.deviceId : null);
+    return el('tr', {},
+      el('td', {}, nome(a)),
+      el('td', {}, arquivo(a)),
+      el('td', { textContent: ela ? `Só ${quem}` : 'Todas as atendentes' }),
+      el('td', {}, bloqueado ? selo('bloqueado', 'Bloqueado') : selo('online', 'Liberado')),
+      el('td', { textContent: texto(a.decidedBy) || nada }),
+      el('td', { textContent: a.decidedAt ? quando(a.decidedAt) : nada }),
+      ela ? acoes(botao(a, bloqueado ? 'allow' : 'block', escopo, quem), botao(a, 'reset', escopo, quem))
+        : acoes(botao(a, bloqueado ? 'allow' : 'block', escopo, quem)));
+  }))]);
+}
+
 // ======================================================= sites nos navegadores
 // O Terminal avisa quando a atendente abre num navegador um site que não é operacional. O TI libera ou bloqueia
 // só para aquela atendente ou para todas; a decisão de uma atendente vale mais que a decisão para todas.

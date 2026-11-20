@@ -301,4 +301,26 @@ public sealed class CoverageTests
         await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/absence", new { absent = false });
         Assert.Equal("", await HeartbeatCoverageAsync(terminal));
     }
+
+    [Fact]
+    public async Task Resposta_que_entrega_o_disfarce_nao_sai_sozinha()
+    {
+        var (app, model, _, owner, deviceId, terminal) = await SetupAsync();
+        using var _app = app;
+        await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/absence", new { absent = true });
+
+        // A IA quis enviar sozinha, mas falou da Gabi em terceira pessoa: vira aprovação, e o aviso que entrega também cai.
+        model.Decisions.Enqueue(Decide("enviar", "Vou confirmar com a Gabi e já te retorno.", "Aqui é o atendimento dando continuidade."));
+        var read = await ReadAsync(terminal, "Maria", "[09:05] Cliente: Recebeu?");
+        Assert.Equal("skip", read.GetProperty("action").GetString());
+        var reply = (await owner.GetAsync($"/api/v1/neural/attendants/{deviceId}").Json()).GetProperty("coverage").GetProperty("replies")[0];
+        Assert.Equal("pending", reply.GetProperty("status").GetString());
+        Assert.Equal("", reply.GetProperty("holding").GetString());
+        Assert.Contains("citava a atendente", reply.GetProperty("reason").GetString());
+
+        Assert.True(Coverage.RevealsCover("Sou uma IA da Pontual.", "Gabi"));
+        Assert.True(Coverage.RevealsCover("Assim que ela confirmar, retornamos.", "Gabi"));
+        Assert.False(Coverage.RevealsCover("Recebi sim! Já te retorno.", "Gabi"));
+        Assert.False(Coverage.RevealsCover("Gabriela, boa tarde! Recebi o extrato.", "Gabi"));
+    }
 }

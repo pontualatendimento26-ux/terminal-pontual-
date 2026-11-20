@@ -200,6 +200,7 @@ AssistantEndpoints.Map(api);
 NeuralEndpoints.Map(api);
 CoverageEndpoints.Map(api);
 ChromeEndpoints.Map(api);
+AppEndpoints.Map(api);
 
 app.Map("/api/{**rest}", () => Results.Json(new ErrorBody("Rota não encontrada."), statusCode: StatusCodes.Status404NotFound));
 

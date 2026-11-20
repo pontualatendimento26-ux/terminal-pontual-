@@ -18,6 +18,8 @@
     headset: '<path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="13" width="4" height="6" rx="1.5"/><rect x="17" y="13" width="4" height="6" rx="1.5"/><path d="M19 19c0 1.5-2 2-5 2"/>',
     wrench: '<path d="M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.6 2.6-2-2 2.6-2.6Z"/>',
     ban: '<circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+    lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
     power: '<path d="M12 4v8"/><path d="M7 7a7 7 0 1 0 10 0"/>', folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>', load: '<path d="M12 3a9 9 0 1 0 9 9"/>',
   };
   function ic(nome, tam = 18) {
@@ -58,7 +60,7 @@
   const parametros = new URLSearchParams(location.search);
   const injetado = window.PONTUAL && typeof window.PONTUAL === 'object' ? window.PONTUAL : null;
   const P = injetado && injetado.hosted === true
-    ? { token: texto(injetado.token, 500), hostname: texto(injetado.hostname, 100), hosted: true, local: injetado.local === true, locked: injetado.locked === true }
+    ? { token: texto(injetado.token, 500), hostname: texto(injetado.hostname, 100), hosted: true, local: injetado.local === true, locked: injetado.locked === true, apps: injetado.apps === true }
     : { token: parametros.get('token') || '', hostname: parametros.get('hostname') || 'Navegador', hosted: false, local: false };
   const ponte = P.hosted && window.chrome && window.chrome.webview ? window.chrome.webview : null;
   const aoPrograma = (mensagem) => { if (ponte) ponte.postMessage(mensagem); };
@@ -79,6 +81,9 @@
     abertos: [],             // [{ id, name }]
     cat: 'Todos',
     avisoAberto: false,
+    apps: null,              // aplicativos do computador, informados pelo programa: [{ id, name, exe, source, status, open }]
+    appsAberto: false,
+    appsBusca: '',
     uso: lerUso(),
   };
 
@@ -408,14 +413,18 @@
       const ate = previsao(S.manut && S.manut.until);
       $('at-manut-texto').textContent = `O TI está trabalhando nesta máquina.${motivo ? ` Motivo: ${motivo}.` : ''}${ate ? ` Previsão de retorno: ${ate}.` : ''}`;
       S.avisoAberto = false;
+      S.appsAberto = false;
     }
 
     const veu = $('at-veu'), folha = $('at-folha');
+    const folhaAberta = S.avisoAberto || S.appsAberto;
     const estavaFechada = veu.hidden;
-    veu.hidden = !S.avisoAberto;
-    for (const parte of document.querySelectorAll('#app-at > header, #app-at > main, #app-at > footer')) parte.inert = emManutencao || S.avisoAberto;
+    veu.hidden = !folhaAberta;
+    folha.classList.toggle('larga', S.appsAberto);
+    for (const parte of document.querySelectorAll('#app-at > header, #app-at > main, #app-at > footer')) parte.inert = emManutencao || folhaAberta;
 
     if (emManutencao && estavaEscondida) manut.focus();
+    if (S.appsAberto) desenharAplicativos(folha, estavaFechada);
     if (S.avisoAberto && estavaFechada) {
       focoAntes = document.activeElement;
       const ok = el('button', { type: 'button', className: 'btn', textContent: 'Entendi' });
@@ -434,9 +443,50 @@
         el('div', { className: 'acoes' }, ok));
       ok.focus();
     }
-    if (!S.avisoAberto && !estavaFechada && focoAntes && document.contains(focoAntes) && !emManutencao) { focoAntes.focus(); focoAntes = null; }
+    if (!folhaAberta && !estavaFechada && focoAntes && document.contains(focoAntes) && !emManutencao) { focoAntes.focus(); focoAntes = null; }
   }
   function fecharAviso() { S.avisoAberto = false; desenhar(); }
+
+  // Folha "Aplicativos do computador": a lista vem do programa (mensagem "apps"); abrir é pedido ao programa ("open-app").
+  const ORIGENS_APP = [['windows', 'Do Windows'], ['installed', 'Instalados neste computador'], ['downloaded', 'Baixados (pasta Downloads)']];
+  const SITUACAO_APP = { blocked: 'Bloqueado pelo TI', allowed: 'Liberado pelo TI', request: 'Na primeira vez, o TI recebe um pedido para liberar' };
+  let appsAssinatura = '';
+  function desenharAplicativos(folha, primeira) {
+    const termo = semAcento(S.appsBusca.trim());
+    const lista = (S.apps || []).filter((a) => !termo || semAcento(a.name).includes(termo) || a.exe.includes(termo));
+    const assinatura = JSON.stringify([S.apps, termo]);
+    if (!primeira && assinatura === appsAssinatura) return;
+    appsAssinatura = assinatura;
+    const buscaTinhaFoco = document.activeElement && document.activeElement.id === 'apps-busca';
+    const busca = el('input', { id: 'apps-busca', type: 'search', className: 'procura-apps', autocomplete: 'off', spellcheck: false, placeholder: 'Digite o nome do aplicativo', value: S.appsBusca });
+    busca.setAttribute('aria-label', 'Buscar aplicativo');
+    busca.oninput = () => { S.appsBusca = busca.value; desenharAplicativos(folha, false); };
+    const fechar = el('button', { type: 'button', className: 'btn claro', textContent: 'Fechar' });
+    fechar.onclick = fecharAplicativos;
+    const grupos = ORIGENS_APP.map(([origem, titulo]) => [titulo, lista.filter((a) => a.source === origem)]).filter(([, itens]) => itens.length);
+    const corpo = S.apps === null ? el('p', { className: 'vazio', textContent: 'Procurando os aplicativos deste computador…' })
+      : !lista.length ? el('p', { className: 'vazio', textContent: S.apps.length ? 'Nenhum aplicativo com esse nome.' : 'Nenhum aplicativo encontrado neste computador.' })
+        : el('div', {}, ...grupos.flatMap(([titulo, itens]) => [el('h3', { textContent: titulo }), el('div', { className: 'lista-sites' }, ...itens.map((a) => {
+          const bloqueado = a.status === 'blocked';
+          const b = el('button', { type: 'button', className: 'item', disabled: bloqueado }, avatar(a.name, 'q'),
+            el('span', {}, el('b', { textContent: a.name }), el('small', { textContent: a.open ? 'Aberto agora' : SITUACAO_APP[a.status] || a.exe })), ic(bloqueado ? 'lock' : 'arrow', 20));
+          b.title = a.exe;
+          b.onclick = () => { aoPrograma({ type: 'open-app', id: a.id }); fecharAplicativos(); };
+          return b;
+        }))]));
+    folha.setAttribute('aria-labelledby', 'apps-titulo');
+    folha.replaceChildren(el('h2', { id: 'apps-titulo', textContent: 'Aplicativos do computador' }),
+      el('p', { className: 'explica', textContent: 'Você pode abrir os aplicativos do Windows, os instalados e os que você baixou. Na primeira vez que abrir um aplicativo novo, o TI recebe um pedido para liberá-lo. Se o TI bloquear, ele deixa de abrir.' }),
+      busca, corpo, el('div', { className: 'acoes' }, fechar));
+    if (primeira || buscaTinhaFoco) { busca.focus(); busca.setSelectionRange(busca.value.length, busca.value.length); }
+  }
+  function abrirAplicativos() {
+    if (S.appsAberto) return;
+    S.appsAberto = true; S.apps = null; S.appsBusca = '';
+    aoPrograma({ type: 'apps' });
+    desenhar();
+  }
+  function fecharAplicativos() { S.appsAberto = false; desenhar(); }
 
   // ================================================================ ligações
   $('busca').oninput = desenhar;
@@ -448,9 +498,15 @@
     $('at-arquivos').onclick = () => aoPrograma({ type: 'files' });
     $('at-energia').onclick = () => aoPrograma({ type: 'power' });
   }
+  // Aplicativos do computador: só dentro de um programa Terminal que sabe listá-los (apps: true; os antigos não mostram o botão).
+  if (P.hosted && !P.local && P.apps) {
+    $('at-aplicativos').hidden = false;
+    $('at-aplicativos').onclick = abrirAplicativos;
+  }
   $('at-ver-aviso').onclick = () => { S.avisoAberto = true; desenhar(); };
-  $('at-veu').onclick = (e) => { if (e.target === $('at-veu')) fecharAviso(); };
+  $('at-veu').onclick = (e) => { if (e.target === $('at-veu')) { if (S.appsAberto) fecharAplicativos(); else fecharAviso(); } };
   document.addEventListener('keydown', (e) => {
+    if (S.appsAberto) { if (e.key === 'Escape') fecharAplicativos(); return; }
     if (!S.avisoAberto) return;
     if (e.key === 'Escape') fecharAviso();
     // A folha só tem um botão: o Tab fica nele.
@@ -476,6 +532,13 @@
       } else if (m.type === 'config') {
         // No modo local a configuração vem na própria mensagem (o arquivo foi editado).
         if (P.local) { if (m.config) usarConfigLocal(m.config); desenhar(); } else carregarConfig();
+      } else if (m.type === 'apps' && Array.isArray(m.apps)) {
+        S.apps = m.apps.filter((a) => a && typeof a.id === 'string' && typeof a.name === 'string').slice(0, 500).map((a) => ({
+          id: a.id, name: texto(a.name, 120), exe: texto(a.exe, 120).toLowerCase(),
+          source: ['windows', 'installed', 'downloaded'].includes(a.source) ? a.source : 'installed',
+          status: ['blocked', 'allowed', 'request'].includes(a.status) ? a.status : 'request', open: a.open === true,
+        }));
+        desenhar();
       } else if (m.type === 'status') {
         const voltou = S.online === false && m.online === true;
         if (typeof m.online === 'boolean') S.online = m.online;

@@ -119,7 +119,7 @@ Na primeira execução, o servidor cadastra os sites de `docs/APLICATIVOS-E-SITE
 |---|---|---|
 | `POST /device/enroll` (sem token) | `{ code, hostname, windows }` | `{ deviceId, token }`. Máquina nasce `pending`. O servidor guarda só o SHA-256 do token |
 | `POST /device/heartbeat` | `{ appsInUse: [nomes], sessionStartedAt }` | `{ state, configVersion, attendantName, maintenance, observationMode }`. `state`: `pending`, `active`, `maintenance`. 401 se a máquina foi removida |
-| `GET /device/config` | — | `{ version, attendantName, observationMode, items: [{ id, name, kind, target, group, hosts: [domínios] }] }`. Só itens ativos e que a máquina pode ver. `hosts` = domínio do `target` mais `extraHosts`; vazio para programas |
+| `GET /device/config` | — | `{ version, attendantName, observationMode, items: [{ id, name, kind, target, group, hosts: [domínios] }], chromeAllowed, chromeBlocked, appsAllowed, appsBlocked }`. Só itens ativos e que a máquina pode ver. `hosts` = domínio do `target` mais `extraHosts`; vazio para programas. As quatro listas são as decisões do TI para a máquina ([CHROME.md](CHROME.md) e [APLICATIVOS-DO-COMPUTADOR.md](APLICATIVOS-DO-COMPUTADOR.md)) |
 | `POST /device/events` | `{ events: [{ type, item?, detail?, at }] }` | 204 |
 
 O terminal envia o `heartbeat` a cada 15 segundos. `configVersion` é um inteiro global, incrementado a cada mudança em itens, públicos ou máquinas.
@@ -134,6 +134,7 @@ Tipos de evento e efeito no servidor:
 | `blocked` | Tentou navegar para um domínio não permitido, com o modo de observação desligado (`detail` = domínio) | Histórico; **alerta**; notificação **urgente** |
 | `observed` | Navegou para um domínio não listado, com o modo de observação ligado (`detail` = domínio, `item` = nome) | Entra em `observed-hosts`; notificação não urgente na primeira vez de cada domínio |
 | `help` | A atendente clicou em "Chamar o TI" | Alerta "chamou o TI"; notificação não urgente |
+| `app_opened` | Abriu, pela lista "Aplicativos" do Terminal, um aplicativo do computador que o TI ainda não decidiu (`item` = nome, `detail` = caminho do .exe) | Pedido dela em `/device-apps`; **alerta**; notificação **urgente** na primeira vez. Ver [APLICATIVOS-DO-COMPUTADOR.md](APLICATIVOS-DO-COMPUTADOR.md) |
 
 ### Modo de observação
 

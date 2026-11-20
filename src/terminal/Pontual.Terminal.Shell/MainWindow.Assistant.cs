@@ -269,9 +269,13 @@ public partial class MainWindow
             saida.names = cabecalho ? [...cabecalho.querySelectorAll('span[title], span[dir="auto"]')]
               .map(s => corta(s.getAttribute('title') || s.innerText, 80)).filter(Boolean).slice(0, 8) : [];
             const linhas = [];
+            const remetentes = new Set();
             for (const m of main.querySelectorAll('[data-pre-plain-text]')) {
-              const hora = ((m.getAttribute('data-pre-plain-text') || '').match(/\[(\d{1,2}:\d{2})/) || [])[1] || '';
-              const quem = m.closest('.message-out') ? 'Atendente' : 'Cliente';
+              const pre = m.getAttribute('data-pre-plain-text') || '';
+              const hora = (pre.match(/\[(\d{1,2}:\d{2})/) || [])[1] || '';
+              // Mensagem enviada por este WhatsApp: classe .message-out ou data-id começando por "true_".
+              const quem = (m.closest('.message-out') || m.closest('[data-id^="true_"]')) ? 'Atendente' : 'Cliente';
+              if (quem === 'Cliente') { const r = (pre.match(/\]\s*([^:]{1,80}):\s*$/) || [])[1]; if (r) remetentes.add(r.trim()); }
               const texto = corta(m.innerText, 1500);
               if (texto) linhas.push('[' + hora + '] ' + quem + ': ' + texto);
             }
@@ -284,6 +288,9 @@ public partial class MainWindow
               const texto = corta(sel ? sel.innerText : bruto.replace(/\s*\d{1,2}:\d{2}\s*$/, ''), 1500);
               if (texto) linhas.push('[' + (horas[horas.length - 1] || '') + '] ' + quem + ': ' + texto);
             }
+            // Grupo: mais de uma pessoa escrevendo, ou o cabeçalho lista os participantes (com "você").
+            const sub = cabecalho ? [...cabecalho.querySelectorAll('span[title]')].slice(1).map(s => s.getAttribute('title') || '') : [];
+            saida.group = remetentes.size > 1 || sub.some(t => t.includes(',') && /\b(voc[eê]|you)\b/i.test(t));
             saida.text = linhas.length ? corta(linhas.slice(-40).join('\n'), 8000, true) : corta(main.innerText, 8000, true);
             return saida;
           }

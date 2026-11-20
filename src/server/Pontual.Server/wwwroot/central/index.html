@@ -94,6 +94,7 @@
       <button type="button" data-secao="visao" aria-current="page">Visão geral</button>
       <button type="button" data-secao="apps">Sites e programas</button>
       <button type="button" data-secao="chrome">Sites nos navegadores<span class="conta" id="conta-chrome" hidden></span></button>
+      <button type="button" data-secao="aplicativos">Aplicativos<span class="conta" id="conta-aplicativos" hidden></span></button>
       <button type="button" data-secao="alertas">Alertas<span class="conta" id="conta-alertas" hidden></span></button>
       <button type="button" data-secao="notificacoes">Notificações<span class="conta azul" id="conta-notif" hidden></span></button>
       <button type="button" data-secao="assistente">Assistente</button>
@@ -183,6 +184,26 @@
           <button type="submit" class="btn claro" data-decisao="allow"><span data-ic="check"></span>Liberar</button>
         </form>
         <div class="rolagem-x"><table id="tb-chrome-decididos"></table></div>
+      </div>
+    </section>
+
+    <section data-painel="aplicativos" hidden aria-labelledby="t-aplicativos">
+      <div class="abertura baixa"><h1 id="t-aplicativos">Aplicativos do computador</h1><p>As atendentes podem abrir, pela lista "Aplicativos" do Terminal, os aplicativos do Windows, os instalados e os baixados. Na primeira vez que uma delas abre um aplicativo que não é programa cadastrado, ele abre e o pedido chega aqui, com o nome dela. Você decide se o aplicativo fica liberado (abre sem pedir) ou bloqueado (o Terminal não abre mais e fecha o que estiver aberto), só para ela ou para todas as atendentes. A decisão é pelo nome do arquivo (spotify.exe) e a de uma atendente vale mais que a decisão para todas.</p></div>
+      <div class="quadro">
+        <div class="quadro-topo"><div><h2>Esperando decisão</h2><p id="aplicativos-frase"></p></div></div>
+        <div class="rolagem-x"><table id="tb-aplicativos-pendentes"></table></div>
+      </div>
+      <div class="quadro depois">
+        <div class="quadro-topo">
+          <div><h2>Já decididos</h2><p>Mude a decisão quando quiser. O bloqueio chega aos Terminais em até meio minuto.</p></div>
+        </div>
+        <form class="ferramentas" id="aplicativos-novo" novalidate>
+          <label class="busca"><span data-ic="window"></span><input class="campo" id="aplicativos-exe" placeholder="Decidir um aplicativo, ex.: spotify.exe" aria-label="Nome do aplicativo para liberar ou bloquear" autocomplete="off" spellcheck="false"></label>
+          <select class="campo" id="aplicativos-quem" aria-label="Para quem vale a decisão"><option value="all">Todas as atendentes</option></select>
+          <button type="submit" class="btn perigo" data-decisao="block"><span data-ic="lock"></span>Bloquear</button>
+          <button type="submit" class="btn claro" data-decisao="allow"><span data-ic="check"></span>Liberar</button>
+        </form>
+        <div class="rolagem-x"><table id="tb-aplicativos-decididos"></table></div>
       </div>
     </section>
 

@@ -154,6 +154,20 @@ public static class CoverageEndpoints
                 reason = $"Passou de {Coverage.SendsPerHour} mensagens enviadas sozinhas na última hora; esta espera aprovação. {reason}";
             }
 
+            // Para o cliente, quem responde é a própria atendente. Um texto que cita a atendente em terceira pessoa,
+            // ou fala em robô, IA ou "dando continuidade", não sai sozinho: a supervisão confere e corrige.
+            var holding = decision.Holding;
+            if (action == Coverage.Send && Coverage.RevealsCover(decision.Message, device.AttendantName))
+            {
+                action = Coverage.Queue;
+                reason = $"A resposta citava a atendente ou dava a entender que não era ela respondendo; precisa ser corrigida antes de sair. {reason}";
+            }
+
+            if (Coverage.RevealsCover(holding, device.AttendantName))
+            {
+                holding = "";
+            }
+
             var reply = new CoverageReply
             {
                 Id = Guid.NewGuid(),
@@ -162,7 +176,7 @@ public static class CoverageEndpoints
                 Incoming = incoming,
                 Transcript = transcript,
                 Reply = decision.Message,
-                Holding = action == Coverage.Queue ? decision.Holding : "",
+                Holding = action == Coverage.Queue ? holding : "",
                 Decision = action,
                 Reason = Input.Truncated(reason, 400),
                 Fingerprint = fingerprint,
@@ -441,14 +455,17 @@ public static class CoverageEndpoints
     public static async Task<object> ListAsync(PontualDb db, Guid deviceId, DateTime utcNow, CancellationToken ct)
     {
         var profile = await db.AssistantProfiles.AsNoTracking().Where(p => p.DeviceId == deviceId)
-            .Select(p => new { p.Coverage, p.AbsentOn }).FirstOrDefaultAsync(ct);
+            .Select(p => new { p.Coverage, p.AbsentOn, p.CoverageSchedule }).FirstOrDefaultAsync(ct);
         var mode = profile?.Coverage ?? "";
         var absent = profile?.AbsentOn == Coverage.Day(utcNow);
+        // Para a tela dizer na hora por que a IA não está respondendo mesmo com a falta marcada.
+        var withinHours = Coverage.WithinHours(utcNow, profile?.CoverageSchedule);
+        var hours = Coverage.Describe(Coverage.ParseSchedule(profile?.CoverageSchedule));
         var replies = await db.CoverageReplies.AsNoTracking()
             .Where(r => r.DeviceId == deviceId).OrderByDescending(r => r.CreatedAt).Take(60).ToListAsync(ct);
         var status = await db.Devices.AsNoTracking().Where(d => d.Id == deviceId)
             .Select(d => new { d.CoverageStatus, d.CoverageStatusAt }).FirstOrDefaultAsync(ct);
-        return new { mode, absent, replies = replies.Select(Dto), status = status?.CoverageStatus ?? "", statusAt = status?.CoverageStatusAt };
+        return new { mode, absent, withinHours, hours, replies = replies.Select(Dto), status = status?.CoverageStatus ?? "", statusAt = status?.CoverageStatusAt };
     }
 
     private static object Dto(CoverageReply r) => new

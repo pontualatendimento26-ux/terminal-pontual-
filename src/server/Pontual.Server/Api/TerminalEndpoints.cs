@@ -123,6 +123,7 @@ public static class TerminalEndpoints
         // Máquina ainda não aprovada não recebe nenhum item.
         var items = device.Approved ? await VisibleItemsAsync(db, device, ct) : [];
         var (chromeAllowed, chromeBlocked) = device.Approved ? await ChromeEndpoints.DecidedAsync(db, device.Id, ct) : ([], []);
+        var (appsAllowed, appsBlocked) = device.Approved ? await AppEndpoints.DecidedAsync(db, device.Id, ct) : ([], []);
 
         return Results.Ok(new ConfigDto(
             version,
@@ -130,7 +131,9 @@ public static class TerminalEndpoints
             device.ObservationMode,
             [.. items.Select(i => new ConfigItemDto(i.Id, i.Name, i.Kind, i.Target, i.Group, i.Hosts()))],
             chromeAllowed,
-            chromeBlocked));
+            chromeBlocked,
+            appsAllowed,
+            appsBlocked));
     }
 
     private static async Task<IResult> EventsAsync(HttpContext context, PontualDb db, TimeProvider time, CancellationToken ct)
@@ -155,6 +158,7 @@ public static class TerminalEndpoints
         var openAlerts = await db.Alerts.Where(a => a.DeviceId == device.Id && a.ResolvedAt == null).ToListAsync(ct);
         var label = device.Label;
         (List<string> Allowed, List<string> Blocked)? chrome = null;
+        (List<string> Allowed, List<string> Blocked)? apps = null;
 
         foreach (var e in events)
         {
@@ -217,6 +221,13 @@ public static class TerminalEndpoints
                     chrome ??= await ChromeEndpoints.DecidedAsync(db, device.Id, ct);
                     await ChromeAsync(db, device, allowedHosts, chrome.Value, openAlerts, host, item.Length > 0 ? item : "navegador",
                         e.Type == "chrome_stay", at, now, ct);
+                    break;
+
+                // Computador: a atendente abriu, pela lista "Aplicativos" do Terminal, um aplicativo que o TI ainda não
+                // decidiu (detail = caminho do .exe). Vira um pedido dela; o TI libera ou bloqueia na Central.
+                case "app_opened" when Input.TryExe(e.Detail, out var exe):
+                    apps ??= await AppEndpoints.DecidedAsync(db, device.Id, ct);
+                    await AppAsync(db, device, items, apps.Value, openAlerts, exe, item.Length > 0 ? item : exe, Input.Truncated(e.Detail, 260), at, now, ct);
                     break;
 
                 case "help":
@@ -327,6 +338,59 @@ public static class TerminalEndpoints
             AddNotification(db, now, blocked
                 ? $"{device.Label} tentou abrir {host} no {browser}, que está bloqueado para todas. Decida se ela pode usar."
                 : $"{device.Label} abriu {host} no {browser}, que não é um site operacional", urgent: true);
+        }
+    }
+
+    private static async Task AppAsync(PontualDb db, Device device, List<Item> items, (List<string> Allowed, List<string> Blocked) decided,
+        List<Alert> openAlerts, string exe, string name, string path, DateTime at, DateTime now, CancellationToken ct)
+    {
+        // Programa cadastrado para a máquina, ou já liberado pelo TI: o Terminal pode estar com a lista antiga.
+        if (decided.Allowed.Contains(exe) || items.Any(i => i.Kind == ItemKind.Program && string.Equals(i.Target, path, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        var blocked = decided.Blocked.Contains(exe);
+        if (blocked)
+        {
+            AddHistory(db, device, at, $"Tentou abrir o aplicativo {name} ({exe}), que o TI bloqueou");
+
+            // Bloqueado só para ela: o TI já decidiu para ela, não pede de novo. Bloqueado para todas: continua
+            // bloqueado, mas vira pedido dela, para o TI decidir se ela pode usar (mesma regra dos sites nos navegadores).
+            var mineBlocked = await db.DeviceApps.AsNoTracking()
+                .AnyAsync(a => a.DeviceId == device.Id && a.Exe == exe && a.Status == AppDecision.StatusBlocked, ct);
+            if (mineBlocked)
+            {
+                return;
+            }
+        }
+
+        var app = db.DeviceApps.Local.FirstOrDefault(a => a.DeviceId == device.Id && a.Exe == exe)
+            ?? await db.DeviceApps.FirstOrDefaultAsync(a => a.DeviceId == device.Id && a.Exe == exe, ct);
+        if (app is null)
+        {
+            app = new DeviceApp { Id = Guid.NewGuid(), DeviceId = device.Id, Exe = exe, FirstAt = at, LastAt = at };
+            db.DeviceApps.Add(app);
+        }
+
+        app.Name = name;
+        app.Path = path;
+        app.Opens = Math.Min(app.Opens + 1, int.MaxValue - 1);
+        if (at > app.LastAt)
+        {
+            app.LastAt = at;
+        }
+
+        if (!blocked)
+        {
+            AddHistory(db, device, at, $"Abriu o aplicativo {name} ({exe}), que ainda não foi liberado");
+        }
+
+        if (RaiseAlert(db, device, openAlerts, now, AppEndpoints.AlertText(exe)))
+        {
+            AddNotification(db, now, blocked
+                ? $"{device.Label} tentou abrir o aplicativo {name} ({exe}), que está bloqueado para todas. Decida se ela pode usar."
+                : $"{device.Label} abriu o aplicativo {name} ({exe}) pela primeira vez. Decida se ela pode usar.", urgent: true);
         }
     }
 

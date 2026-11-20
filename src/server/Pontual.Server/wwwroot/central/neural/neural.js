@@ -512,6 +512,8 @@ function secaoCobertura(deviceId, a) {
     el('h4', { textContent: `No dia em que ${a.name} faltar, a IA` }),
     el('div', { className: 'botoes' }, segmento, agenda),
     el('p', { className: 'nota', textContent: explica }),
+    c.absent && !c.withinHours ? el('p', { className: 'nota aviso', textContent: `Fora do horário agora: a IA só atende por ${a.name} em ${c.hours}. Se precisar que ela responda agora, mude o horário na aba Horários da IA.` }) : null,
+    c.absent && c.withinHours && !c.status ? el('p', { className: 'nota', textContent: 'O Terminal dela ainda não contou o que está fazendo. Em até um minuto aparece aqui.' }) : null,
     c.absent && c.status ? el('p', { className: 'nota', textContent: `Agora no computador: ${c.status}${c.statusAt ? ` (${quando(c.statusAt)})` : ''}` }) : null,
     pendentes.length ? el('h4', { textContent: `Esperando aprovação (${pendentes.length})` }) : null,
     ...pendentes.map((r) => cartaoCobertura(deviceId, r, true)),

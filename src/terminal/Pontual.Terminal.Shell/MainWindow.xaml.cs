@@ -455,7 +455,7 @@ public partial class MainWindow : Window
 
         object data = _local
             ? new { hosted = true, local = true, locked = _locked, hostname = Environment.MachineName, config = _config }
-            : new { token = _enrollment.Token, hostname = Environment.MachineName, hosted = true, locked = _locked };
+            : new { token = _enrollment.Token, hostname = Environment.MachineName, hosted = true, locked = _locked, apps = true };
 
         // Só a página do próprio Terminal, e só o quadro principal, recebe o objeto (ele carrega o token).
         // O serializador escapa <, >, & e aspas, então o JSON pode ir direto para o script.
@@ -817,6 +817,7 @@ public partial class MainWindow : Window
         _config = config;
         _policy = config is null ? HostPolicy.Empty : HostPolicy.FromConfig(config);
         ApplyChromeConfig(config);
+        ApplyAppsConfig(config);
         if (!_local && config is not null && !string.IsNullOrWhiteSpace(config.AttendantName))
         {
             _attendantName = config.AttendantName;
@@ -833,7 +834,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private string[] AppsInUse() => [.. _tabs.Select(t => t.Name), .. _programs.Values.Select(p => p.Item.Name)];
+    private string[] AppsInUse() => [.. _tabs.Select(t => t.Name), .. _programs.Values.Select(p => p.Item.Name), .. _apps.Values.Select(a => a.App.Name)];
 
     // ------------------------------------------------------------------ eventos
 
@@ -935,6 +936,13 @@ public partial class MainWindow : Window
                 case "help":
                     Record(DeviceEvent.Help);
                     break;
+                case "apps" when !_local:
+                    // Lista "Aplicativos": a varredura do computador roda fora da linha da interface.
+                    _ = SendAppsToHomeAsync();
+                    break;
+                case "open-app" when id is not null && !_local:
+                    OpenApp(id);
+                    break;
                 case "files" when _locked:
                     OpenFiles();
                     break;
@@ -972,6 +980,7 @@ public partial class MainWindow : Window
     {
         var open = _tabs.Select(t => new { id = t.Id, name = t.Name })
             .Concat(_programs.Values.Select(p => new { id = p.Item.Id, name = p.Item.Name }))
+            .Concat(_apps.Values.Select(a => new { id = AppId(a.App), name = a.App.Name }))
             .ToArray();
         PostToHome(new { type = "state", open });
     }
@@ -1129,6 +1138,10 @@ public partial class MainWindow : Window
         {
             BringToFront(program);
         }
+        else if (TryRunningApp(id, out var app))
+        {
+            BringToFront(app.Process);
+        }
     }
 
     private void CloseItem(string id)
@@ -1140,6 +1153,10 @@ public partial class MainWindow : Window
         else if (_programs.TryGetValue(id, out var program))
         {
             RequestProgramClose(program);
+        }
+        else if (TryRunningApp(id, out var app))
+        {
+            RequestAppClose(app);
         }
     }
 

@@ -124,6 +124,13 @@ svg { flex: none; display: block; }
 .folha h3 { font-size: 13px; color: var(--suave); margin: 18px 0 6px; font-weight: 500; }
 .folha ul { margin: 0; padding-left: 18px; }
 .acoes { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
+.folha.larga { width: min(720px, 100%); }
+.folha .explica { color: var(--suave); font-size: 14px; line-height: 1.5; margin-bottom: 14px; }
+.folha .procura-apps { width: 100%; padding: 10px 12px; border: 1px solid var(--linha); border-radius: var(--r-sm); background: var(--fundo); color: var(--tinta); font: inherit; font-size: 15px; margin-bottom: 6px; }
+.folha .procura-apps:focus { outline: 2px solid var(--azul-500); outline-offset: 1px; }
+.folha .lista-sites { grid-template-columns: 1fr; margin-top: 0; }
+.folha .item[disabled] { opacity: 0.55; cursor: not-allowed; } .folha .item[disabled]:hover { background: none; }
+.folha .item[disabled] > svg { color: var(--apagado); transform: none; }
 @keyframes surge { from { opacity: 0; } } @keyframes sobe { from { opacity: 0; transform: translateY(10px); } } @keyframes desliza { from { transform: translateX(32px); opacity: 0; } }
 
 .avisos { position: fixed; right: 20px; top: 92px; z-index: 70; display: grid; gap: 10px; width: min(360px, calc(100vw - 40px)); }

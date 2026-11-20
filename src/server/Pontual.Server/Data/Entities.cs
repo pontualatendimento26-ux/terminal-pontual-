@@ -224,6 +224,50 @@ public sealed class ChromeDeviceSite
     public DateTime? DecidedAt { get; set; }
 }
 
+/// <summary>
+/// Aplicativo do computador (Windows, instalado ou baixado) que uma atendente abriu pela lista "Aplicativos" do Terminal.
+/// A chave é o nome do arquivo (<c>spotify.exe</c>), porque o caminho muda de um computador para outro. Esta é a decisão
+/// para TODAS as atendentes; a de uma só fica em <see cref="DeviceApp"/> e vale mais.
+/// </summary>
+public sealed class AppDecision
+{
+    public const string StatusPending = "pending";
+    public const string StatusAllowed = "allowed";
+    public const string StatusBlocked = "blocked";
+
+    public Guid Id { get; set; }
+    /// <summary>Nome do arquivo em minúsculas, com a extensão.</summary>
+    public required string Exe { get; set; }
+    /// <summary>Nome que a atendente vê ("Spotify"), o último informado por um Terminal.</summary>
+    public string Name { get; set; } = "";
+    public string Status { get; set; } = StatusPending;
+    public DateTime FirstAt { get; set; }
+    public DateTime LastAt { get; set; }
+    public string? DecidedBy { get; set; }
+    public DateTime? DecidedAt { get; set; }
+}
+
+/// <summary>
+/// Aplicativo aberto por UMA atendente (um computador), com o pedido esperando decisão ou a decisão só para ela.
+/// A decisão dela vale mais que a decisão para todas (<see cref="AppDecision"/>).
+/// </summary>
+public sealed class DeviceApp
+{
+    public Guid Id { get; set; }
+    public Guid DeviceId { get; set; }
+    public required string Exe { get; set; }
+    public string Name { get; set; } = "";
+    /// <summary>Caminho completo do .exe no computador dela, o último informado.</summary>
+    public string Path { get; set; } = "";
+    public string Status { get; set; } = AppDecision.StatusPending;
+    /// <summary>Quantas vezes ela abriu (ou tentou abrir) o aplicativo.</summary>
+    public int Opens { get; set; }
+    public DateTime FirstAt { get; set; }
+    public DateTime LastAt { get; set; }
+    public string? DecidedBy { get; set; }
+    public DateTime? DecidedAt { get; set; }
+}
+
 public sealed class Setting
 {
     public const string ConfigVersion = "configVersion";

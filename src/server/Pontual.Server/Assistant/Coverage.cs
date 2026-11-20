@@ -155,8 +155,8 @@ public static partial class Coverage
         "nada": não precisa responder. É o caso de "ok", "obrigado", figurinha, emoji, áudio ou imagem sem pergunta, mensagem automática, propaganda, conversa de grupo, ou quando a última fala já é da atendente.
 
         Como escrever:
-        - Em primeira pessoa, como a atendente, no jeito de escrever dela (veja o perfil, quando houver). Não diga que ela está ausente nem que outra pessoa está respondendo.
-        - Se o cliente perguntar diretamente se está falando com um robô ou com uma pessoa, não minta: diga que é o atendimento da Pontual dando continuidade ao atendimento dela e que ela acompanha o caso. Nesse caso use "fila".
+        - Você É a atendente {{attendant}}, para o cliente. Escreva sempre em primeira pessoa ("vou verificar", "já te retorno", "recebi sim"), no jeito de escrever dela (veja o perfil, quando houver). Nunca fale dela em terceira pessoa: nada de "vou confirmar com a {{attendant}}", "a {{attendant}} vai te responder", "assim que ela confirmar". Nunca diga nem insinue que ela está ausente, que outra pessoa ou um sistema está respondendo, que é "o atendimento da Pontual dando continuidade", robô, assistente ou IA. O cliente não precisa saber disso.
+        - Se o cliente perguntar diretamente se está falando com um robô ou com uma pessoa, não responda a isso: use "fila", deixe "aviso_imediato" vazio e explique no "motivo". A supervisão decide.
         - É mensagem de WhatsApp: curta (até umas cinco linhas), sem títulos e sem markdown; para destacar, use *asteriscos* como no WhatsApp. Sem assinatura.
         - Nunca invente valor, prazo, taxa ou situação do contrato. Se a resposta precisaria de um dado que só está no portal do banco, é "fila".
         - Nunca peça senha, código de acesso ou código que chegou por SMS ou e-mail.
@@ -181,6 +181,34 @@ public static partial class Coverage
     };
 
     public sealed record Decision(string Action, string Message, string Holding, string Reason);
+
+    /// <summary>
+    /// Se o texto quebra o disfarce: cita a atendente em terceira pessoa, fala em robô, IA ou assistente, ou diz que
+    /// outra pessoa está dando continuidade. Uma resposta assim nunca sai sozinha; vai para aprovação.
+    /// </summary>
+    public static bool RevealsCover(string text, string? attendant)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var folded = Fold(text);
+        var first = Fold((attendant ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "");
+        if (first.Length >= 3 && Regex.IsMatch(folded, $@"\b(a|com a|pela|da|para a|pra a|pra|que a)\s+{Regex.Escape(first)}\b"))
+        {
+            return true;
+        }
+
+        return Regex.IsMatch(folded, @"\b(robo|robozinho|inteligencia artificial|assistente virtual|assistente de ia|atendimento automatico|resposta automatica|mensagem automatica|dando continuidade|esta ausente|nao esta hoje|no lugar d[ea]la|ela (vai|ira) (te )?(responder|retornar|confirmar)|assim que ela (confirmar|voltar|responder))\b")
+            || Regex.IsMatch(folded, @"\b(sou|somos|e) (uma? )?ia\b");
+    }
+
+    private static string Fold(string text)
+    {
+        var decomposed = text.ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
+        return new string(decomposed.Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray());
+    }
 
     /// <summary>Lê a decisão da IA. Uma decisão de enviar sem texto vira "nada"; um formato estranho, falha.</summary>
     public static Decision Parse(string json)

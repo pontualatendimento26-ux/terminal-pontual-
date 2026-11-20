@@ -333,6 +333,34 @@ public static partial class Input
 
     private static readonly char[] ForbiddenPathChars = ['"', '<', '>', '|', '*', '?'];
 
+    /// <summary>
+    /// Nome de um aplicativo do computador, como o Terminal informa: "spotify.exe" ou um caminho completo, de que só o
+    /// nome do arquivo interessa. Sai em minúsculas. Falso para o que não é um .exe.
+    /// </summary>
+    public static bool TryExe(string? value, out string exe)
+    {
+        exe = "";
+        var text = Clean(value);
+        if (text.Length == 0 || text.Length > 400)
+        {
+            return false;
+        }
+
+        var name = text[(text.LastIndexOfAny(['\\', '/']) + 1)..].Trim();
+        if (name.Length < 5 || name.Length > 120 || name.IndexOfAny(ForbiddenPathChars) >= 0 || name.Contains(':')
+            || !name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || name[..^4].Trim(' ', '.').Length == 0)
+        {
+            return false;
+        }
+
+        exe = name.ToLowerInvariant();
+        return true;
+    }
+
+    /// <summary>Verdadeiro para os programas que o contrato nunca deixa liberar (cmd.exe, powershell.exe…).</summary>
+    public static bool IsRefusedProgram(string exe) =>
+        exe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && RefusedPrograms.Contains(exe[..^4].Trim(' ', '.'));
+
     public static string ProgramPath(string? value)
     {
         var path = Required(value, "o caminho do programa", 260);

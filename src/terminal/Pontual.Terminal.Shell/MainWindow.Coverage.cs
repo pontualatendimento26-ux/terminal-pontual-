@@ -132,6 +132,15 @@ public partial class MainWindow
 
             var chat = await ReadOpenChatAsync(core);
             var transcript = chat.Text;
+            if (chat.Open && chat.Is(contact) && chat.Group)
+            {
+                // Grupo (parceiros, equipe): várias pessoas falando; não é um cliente da atendente.
+                Log.Info($"cobertura: pulei o grupo {contact}");
+                _coverageStatus = $"Pulei o grupo \"{contact}\": a cobertura só responde conversas individuais de clientes ({DateTime.Now:HH:mm}).";
+                _coverageRetry.Remove(contact);
+                return;
+            }
+
             if (!chat.Is(contact) || !transcript.StartsWith('['))
             {
                 // Abriu outra conversa, ou a página não separou as mensagens: melhor não responder nada.
@@ -187,17 +196,46 @@ public partial class MainWindow
 
     private async Task<(bool Sent, string? Error)> SendInOpenChatAsync(CoreWebView2 core, string message)
     {
-        var typed = await RunAsync(core, $"({TypeScript})({JsonSerializer.Serialize(message)})");
-        if (typed != "\"ok\"")
+        var text = JsonSerializer.Serialize(message);
+
+        // Escreve como uma pessoa: clica na caixa de mensagem e pede ao navegador que insira o texto.
+        // O WhatsApp ignora texto colocado por script; este ele aceita. O jeito antigo fica como reserva.
+        var box = await LocateAsync(core, ComposeLocateScript);
+        if (box is null)
         {
-            await RunAsync(core, ClearScript);
+            return (false, "Não achei o campo de mensagem do WhatsApp nesta conversa.");
+        }
+
+        if (await ClickAtAsync(core, box.Value.X, box.Value.Y))
+        {
+            await Task.Delay(300, _cts.Token);
+            await ClearAsync(core, box.Value);
+            try
+            {
+                await core.CallDevToolsProtocolMethodAsync("Input.insertText", $"{{\"text\":{text}}}");
+            }
+            catch (Exception ex) when (ex is not (OutOfMemoryException or OperationCanceledException))
+            {
+                Log.Error("cobertura: escrever pelo navegador", ex);
+            }
+
+            await Task.Delay(400, _cts.Token);
+        }
+
+        if (await RunAsync(core, $"({TypedCheckScript})({text})") != "true" && await RunAsync(core, $"({TypeScript})({text})") != "\"ok\"")
+        {
+            await ClearAsync(core, box.Value);
             return (false, "Não consegui escrever no campo de mensagem do WhatsApp.");
         }
 
         await Task.Delay(700, _cts.Token);
-        if (await RunAsync(core, SendScript) != "true")
+        var send = await LocateAsync(core, SendLocateScript);
+        var pressed = (send is not null && await ClickAtAsync(core, send.Value.X, send.Value.Y))
+            || await PressEnterAsync(core)
+            || await RunAsync(core, SendScript) == "true";
+        if (!pressed)
         {
-            await RunAsync(core, ClearScript);
+            await ClearAsync(core, box.Value);
             return (false, "Não achei o botão de enviar do WhatsApp.");
         }
 
@@ -206,8 +244,11 @@ public partial class MainWindow
         var transcript = (await ReadOpenChatAsync(core)).Text;
         var start = Normalize(message);
         start = start.Length > 30 ? start[..30] : start;
-        var mine = transcript.Split('\n').Where(l => l.Contains("] Atendente:", StringComparison.Ordinal)).TakeLast(3);
-        return mine.Any(l => Normalize(l).Contains(start, StringComparison.Ordinal))
+        // Procura o começo do texto nas últimas falas, de quem quer que a página diga que são: o que importa é
+        // que a mensagem apareceu na conversa depois do envio.
+        var lines = transcript.Split('\n');
+        var mine = lines.Where(l => l.Contains("] Atendente:", StringComparison.Ordinal)).TakeLast(3).Concat(lines.TakeLast(4));
+        return mine.Any(l => Normalize(l).Contains(start, StringComparison.Ordinal)) || Normalize(transcript).Contains(start, StringComparison.Ordinal)
             ? (true, null)
             : (false, "Não confirmei a mensagem na conversa. Confira no WhatsApp antes de aprovar de novo.");
     }
@@ -239,43 +280,103 @@ public partial class MainWindow
     private async Task<bool> ClickChatAsync(CoreWebView2 core, string contact)
     {
         var name = JsonSerializer.Serialize(contact);
-        var where = await RunAsync(core, $"({LocateScript})({name})");
-        if (where is null or "null" or "false")
+        var where = await LocateAsync(core, $"({LocateScript})({name})");
+        if (where is null)
         {
             return false;
         }
 
-        double x, y;
-        try
-        {
-            using var doc = JsonDocument.Parse(where);
-            x = Math.Round(doc.RootElement.GetProperty("x").GetDouble(), 1);
-            y = Math.Round(doc.RootElement.GetProperty("y").GetDouble(), 1);
-        }
-        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException)
+        if (!await ClickAtAsync(core, where.Value.X, where.Value.Y) && await RunAsync(core, $"({OpenScript})({name})") != "true")
         {
             return false;
-        }
-
-        try
-        {
-            var at = $"\"x\":{x.ToString(System.Globalization.CultureInfo.InvariantCulture)},\"y\":{y.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
-            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", $"{{\"type\":\"mouseMoved\",{at}}}");
-            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", $"{{\"type\":\"mousePressed\",{at},\"button\":\"left\",\"buttons\":1,\"clickCount\":1}}");
-            await Task.Delay(80, _cts.Token);
-            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", $"{{\"type\":\"mouseReleased\",{at},\"button\":\"left\",\"buttons\":0,\"clickCount\":1}}");
-        }
-        catch (Exception ex) when (ex is not (OutOfMemoryException or OperationCanceledException))
-        {
-            Log.Error("cobertura: clique pelo navegador", ex);
-            if (await RunAsync(core, $"({OpenScript})({name})") != "true")
-            {
-                return false;
-            }
         }
 
         await Task.Delay(2500, _cts.Token);
         return true;
+    }
+
+    /// <summary>Roda um script que devolve {x, y} (em pixels da página) ou null.</summary>
+    private static async Task<(double X, double Y)?> LocateAsync(CoreWebView2 core, string script)
+    {
+        var where = await RunAsync(core, script);
+        if (where is null or "null" or "false")
+        {
+            return null;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(where);
+            return (Math.Round(doc.RootElement.GetProperty("x").GetDouble(), 1), Math.Round(doc.RootElement.GetProperty("y").GetDouble(), 1));
+        }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private static string At(double x, double y) =>
+        $"\"x\":{x.ToString(System.Globalization.CultureInfo.InvariantCulture)},\"y\":{y.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+    /// <summary>Clique do mouse feito pelo próprio navegador (protocolo DevTools): para a página é um clique de verdade.</summary>
+    private async Task<bool> ClickAtAsync(CoreWebView2 core, double x, double y)
+    {
+        try
+        {
+            var at = At(x, y);
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", $"{{\"type\":\"mouseMoved\",{at}}}");
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", $"{{\"type\":\"mousePressed\",{at},\"button\":\"left\",\"buttons\":1,\"clickCount\":1}}");
+            await Task.Delay(80, _cts.Token);
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", $"{{\"type\":\"mouseReleased\",{at},\"button\":\"left\",\"buttons\":0,\"clickCount\":1}}");
+            return true;
+        }
+        catch (Exception ex) when (ex is not (OutOfMemoryException or OperationCanceledException))
+        {
+            Log.Error("cobertura: clique pelo navegador", ex);
+            return false;
+        }
+    }
+
+    /// <summary>Tecla Enter pelo navegador (no WhatsApp, envia a mensagem escrita).</summary>
+    private async Task<bool> PressEnterAsync(CoreWebView2 core)
+    {
+        try
+        {
+            const string key = "\"key\":\"Enter\",\"code\":\"Enter\",\"windowsVirtualKeyCode\":13,\"nativeVirtualKeyCode\":13";
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", $"{{\"type\":\"keyDown\",{key},\"text\":\"\\r\",\"unmodifiedText\":\"\\r\"}}");
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", $"{{\"type\":\"keyUp\",{key}}}");
+            return true;
+        }
+        catch (Exception ex) when (ex is not (OutOfMemoryException or OperationCanceledException))
+        {
+            Log.Error("cobertura: Enter pelo navegador", ex);
+            return false;
+        }
+    }
+
+    /// <summary>Esvazia a caixa de mensagem: por script e, se sobrar texto, com Ctrl+A e Backspace pelo navegador.</summary>
+    private async Task ClearAsync(CoreWebView2 core, (double X, double Y) box)
+    {
+        await RunAsync(core, ClearScript);
+        if (await RunAsync(core, ComposeEmptyScript) == "true")
+        {
+            return;
+        }
+
+        try
+        {
+            await ClickAtAsync(core, box.X, box.Y);
+            const string a = "\"key\":\"a\",\"code\":\"KeyA\",\"windowsVirtualKeyCode\":65,\"modifiers\":2";
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", $"{{\"type\":\"keyDown\",{a}}}");
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", $"{{\"type\":\"keyUp\",{a}}}");
+            const string back = "\"key\":\"Backspace\",\"code\":\"Backspace\",\"windowsVirtualKeyCode\":8";
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", $"{{\"type\":\"keyDown\",{back}}}");
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", $"{{\"type\":\"keyUp\",{back}}}");
+        }
+        catch (Exception ex) when (ex is not (OutOfMemoryException or OperationCanceledException))
+        {
+            Log.Error("cobertura: limpar a caixa pelo navegador", ex);
+        }
     }
 
     /// <summary>Nomes das conversas não lidas; null quando a lista de conversas do WhatsApp não está na tela.</summary>
@@ -298,7 +399,7 @@ public partial class MainWindow
     }
 
     /// <summary>A conversa aberta no WhatsApp: o nome do cabeçalho (e os outros textos dele) e as mensagens.</summary>
-    private sealed record OpenChat(string Contact, string Text, string[] Names, bool Open, string Hint = "")
+    private sealed record OpenChat(string Contact, string Text, string[] Names, bool Open, string Hint = "", bool Group = false)
     {
         public bool Is(string expected) => SameContact(Contact, expected) || Names.Any(n => n.Length >= 3 && SameContact(n, expected));
     }
@@ -322,7 +423,8 @@ public partial class MainWindow
             ? [.. list.EnumerateArray().Where(n => n.ValueKind == JsonValueKind.String).Select(n => n.GetString() ?? "")]
             : [];
         var text = Field("text");
-        return new(Field("contact"), text, names, text != "Nenhuma conversa aberta no WhatsApp.", Field("hint"));
+        var group = root.TryGetProperty("group", out var g) && g.ValueKind == JsonValueKind.True;
+        return new(Field("contact"), text, names, text != "Nenhuma conversa aberta no WhatsApp.", Field("hint"), group);
     }
 
     private static async Task<string?> RunAsync(CoreWebView2 core, string script) => await WithinAsync(core.ExecuteScriptAsync(script));
@@ -421,6 +523,53 @@ public partial class MainWindow
           if (!(caixa.innerText || '').trim()) document.execCommand('insertText', false, texto);
           return (caixa.innerText || '').trim() ? 'ok' : 'vazio';
         } catch (e) { return 'erro'; } }
+        """;
+
+    /// <summary>Onde está a caixa de escrever da conversa aberta: {x, y} ou null.</summary>
+    private const string ComposeLocateScript =
+        """
+        (() => { try {
+          const caixa = document.querySelector('#main footer div[contenteditable="true"][role="textbox"]') || document.querySelector('#main footer div[contenteditable="true"]')
+            || document.querySelector('footer div[contenteditable="true"]') || document.querySelector('div[aria-placeholder][contenteditable="true"]');
+          if (!caixa) return null;
+          caixa.scrollIntoView({ block: 'nearest' });
+          const r = caixa.getBoundingClientRect();
+          if (!r.width || !r.height) return null;
+          return { x: r.left + Math.min(r.width / 2, 200), y: r.top + r.height / 2 };
+        } catch (e) { return null; } })()
+        """;
+
+    /// <summary>Se o começo do texto está na caixa de escrever (o navegador escreveu de verdade).</summary>
+    private const string TypedCheckScript =
+        """
+        (texto) => { try {
+          const caixa = document.querySelector('#main footer div[contenteditable="true"]') || document.querySelector('footer div[contenteditable="true"]') || document.querySelector('div[aria-placeholder][contenteditable="true"]');
+          if (!caixa) return false;
+          const limpa = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+          const escrito = limpa(caixa.innerText), inicio = limpa(texto).slice(0, 20);
+          return escrito.length > 0 && escrito.includes(inicio);
+        } catch (e) { return false; } }
+        """;
+
+    private const string ComposeEmptyScript =
+        """
+        (() => { try {
+          const caixa = document.querySelector('#main footer div[contenteditable="true"]') || document.querySelector('footer div[contenteditable="true"]');
+          return !caixa || !(caixa.innerText || '').trim();
+        } catch (e) { return true; } })()
+        """;
+
+    /// <summary>Onde está o botão de enviar: {x, y} ou null.</summary>
+    private const string SendLocateScript =
+        """
+        (() => { try {
+          const icone = document.querySelector('#main footer [data-icon="send"], #main footer [data-icon="wds-ic-send-filled"], footer [data-icon="send"], footer [data-icon="wds-ic-send-filled"]');
+          const botao = (icone && (icone.closest('button') || icone)) || document.querySelector('#main footer button[aria-label="Enviar"], #main footer button[aria-label="Send"], footer button[aria-label="Enviar"], footer button[aria-label="Send"]');
+          if (!botao) return null;
+          const r = botao.getBoundingClientRect();
+          if (!r.width || !r.height) return null;
+          return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        } catch (e) { return null; } })()
         """;
 
     private const string SendScript =
