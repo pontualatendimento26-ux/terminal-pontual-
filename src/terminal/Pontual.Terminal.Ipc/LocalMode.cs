@@ -149,8 +149,8 @@ public sealed class LocalEventLog(string path)
             DeviceEvent.Blocked => "Bloqueado",
             DeviceEvent.Observed => "Observado (domínio fora da lista)",
             DeviceEvent.Help => "Chamado ao TI",
-            DeviceEvent.ChromeVisit => "Chrome: site não operacional",
-            DeviceEvent.ChromeStay => "Chrome: site não operacional continua aberto",
+            DeviceEvent.ChromeVisit => "Navegador: site não operacional",
+            DeviceEvent.ChromeStay => "Navegador: site não operacional continua aberto",
             _ => e.Type,
         };
         var line = new StringBuilder(e.At.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)).Append("  ").Append(what);

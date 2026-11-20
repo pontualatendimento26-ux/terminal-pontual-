@@ -26,8 +26,8 @@ $ProgramasFixos = @(
     'msedge.exe', 'AcroRd32.exe', 'Acrobat.exe',
     # Planilhas: Excel ou LibreOffice, se estiverem instalados.
     'EXCEL.EXE', 'soffice.exe', 'soffice.bin', 'scalc.exe',
-    # Google Chrome: as atendentes usam os perfis dele (um WhatsApp em cada). O Terminal vigia os enderecos.
-    'chrome.exe'
+    # Navegadores: as atendentes usam os perfis deles (um WhatsApp em cada). O Terminal vigia os enderecos.
+    'chrome.exe', 'firefox.exe', 'opera.exe'
 )
 
 function Mensagem([string]$Texto, [string]$Icone = 'Information', [string]$Botoes = 'OK') {
@@ -152,11 +152,18 @@ function PoliticasDoBloqueio([string]$Comando) {
         @($explorer, 'NoWinKeys', 1),
         @($explorer, 'NoControlPanel', 1),
         @($explorer, 'NoDriveTypeAutoRun', 255),
-        # O Edge fica liberado so para abrir PDF: qualquer endereco de internet e recusado, so arquivos do computador abrem.
+        # O Edge comeca liberado so para abrir PDF: qualquer endereco de internet e recusado, so arquivos do computador abrem.
         # (Os sites dos bancos abrem dentro do Terminal, que usa outro componente e nao e afetado.)
+        # Se o TI cadastrar o Edge como programa na Central, o Terminal troca o "*" pela lista de sites bloqueados pelo TI.
         @('Software\Policies\Microsoft\Edge', 'HideFirstRunExperience', 1),
         @('Software\Policies\Microsoft\Edge\URLBlocklist', '1', '*'),
         @('Software\Policies\Microsoft\Edge\URLAllowlist', '1', 'file://*'),
+        @('Software\Policies\Microsoft\Edge', 'InPrivateModeAvailability', 1),
+        @('Software\Policies\Microsoft\Edge', 'BrowserGuestModeEnabled', 0),
+        @('Software\Policies\Microsoft\Edge', 'DeveloperToolsAvailability', 2),
+        # Firefox: sem janela privativa e sem ferramentas de desenvolvedor. (O Opera nao aceita politicas; o Terminal vigia mesmo assim.)
+        @('Software\Policies\Mozilla\Firefox', 'DisablePrivateBrowsing', 1),
+        @('Software\Policies\Mozilla\Firefox', 'DisableDeveloperTools', 1),
         # Excel: macros desligadas, porque uma macro consegue abrir outros programas.
         @('Software\Policies\Microsoft\Office\16.0\Excel\Security', 'VBAWarnings', 4),
         # Google Chrome: perfis continuam liberados; sem janela anonima, sem modo convidado e sem ferramentas
@@ -169,24 +176,30 @@ function PoliticasDoBloqueio([string]$Comando) {
 
 $ChaveRestrictRun = 'Software\Microsoft\Windows\CurrentVersion\Policies\Explorer\RestrictRun'
 
-# Sites que o TI bloqueou no Chrome pela Central. Quem grava a lista e o proprio Terminal, que roda na conta da
-# atendente; por isso SO esta chave recebe permissao de escrita para a conta (as outras politicas continuam so de administrador).
-$ChaveBloqueioChrome = 'Software\Policies\Google\Chrome\URLBlocklist'
+# Sites que o TI bloqueou nos navegadores pela Central. Quem grava as listas e o proprio Terminal, que roda na conta da
+# atendente; por isso SO estas chaves recebem permissao de escrita para a conta (as outras politicas continuam so de administrador).
+$ChavesBloqueioNavegadores = @(
+    'Software\Policies\Google\Chrome\URLBlocklist',
+    'Software\Policies\Microsoft\Edge\URLBlocklist',
+    'Software\Policies\Mozilla\Firefox\WebsiteFilter\Block'
+)
 
-function LiberarListaDoChrome([string]$Raiz, [string]$Sid) {
+function LiberarListasDosNavegadores([string]$Raiz, [string]$Sid) {
     $usuarios = [Microsoft.Win32.Registry]::Users
-    $usuarios.CreateSubKey("$Raiz\$ChaveBloqueioChrome").Close()
     $direitosAbertura = [System.Security.AccessControl.RegistryRights]'ReadKey, ChangePermissions'
-    $chave = $usuarios.OpenSubKey("$Raiz\$ChaveBloqueioChrome", [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree, $direitosAbertura)
-    try {
-        $acl = $chave.GetAccessControl()
-        $quem = New-Object Security.Principal.SecurityIdentifier($Sid)
-        $direitos = [System.Security.AccessControl.RegistryRights]'QueryValues, SetValue, EnumerateSubKeys, Notify, ReadPermissions'
-        $regra = New-Object System.Security.AccessControl.RegistryAccessRule($quem, $direitos, 'None', 'None', 'Allow')
-        $acl.AddAccessRule($regra)
-        $chave.SetAccessControl($acl)
+    $quem = New-Object Security.Principal.SecurityIdentifier($Sid)
+    $direitos = [System.Security.AccessControl.RegistryRights]'QueryValues, SetValue, EnumerateSubKeys, Notify, ReadPermissions'
+    foreach ($caminho in $ChavesBloqueioNavegadores) {
+        $usuarios.CreateSubKey("$Raiz\$caminho").Close()
+        $chave = $usuarios.OpenSubKey("$Raiz\$caminho", [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree, $direitosAbertura)
+        try {
+            $acl = $chave.GetAccessControl()
+            $regra = New-Object System.Security.AccessControl.RegistryAccessRule($quem, $direitos, 'None', 'None', 'Allow')
+            $acl.AddAccessRule($regra)
+            $chave.SetAccessControl($acl)
+        }
+        finally { $chave.Close() }
     }
-    finally { $chave.Close() }
 }
 
 # Grava o bloqueio no registro da conta. $Raiz e o nome da chave dentro de HKEY_USERS.
@@ -212,14 +225,14 @@ function GravarBloqueio([string]$Raiz, [string]$Comando, [string[]]$ProgramasExt
     }
     finally { $lista.Close() }
 
-    if ($Sid) { LiberarListaDoChrome $Raiz $Sid }
+    if ($Sid) { LiberarListasDosNavegadores $Raiz $Sid }
 }
 
 # Desfaz GravarBloqueio: a conta volta a ser uma conta comum do Windows.
 function RemoverBloqueio([string]$Raiz) {
     $usuarios = [Microsoft.Win32.Registry]::Users
     $usuarios.DeleteSubKeyTree("$Raiz\$ChaveRestrictRun", $false)
-    $usuarios.DeleteSubKeyTree("$Raiz\$ChaveBloqueioChrome", $false)
+    foreach ($caminho in $ChavesBloqueioNavegadores) { $usuarios.DeleteSubKeyTree("$Raiz\$caminho", $false) }
     foreach ($politica in (PoliticasDoBloqueio '')) {
         $chave = $usuarios.OpenSubKey("$Raiz\$($politica[0])", $true)
         if ($chave) {

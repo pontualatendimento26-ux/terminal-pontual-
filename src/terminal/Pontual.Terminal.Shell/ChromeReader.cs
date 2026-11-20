@@ -9,30 +9,61 @@ using Pontual.Terminal.Ipc;
 namespace Pontual.Terminal.Shell;
 
 /// <summary>
-/// Lê, pela Automação da Interface do Windows, o endereço da aba visível de cada janela do Google Chrome
-/// (todas as janelas, de todos os perfis). Só lê a barra de endereço: não clica, não digita e não lê a página.
+/// Um navegador vigiado: o nome que o TI vê, o processo, a classe da janela principal e o tipo de controle da barra de
+/// endereço (campo de texto no Chrome, Edge e Opera; caixa de combinação no Firefox).
+/// </summary>
+internal sealed record Browser(string Name, string Process, string WindowClass, ControlType AddressBar, bool ReportsFocus = true)
+{
+    public Condition AddressCondition { get; } = new PropertyCondition(AutomationElement.ControlTypeProperty, AddressBar);
+}
+
+/// <summary>Um endereço lido na barra de um navegador.</summary>
+internal sealed record BrowserAddress(string Browser, string Address);
+
+/// <summary>Um domínio bloqueado cuja aba foi desviada para a página de bloqueio.</summary>
+internal sealed record BrowserRedirect(string Browser, string Host);
+
+/// <summary>
+/// Lê, pela Automação da Interface do Windows, o endereço da aba visível de cada janela dos navegadores
+/// (Google Chrome, Microsoft Edge, Opera e Mozilla Firefox; todas as janelas, de todos os perfis).
+/// Só lê a barra de endereço: não clica, não digita e não lê a página.
 /// Roda fora da linha da interface; uma janela que some no meio da leitura é ignorada.
 /// </summary>
 internal static class ChromeReader
 {
-    private static readonly Condition WindowCondition = new PropertyCondition(AutomationElement.ClassNameProperty, "Chrome_WidgetWin_1");
-    private static readonly Condition EditCondition = new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit);
+    /// <summary>
+    /// Chrome, Edge e Opera são feitos sobre o Chromium e têm a mesma classe de janela; o Firefox tem a dele.
+    /// Conferido em 20/11/2026: Edge "Barra de pesquisa e endereços" (Edit), Opera GX "Barra de endereços" (Edit),
+    /// Firefox "Pesquise com Google ou digite um endereço" (ComboBox, valor sem "https://"). O Firefox não informa o foco
+    /// pela automação (o campo diz "sem foco" mesmo selecionado): o desvio dele usa Ctrl+L.
+    /// </summary>
+    public static readonly IReadOnlyList<Browser> Browsers =
+    [
+        new("Google Chrome", "chrome", "Chrome_WidgetWin_1", ControlType.Edit),
+        new("Microsoft Edge", "msedge", "Chrome_WidgetWin_1", ControlType.Edit),
+        new("Opera", "opera", "Chrome_WidgetWin_1", ControlType.Edit),
+        new("Mozilla Firefox", "firefox", "MozillaWindowClass", ControlType.ComboBox, ReportsFocus: false),
+    ];
+
+    private static readonly Condition WindowCondition = new OrCondition(
+        [.. Browsers.Select(b => b.WindowClass).Distinct(StringComparer.Ordinal)
+            .Select(c => (Condition)new PropertyCondition(AutomationElement.ClassNameProperty, c))]);
 
     /// <summary>
     /// Lê os endereços e, quando o domínio da aba visível está em <paramref name="isBlocked"/>, troca a aba por uma página de
-    /// "site bloqueado". É a garantia do bloqueio mesmo sem a política do Chrome (sem permissão no registro, ou página
-    /// que já estava aberta antes do bloqueio). Devolve os endereços lidos e os domínios desviados.
+    /// "site bloqueado". É a garantia do bloqueio mesmo sem a política do navegador (sem permissão no registro, Opera, que
+    /// não aceita políticas, ou página que já estava aberta antes do bloqueio). Devolve os endereços lidos e os desvios.
     /// </summary>
-    public static (IReadOnlyList<string> Addresses, IReadOnlyList<string> Redirected) Scan(Func<string, bool> isBlocked)
+    public static (IReadOnlyList<BrowserAddress> Addresses, IReadOnlyList<BrowserRedirect> Redirected) Scan(Func<string, bool> isBlocked)
     {
-        var redirected = new List<string>();
-        var addresses = ReadAddresses((window, edit, value, text) =>
+        var redirected = new List<BrowserRedirect>();
+        var addresses = ReadAddresses((browser, window, edit, value, text) =>
         {
             if (ChromeWatch.HostFromAddress(text) is { } host && isBlocked(host))
             {
-                if (TryRedirect(window, edit, value, host))
+                if (TryRedirect(browser, window, edit, value, host))
                 {
-                    redirected.Add(host);
+                    redirected.Add(new BrowserRedirect(browser.Name, host));
                 }
 
                 return true;
@@ -43,49 +74,57 @@ internal static class ChromeReader
         return (addresses, redirected);
     }
 
-    public static IReadOnlyList<string> ReadAddresses() => ReadAddresses(null);
-
-    private static IReadOnlyList<string> ReadAddresses(Func<AutomationElement, AutomationElement, ValuePattern, string, bool>? handled)
+    private static IReadOnlyList<BrowserAddress> ReadAddresses(Func<Browser, AutomationElement, AutomationElement, ValuePattern, string, bool> handled)
     {
-        var ids = new HashSet<int>();
-        foreach (var process in Process.GetProcessesByName("chrome"))
+        // Processo de cada navegador aberto. O WebView2 do próprio Terminal é "msedgewebview2", outro nome: não entra.
+        var owners = new Dictionary<int, Browser>();
+        foreach (var browser in Browsers)
         {
-            using (process)
+            foreach (var process in Process.GetProcessesByName(browser.Process))
             {
-                ids.Add(process.Id);
+                using (process)
+                {
+                    owners[process.Id] = browser;
+                }
             }
         }
 
-        if (ids.Count == 0)
+        if (owners.Count == 0)
         {
             return [];
         }
 
-        var addresses = new List<string>();
+        var addresses = new List<BrowserAddress>();
         foreach (AutomationElement window in AutomationElement.RootElement.FindAll(TreeScope.Children, WindowCondition))
         {
             try
             {
-                if (!ids.Contains(window.Current.ProcessId))
+                if (!owners.TryGetValue(window.Current.ProcessId, out var browser)
+                    || !string.Equals(window.Current.ClassName, browser.WindowClass, StringComparison.Ordinal))
                 {
                     continue;
                 }
 
-                // A barra de endereço é o primeiro campo de texto da janela (fica na barra de ferramentas, antes
+                // A barra de endereço é o primeiro campo do tipo dela na janela (fica na barra de ferramentas, antes
                 // da página). Se o primeiro campo não for ela, a janela é ignorada: nunca se lê um campo da página.
                 // Com o foco na barra, a atendente ainda está digitando: o texto ainda não é um endereço aberto.
-                var edit = window.FindFirst(TreeScope.Descendants, EditCondition);
-                if (edit is null || !IsAddressBar(edit.Current.Name) || edit.Current.HasKeyboardFocus)
+                var edit = window.FindFirst(TreeScope.Descendants, browser.AddressCondition);
+                if (edit is null || !IsAddressBar(edit.Current.Name) || (browser.ReportsFocus && edit.Current.HasKeyboardFocus))
                 {
                     continue;
                 }
 
-                if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
-                    && pattern is ValuePattern value
-                    && value.Current.Value is { Length: > 0 and <= 2048 } text
-                    && handled?.Invoke(window, edit, value, text) != true)
+                if (!edit.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) || pattern is not ValuePattern value)
                 {
-                    addresses.Add(text);
+                    continue;
+                }
+
+                // Firefox não informa o foco: o texto da barra pode ser o que a atendente ainda está digitando.
+                // Nele vale o endereço da página da aba visível, que só muda quando a página abre.
+                var text = browser.ReportsFocus ? value.Current.Value : VisiblePageAddress(window);
+                if (text is { Length: > 0 and <= 2048 } && !handled(browser, window, edit, value, text))
+                {
+                    addresses.Add(new BrowserAddress(browser.Name, text));
                 }
             }
             catch (Exception ex) when (ex is ElementNotAvailableException or InvalidOperationException or COMException)
@@ -98,10 +137,48 @@ internal static class ChromeReader
     }
 
     /// <summary>
-    /// Leva a aba para a página de bloqueio: foco na barra de endereço, troca o texto e Enter. O Enter só é enviado se a
-    /// janela do Chrome estiver na frente e o foco na barra dela, para nunca cair em outro lugar (uma conversa, por exemplo).
+    /// Endereço da página da aba visível (Firefox: cada aba é um "documento"; as escondidas ficam fora da tela).
+    /// Percorre só a moldura do navegador: não entra nas páginas (o WhatsApp Web tem milhares de elementos).
     /// </summary>
-    private static bool TryRedirect(AutomationElement window, AutomationElement edit, ValuePattern value, string host)
+    private static string? VisiblePageAddress(AutomationElement window)
+    {
+        var walker = TreeWalker.ControlViewWalker;
+        var pending = new Queue<AutomationElement>();
+        pending.Enqueue(window);
+        var visited = 0;
+        while (pending.Count > 0 && visited < 600)
+        {
+            var child = walker.GetFirstChild(pending.Dequeue());
+            while (child is not null && visited++ < 600)
+            {
+                if (child.Current.ControlType == ControlType.Document)
+                {
+                    if (!child.Current.IsOffscreen
+                        && child.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern)
+                        && pattern is ValuePattern page
+                        && page.Current.Value is { } url
+                        && url.Contains("://", StringComparison.Ordinal))
+                    {
+                        return url;
+                    }
+                }
+                else
+                {
+                    pending.Enqueue(child);
+                }
+
+                child = walker.GetNextSibling(child);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Leva a aba para a página de bloqueio: foco na barra de endereço, troca o texto e Enter. O Enter só é enviado se a
+    /// janela do navegador estiver na frente e o foco na barra dela, para nunca cair em outro lugar (uma conversa, por exemplo).
+    /// </summary>
+    private static bool TryRedirect(Browser browser, AutomationElement window, AutomationElement edit, ValuePattern value, string host)
     {
         var handle = new IntPtr(window.Current.NativeWindowHandle);
         if (handle == IntPtr.Zero || ChromeNative.IsIconic(handle))
@@ -111,14 +188,31 @@ internal static class ChromeReader
 
         edit.SetFocus();
         Thread.Sleep(250);
-        if (ChromeNative.GetForegroundWindow() != handle || !edit.Current.HasKeyboardFocus)
+        if (ChromeNative.GetForegroundWindow() != handle)
         {
             return false;
         }
 
+        if (!edit.Current.HasKeyboardFocus)
+        {
+            if (browser.ReportsFocus)
+            {
+                return false;
+            }
+
+            // Firefox: não dá para conferir o foco pela automação. Com a janela dele na frente, Ctrl+L leva o foco
+            // para a barra de endereço (atalho do próprio navegador), e só então o texto é trocado.
+            ChromeNative.PressCtrlL();
+            Thread.Sleep(200);
+            if (ChromeNative.GetForegroundWindow() != handle)
+            {
+                return false;
+            }
+        }
+
         value.SetValue(BlockPage(host));
         Thread.Sleep(150);
-        if (ChromeNative.GetForegroundWindow() != handle || !edit.Current.HasKeyboardFocus)
+        if (ChromeNative.GetForegroundWindow() != handle || (browser.ReportsFocus && !edit.Current.HasKeyboardFocus))
         {
             return false;
         }
@@ -139,7 +233,8 @@ internal static class ChromeReader
         return "data:text/html;charset=utf-8," + Uri.EscapeDataString(html);
     }
 
-    // "Barra de endereço e de pesquisa" (Chrome em português), "Address and search bar" (inglês), "Barra de direcciones" (espanhol).
+    // Nomes da barra: "Barra de endereço e de pesquisa" (Chrome), "Barra de endereços e pesquisa" (Edge),
+    // "... digite um endereço" (Firefox), "Address and search bar" (inglês), "Barra de direcciones" (espanhol).
     private static bool IsAddressBar(string? name) =>
         name is not null
         && (name.Contains("endereço", StringComparison.OrdinalIgnoreCase)
@@ -150,7 +245,18 @@ internal static class ChromeReader
 internal static class ChromeNative
 {
     public const byte VkReturn = 0x0D;
+    public const byte VkControl = 0x11;
+    public const byte VkL = 0x4C;
     public const uint KeyUp = 0x0002;
+
+    /// <summary>Ctrl+L: em todos os navegadores, seleciona a barra de endereço da janela que está na frente.</summary>
+    public static void PressCtrlL()
+    {
+        keybd_event(VkControl, 0, 0, UIntPtr.Zero);
+        keybd_event(VkL, 0, 0, UIntPtr.Zero);
+        keybd_event(VkL, 0, KeyUp, UIntPtr.Zero);
+        keybd_event(VkControl, 0, KeyUp, UIntPtr.Zero);
+    }
 
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
@@ -164,24 +270,37 @@ internal static class ChromeNative
 }
 
 /// <summary>
-/// Grava os domínios que o TI bloqueou na política do Google Chrome desta conta
-/// (HKEY_CURRENT_USER\Software\Policies\Google\Chrome\URLBlocklist). O Chrome aplica a mudança sozinho, sem reiniciar.
-/// Chaves de política só aceitam escrita de administrador; o instalador com bloqueio dá à conta da atendente
-/// permissão de escrita só nesta chave. Sem essa permissão (instalação de teste), o bloqueio não é aplicado e o
-/// Terminal continua só avisando.
+/// Grava os domínios que o TI bloqueou na política de cada navegador desta conta (HKEY_CURRENT_USER\Software\Policies\...).
+/// Chrome e Edge aplicam a mudança sozinhos, sem reiniciar; o Firefox só lê a política quando é aberto (até lá vale o
+/// desvio da aba); o Opera não aceita políticas (só o desvio). Chaves de política só aceitam escrita de administrador;
+/// o instalador com bloqueio dá à conta da atendente permissão de escrita só nestas chaves. Sem essa permissão
+/// (instalação de teste ou instalada antes desta versão), a política não é gravada e o desvio da aba continua valendo.
 /// </summary>
-internal static class ChromePolicy
+internal static class BrowserPolicy
 {
-    public const string BlocklistKey = @"Software\Policies\Google\Chrome\URLBlocklist";
-    private static bool _warned;
+    public const string ChromeKey = @"Software\Policies\Google\Chrome\URLBlocklist";
+    public const string EdgeKey = @"Software\Policies\Microsoft\Edge\URLBlocklist";
+    public const string FirefoxKey = @"Software\Policies\Mozilla\Firefox\WebsiteFilter\Block";
 
-    /// <summary>Devolve se a lista no registro ficou igual a <paramref name="hosts"/>.</summary>
-    public static bool ApplyBlocklist(IReadOnlyList<string> hosts)
+    /// <summary>Edge que não está cadastrado como programa só abre arquivos do computador (PDF): tudo na internet é recusado.</summary>
+    public static readonly IReadOnlyList<string> EdgeFilesOnly = ["*"];
+
+    private static readonly HashSet<string> Warned = new(StringComparer.Ordinal);
+
+    /// <summary>Formato do Firefox: padrão de endereço. "*.exemplo.com" vale para o domínio e os subdomínios.</summary>
+    public static IReadOnlyList<string> FirefoxPatterns(IEnumerable<string> hosts) =>
+        [.. hosts.Select(h => System.Net.IPAddress.TryParse(h, out _) ? $"*://{h}/*" : $"*://*.{h}/*")];
+
+    /// <summary>
+    /// Devolve se a lista no registro ficou igual a <paramref name="values"/>. Sem <paramref name="create"/>, chave que
+    /// não existe fica como está (a do Edge só existe nas instalações com bloqueio).
+    /// </summary>
+    public static bool Apply(string name, string keyPath, IReadOnlyList<string> values, bool create)
     {
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(BlocklistKey, writable: true)
-                ?? (hosts.Count == 0 ? null : Registry.CurrentUser.CreateSubKey(BlocklistKey, writable: true));
+            using var key = Registry.CurrentUser.OpenSubKey(keyPath, writable: true)
+                ?? (values.Count == 0 || !create ? null : Registry.CurrentUser.CreateSubKey(keyPath, writable: true));
             if (key is null)
             {
                 return true;
@@ -192,30 +311,32 @@ internal static class ChromePolicy
                 .OrderBy(v => v.Number)
                 .Select(v => v.Value)
                 .ToArray();
-            if (current.SequenceEqual(hosts))
+            if (current.SequenceEqual(values))
             {
                 return true;
             }
 
-            foreach (var name in key.GetValueNames())
+            foreach (var valueName in key.GetValueNames())
             {
-                key.DeleteValue(name, throwOnMissingValue: false);
+                key.DeleteValue(valueName, throwOnMissingValue: false);
             }
 
-            for (var i = 0; i < hosts.Count; i++)
+            for (var i = 0; i < values.Count; i++)
             {
-                key.SetValue((i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), hosts[i], RegistryValueKind.String);
+                key.SetValue((i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), values[i], RegistryValueKind.String);
             }
 
-            Log.Info($"Chrome: {hosts.Count} domínio(s) bloqueado(s) pelo TI gravados na política.");
+            Log.Info($"{name}: {values.Count} item(ns) gravados na lista de bloqueio.");
             return true;
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or SecurityException or IOException)
         {
-            if (!_warned)
+            lock (Warned)
             {
-                _warned = true;
-                Log.Info($"Chrome: sem permissão para gravar a lista de bloqueio ({ex.Message}). O Terminal continua só avisando o TI.");
+                if (Warned.Add(name))
+                {
+                    Log.Info($"{name}: sem permissão para gravar a lista de bloqueio ({ex.Message}). Vale só o desvio da aba.");
+                }
             }
 
             return false;

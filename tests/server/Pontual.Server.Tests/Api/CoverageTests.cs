@@ -89,7 +89,10 @@ public sealed class CoverageTests
         Assert.Equal("", await HeartbeatCoverageAsync(terminal));
         Assert.Equal("skip", (await ReadAsync(terminal, "Maria", "[09:05] Cliente: Oi")).GetProperty("action").GetString());
 
+        // Só a falta marcada liga a cobertura; o modo "ligada" sozinho não faz a IA responder.
         Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/coverage", new { mode = "on" })).StatusCode);
+        Assert.Equal("", await HeartbeatCoverageAsync(terminal));
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/absence", new { absent = true })).StatusCode);
         Assert.Equal("on", await HeartbeatCoverageAsync(terminal));
 
         model.Decisions.Enqueue(Decide("enviar", "Recebi sim! Agora gere a autorização no SouGov."));
@@ -127,7 +130,7 @@ public sealed class CoverageTests
 
         var ficha = await owner.GetAsync($"/api/v1/neural/attendants/{deviceId}").Json();
         var replies = ficha.GetProperty("coverage").GetProperty("replies");
-        Assert.Equal("on", ficha.GetProperty("coverage").GetProperty("mode").GetString());
+        Assert.True(ficha.GetProperty("coverage").GetProperty("absent").GetBoolean());
         Assert.Equal(["skipped", "sent"], replies.EnumerateArray().Select(r => r.GetProperty("status").GetString()));
     }
 
@@ -136,7 +139,7 @@ public sealed class CoverageTests
     {
         var (app, model, _, owner, deviceId, terminal) = await SetupAsync();
         using var _app = app;
-        await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/coverage", new { mode = "on" });
+        await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/absence", new { absent = true });
 
         model.Decisions.Enqueue(Decide("fila", "O valor liberado ficou em R$ 3.000.", "Oi! Vou verificar aqui e já te retorno"));
         var read = await ReadAsync(terminal, "Ana", "[11:00] Cliente: Quanto vai cair?");
@@ -176,6 +179,7 @@ public sealed class CoverageTests
         var (app, model, clock, owner, deviceId, terminal) = await SetupAsync();
         using var _ = app;
         await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/coverage", new { mode = "test" });
+        await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/absence", new { absent = true });
         Assert.Equal("test", await HeartbeatCoverageAsync(terminal));
 
         model.Decisions.Enqueue(Decide("enviar", "Bom dia! Recebi seu documento."));
@@ -193,5 +197,108 @@ public sealed class CoverageTests
         Assert.Single(model.Requests);
 
         Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/coverage", new { mode = "sempre" })).StatusCode);
+    }
+
+    [Fact]
+    public void A_agenda_gravada_decide_o_dia_e_o_horario()
+    {
+        // Só sábado, das 9h ao meio-dia (Monday = segunda, 10h de Brasília).
+        const string sabado = ";;;;;;09:00-12:00";
+        Assert.False(Coverage.WithinHours(Monday.UtcDateTime, sabado));
+        Assert.True(Coverage.WithinHours(Monday.AddDays(5).UtcDateTime, sabado)); // sábado, 10h
+        Assert.False(Coverage.WithinHours(Monday.AddDays(5).AddHours(-2).UtcDateTime, sabado)); // sábado, 8h
+        Assert.False(Coverage.WithinHours(Monday.AddDays(5).AddHours(2).UtcDateTime, sabado)); // sábado, 12h
+        Assert.Equal(sabado, Coverage.FormatSchedule(Coverage.ParseSchedule(sabado)));
+        Assert.Equal("sábado 09:00 às 12:00", Coverage.Describe(Coverage.ParseSchedule(sabado)));
+
+        // Nenhum dia marcado é diferente de "sem agenda gravada" (segunda a sexta, 8h às 18h).
+        Assert.False(Coverage.WithinHours(Monday.UtcDateTime, ";;;;;;"));
+        Assert.True(Coverage.WithinHours(Monday.UtcDateTime, ""));
+        Assert.Equal(";08:00-18:00;08:00-18:00;08:00-18:00;08:00-18:00;08:00-18:00;", Coverage.FormatSchedule(Coverage.ParseSchedule(null)));
+
+        Assert.True(Coverage.TryClock("23:59", out var minutes));
+        Assert.Equal(1439, minutes);
+        Assert.False(Coverage.TryClock("24:00", out _));
+        Assert.False(Coverage.TryClock("9:00", out _));
+        Assert.False(Coverage.TryClock("ab:cd", out _));
+    }
+
+    [Fact]
+    public async Task Cada_atendente_tem_os_seus_dias_e_horarios()
+    {
+        var (app, _, clock, owner, deviceId, terminal) = await SetupAsync();
+        using var scope = app;
+        var (otherId, other) = await app.ApprovedDeviceAsync(owner, "PC-02", "Bia");
+        await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/absence", new { absent = true });
+        await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{otherId}/absence", new { absent = true });
+        Assert.Equal("on", await HeartbeatCoverageAsync(terminal));
+
+        // A Gabi passa a ser coberta só no sábado de manhã; a Bia continua no padrão.
+        var saved = await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/coverage/schedule",
+            new { days = new[] { new { day = 1, on = false, from = "08:00", to = "18:00" }, new { day = 6, on = true, from = "09:00", to = "12:00" } } });
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        Assert.Equal("", await HeartbeatCoverageAsync(terminal));
+        Assert.Equal("on", await HeartbeatCoverageAsync(other));
+
+        var attendants = (await owner.GetAsync("/api/v1/neural").Json()).GetProperty("attendants").EnumerateArray().ToList();
+        var gabi = attendants.Single(a => a.GetProperty("deviceId").GetGuid() == deviceId);
+        var bia = attendants.Single(a => a.GetProperty("deviceId").GetGuid() == otherId);
+        Assert.Equal(7, gabi.GetProperty("schedule").GetArrayLength());
+        Assert.False(gabi.GetProperty("schedule")[1].GetProperty("on").GetBoolean());
+        Assert.True(gabi.GetProperty("schedule")[6].GetProperty("on").GetBoolean());
+        Assert.Equal("09:00", gabi.GetProperty("schedule")[6].GetProperty("from").GetString());
+        Assert.Equal("12:00", gabi.GetProperty("schedule")[6].GetProperty("to").GetString());
+        Assert.False(gabi.GetProperty("coverageNow").GetBoolean());
+        Assert.True(bia.GetProperty("schedule")[1].GetProperty("on").GetBoolean());
+        Assert.True(bia.GetProperty("coverageNow").GetBoolean());
+
+        clock.Now = Monday.AddDays(5); // sábado, 10h
+        // A falta marcada na segunda não vale no sábado: a supervisão marca de novo no dia.
+        Assert.Equal("", await HeartbeatCoverageAsync(terminal));
+        await TestApp.LoginAsync(owner, TestApp.OwnerEmail); // a sessão de segunda já venceu
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/absence", new { absent = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{otherId}/absence", new { absent = true })).StatusCode);
+        Assert.Equal("on", await HeartbeatCoverageAsync(terminal));
+        Assert.Equal("", await HeartbeatCoverageAsync(other));
+        clock.Now = Monday.AddDays(5).AddHours(2); // sábado, 12h
+        Assert.Equal("", await HeartbeatCoverageAsync(terminal));
+
+        // Fim antes do início, hora que não existe e dia que não existe são recusados.
+        clock.Now = Monday; // a sessão do administrador não dura até o sábado
+        foreach (var day in new[] { new { day = 2, on = true, from = "18:00", to = "08:00" }, new { day = 2, on = true, from = "25:00", to = "26:00" }, new { day = 7, on = true, from = "08:00", to = "18:00" } })
+        {
+            Assert.Equal(HttpStatusCode.BadRequest,
+                (await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/coverage/schedule", new { days = new[] { day } })).StatusCode);
+        }
+
+        Assert.Contains("definiu quando a IA atende por", (await owner.GetAsync("/api/v1/audit").Json()).GetRawText());
+    }
+
+    [Fact]
+    public async Task Faltou_hoje_liga_a_cobertura_na_hora_so_naquele_dia()
+    {
+        var (app, _, clock, owner, deviceId, terminal) = await SetupAsync();
+        using var _ = app;
+
+        // Cobertura desligada; marcar a falta liga e avisa o Terminal para responder sem esperar.
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/absence", new { absent = true })).StatusCode);
+        var beat = await terminal.PostAsJsonAsync("/api/v1/device/heartbeat", new { appsInUse = Array.Empty<string>(), sessionStartedAt = DateTime.UtcNow }).Json();
+        Assert.Equal("on", beat.GetProperty("coverage").GetString());
+        Assert.True(beat.GetProperty("coverageNow").GetBoolean());
+
+        var ficha = await owner.GetAsync($"/api/v1/neural/attendants/{deviceId}").Json();
+        Assert.True(ficha.GetProperty("coverage").GetProperty("absent").GetBoolean());
+        var geral = await owner.GetAsync("/api/v1/neural").Json();
+        Assert.Contains(geral.GetProperty("attendants").EnumerateArray(), a => a.GetProperty("absent").GetBoolean());
+        Assert.Contains("faltou hoje", (await owner.GetAsync("/api/v1/audit").Json()).GetRawText());
+
+        // No dia seguinte volta ao que estava (desligada).
+        clock.Now = clock.Now.AddDays(1);
+        Assert.Equal("", await HeartbeatCoverageAsync(terminal));
+
+        // Desmarcar no mesmo dia também desliga.
+        clock.Now = clock.Now.AddDays(-1);
+        await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/absence", new { absent = false });
+        Assert.Equal("", await HeartbeatCoverageAsync(terminal));
     }
 }

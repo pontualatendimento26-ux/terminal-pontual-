@@ -22,7 +22,7 @@ public sealed record MaintenanceInfo(string? Reason, string? Until);
 
 /// <summary>Resposta de <c>POST /device/heartbeat</c>.</summary>
 /// <param name="Assistant">A assistente de IA está ligada para esta máquina (servidor antigo não manda: fica falso).</param>
-public sealed record HeartbeatResponse(string State, int ConfigVersion, string? AttendantName, MaintenanceInfo? Maintenance, bool ObservationMode, bool Assistant = false, bool WhatsAppLearning = false, string? Coverage = null)
+public sealed record HeartbeatResponse(string State, int ConfigVersion, string? AttendantName, MaintenanceInfo? Maintenance, bool ObservationMode, bool Assistant = false, bool WhatsAppLearning = false, string? Coverage = null, bool CoverageNow = false)
 {
     public const string StatePending = "pending";
     public const string StateActive = "active";

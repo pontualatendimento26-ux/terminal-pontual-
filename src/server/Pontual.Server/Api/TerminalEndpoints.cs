@@ -19,7 +19,7 @@ public static class TerminalEndpoints
     private const int MaxAppsInUse = 50;
 
     private sealed record EnrollBody(string? Code, string? Hostname, string? Windows);
-    private sealed record HeartbeatBody(List<string?>? AppsInUse, string? SessionStartedAt, string? Version = null);
+    private sealed record HeartbeatBody(List<string?>? AppsInUse, string? SessionStartedAt, string? Version = null, string? CoverageStatus = null);
     private sealed record EventBody(string? Type, string? Item, string? Detail, string? At);
     private sealed record EventsBody(List<EventBody?>? Events);
 
@@ -95,15 +95,24 @@ public static class TerminalEndpoints
             device.TerminalVersion = terminalVersion;
         }
 
+        if (body.CoverageStatus is not null)
+        {
+            device.CoverageStatus = Input.Truncated(body.CoverageStatus, 200);
+            device.CoverageStatusAt = now;
+        }
+
         device.SessionStartedAt = ParseTime(body.SessionStartedAt, now, maxAge: TimeSpan.FromDays(30), fallback: null);
         await db.SaveChangesAsync(ct);
 
         var version = await ConfigVersionAsync(db, ct);
         var state = !device.Approved ? "pending" : device.InMaintenance(now) ? "maintenance" : "active";
         var assistant = state == "active" && await AssistantEndpoints.IsEnabledAsync(db, configuration, device, ct);
+        var coverage = assistant ? await CoverageEndpoints.ActiveModeAsync(db, configuration, device, now, ct) : CoverageMode.Off;
         return Results.Ok(new HeartbeatDto(state, version, device.AttendantName, MaintenanceDto.From(device, now), device.ObservationMode, assistant,
             assistant && await AssistantEndpoints.WhatsAppLearningAsync(db, configuration, device, ct),
-            assistant ? await CoverageEndpoints.ActiveModeAsync(db, configuration, device, now, ct) : CoverageMode.Off));
+            coverage,
+            // A cobertura só roda no dia da falta, então o Terminal responde na hora, sem esperar o computador ficar parado.
+            coverage != CoverageMode.Off));
     }
 
     private static async Task<IResult> ConfigAsync(HttpContext context, PontualDb db, CancellationToken ct)
@@ -113,7 +122,7 @@ public static class TerminalEndpoints
 
         // Máquina ainda não aprovada não recebe nenhum item.
         var items = device.Approved ? await VisibleItemsAsync(db, device, ct) : [];
-        var (chromeAllowed, chromeBlocked) = device.Approved ? await ChromeEndpoints.DecidedAsync(db, ct) : ([], []);
+        var (chromeAllowed, chromeBlocked) = device.Approved ? await ChromeEndpoints.DecidedAsync(db, device.Id, ct) : ([], []);
 
         return Results.Ok(new ConfigDto(
             version,
@@ -201,11 +210,13 @@ public static class TerminalEndpoints
 
                     break;
 
-                // Google Chrome: domínio na aba visível que não é operacional para a máquina. "chrome_stay" chega
-                // a cada minuto em que ele continua na tela. A atendente não vê nada; o TI decide na Central.
+                // Navegadores (Chrome, Edge, Opera, Firefox): domínio na aba visível que não é operacional para a máquina.
+                // "chrome_stay" chega a cada minuto em que ele continua na tela. O item é o nome do navegador (Terminal
+                // antigo manda sempre "Google Chrome"). A atendente não vê nada; o TI decide na Central.
                 case "chrome_visit" or "chrome_stay" when Input.TryHost(e.Detail, out var host):
-                    chrome ??= await ChromeEndpoints.DecidedAsync(db, ct);
-                    await ChromeAsync(db, device, allowedHosts, chrome.Value, openAlerts, host, e.Type == "chrome_stay", at, now, ct);
+                    chrome ??= await ChromeEndpoints.DecidedAsync(db, device.Id, ct);
+                    await ChromeAsync(db, device, allowedHosts, chrome.Value, openAlerts, host, item.Length > 0 ? item : "navegador",
+                        e.Type == "chrome_stay", at, now, ct);
                     break;
 
                 case "help":
@@ -252,7 +263,7 @@ public static class TerminalEndpoints
     }
 
     private static async Task ChromeAsync(PontualDb db, Device device, List<string> allowedHosts, (List<string> Allowed, List<string> Blocked) decided,
-        List<Alert> openAlerts, string host, bool stay, DateTime at, DateTime now, CancellationToken ct)
+        List<Alert> openAlerts, string host, string browser, bool stay, DateTime at, DateTime now, CancellationToken ct)
     {
         // Operacional para a máquina, ou já liberado pelo TI: o Terminal pode estar com a lista antiga.
         if (!host.Contains('.') || Input.HostMatches(host, allowedHosts) || Input.HostMatches(host, decided.Allowed))
@@ -260,27 +271,40 @@ public static class TerminalEndpoints
             return;
         }
 
-        if (Input.HostMatches(host, decided.Blocked))
+        var blocked = Input.HostMatches(host, decided.Blocked);
+        if (blocked)
         {
-            if (!stay)
+            if (stay)
             {
-                AddHistory(db, device, at, $"Tentou abrir {host} no Google Chrome, que o TI bloqueou");
+                return;
             }
 
-            return;
+            AddHistory(db, device, at, $"Tentou abrir {host} no {browser}, que o TI bloqueou");
+
+            // Bloqueado só para ela: o TI já decidiu para ela, não pede de novo. Bloqueado para todas: continua
+            // bloqueado, mas vira pedido dela, para o TI decidir se ela pode usar (pedido do dono, 20/11/2026).
+            var mineBlocked = await db.ChromeDeviceSites.AsNoTracking()
+                .Where(c => c.DeviceId == device.Id && c.Status == ChromeSite.StatusBlocked)
+                .Select(c => c.Host)
+                .ToListAsync(ct);
+            if (Input.HostMatches(host, mineBlocked))
+            {
+                return;
+            }
         }
 
-        var site = db.ChromeSites.Local.FirstOrDefault(c => c.Host == host)
-            ?? await db.ChromeSites.FirstOrDefaultAsync(c => c.Host == host, ct);
+        // Cada atendente tem o próprio pedido: o TI decide só para ela ou para todas.
+        var site = db.ChromeDeviceSites.Local.FirstOrDefault(c => c.DeviceId == device.Id && c.Host == host)
+            ?? await db.ChromeDeviceSites.FirstOrDefaultAsync(c => c.DeviceId == device.Id && c.Host == host, ct);
         if (site is null)
         {
             // Um "continua aberto" sem a visita (lote perdido) conta como a visita.
             stay = false;
-            site = new ChromeSite { Id = Guid.NewGuid(), Host = host, FirstAt = at, LastAt = at };
-            db.ChromeSites.Add(site);
+            site = new ChromeDeviceSite { Id = Guid.NewGuid(), DeviceId = device.Id, Host = host, FirstAt = at, LastAt = at };
+            db.ChromeDeviceSites.Add(site);
         }
 
-        site.DeviceId = device.Id;
+        site.Browser = browser == "navegador" ? site.Browser : browser;
         if (at > site.LastAt)
         {
             site.LastAt = at;
@@ -293,10 +317,16 @@ public static class TerminalEndpoints
         }
 
         site.Visits = Math.Min(site.Visits + 1, int.MaxValue - 1);
-        AddHistory(db, device, at, $"Abriu {host} no Google Chrome, que não é um site operacional");
+        if (!blocked)
+        {
+            AddHistory(db, device, at, $"Abriu {host} no {browser}, que não é um site operacional");
+        }
+
         if (RaiseAlert(db, device, openAlerts, now, ChromeEndpoints.AlertText(host)))
         {
-            AddNotification(db, now, $"{device.Label} abriu {host} no Google Chrome, que não é um site operacional", urgent: true);
+            AddNotification(db, now, blocked
+                ? $"{device.Label} tentou abrir {host} no {browser}, que está bloqueado para todas. Decida se ela pode usar."
+                : $"{device.Label} abriu {host} no {browser}, que não é um site operacional", urgent: true);
         }
     }
 

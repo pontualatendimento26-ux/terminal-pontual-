@@ -34,6 +34,9 @@ public sealed class Device
     public string? Windows { get; set; }
     /// <summary>Versão do Terminal informada no último heartbeat (vazio nas versões que não informam).</summary>
     public string TerminalVersion { get; set; } = "";
+    /// <summary>O que a cobertura de ausência está fazendo neste Terminal, como ele contou no último sinal.</summary>
+    public string CoverageStatus { get; set; } = "";
+    public DateTime? CoverageStatusAt { get; set; }
     /// <summary>SHA-256 (hex) do token; o token em si nunca é gravado.</summary>
     public required string TokenHash { get; set; }
     public string? AttendantName { get; set; }
@@ -193,6 +196,27 @@ public sealed class ChromeSite
     /// <summary>Quantas vezes o domínio apareceu na tela (cada volta depois de alguns minutos fora conta de novo).</summary>
     public int Visits { get; set; }
     /// <summary>Minutos, aproximados, em que o domínio ficou aberto na aba visível do Chrome.</summary>
+    public int Minutes { get; set; }
+    public DateTime FirstAt { get; set; }
+    public DateTime LastAt { get; set; }
+    public string? DecidedBy { get; set; }
+    public DateTime? DecidedAt { get; set; }
+}
+
+/// <summary>
+/// Domínio aberto por UMA atendente (um computador) num navegador, com a decisão só para ela. A decisão dela vale
+/// mais que a decisão para todas (<see cref="ChromeSite"/>): o YouTube pode estar bloqueado para todas e liberado
+/// só para uma. Os sites novos esperam decisão aqui, um por atendente.
+/// </summary>
+public sealed class ChromeDeviceSite
+{
+    public Guid Id { get; set; }
+    public Guid DeviceId { get; set; }
+    public required string Host { get; set; }
+    public string Status { get; set; } = ChromeSite.StatusPending;
+    /// <summary>Último navegador em que ela abriu o domínio ("Mozilla Firefox").</summary>
+    public string Browser { get; set; } = "";
+    public int Visits { get; set; }
     public int Minutes { get; set; }
     public DateTime FirstAt { get; set; }
     public DateTime LastAt { get; set; }
@@ -468,6 +492,16 @@ public sealed class AssistantProfile
     public bool Enabled { get; set; } = true;
     /// <summary>Cobertura da ausência: a assistente responde os clientes desta atendente no WhatsApp (ver <see cref="CoverageMode"/>).</summary>
     public string Coverage { get; set; } = "";
+    /// <summary>
+    /// Dias e horários em que a cobertura atende por esta atendente: sete trechos separados por ";", de domingo
+    /// a sábado, cada um "HH:mm-HH:mm" ou vazio (não atende no dia). Vazio = segunda a sexta, das 8h às 18h.
+    /// </summary>
+    public string CoverageSchedule { get; set; } = "";
+    /// <summary>
+    /// Dia (yyyy-MM-dd, hora de Brasília) em que a supervisão marcou que a atendente faltou. Nesse dia a cobertura
+    /// fica ligada e responde na hora, sem esperar o computador ficar parado. Vale só para o dia marcado.
+    /// </summary>
+    public string AbsentOn { get; set; } = "";
     public DateTime UpdatedAt { get; set; }
 }
 

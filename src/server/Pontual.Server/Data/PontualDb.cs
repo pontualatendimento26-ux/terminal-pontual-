@@ -15,6 +15,7 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
     public DbSet<HistoryEntry> History => Set<HistoryEntry>();
     public DbSet<ObservedHost> ObservedHosts => Set<ObservedHost>();
     public DbSet<ChromeSite> ChromeSites => Set<ChromeSite>();
+    public DbSet<ChromeDeviceSite> ChromeDeviceSites => Set<ChromeDeviceSite>();
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<AuditRecord> Audit => Set<AuditRecord>();
     public DbSet<TextSetting> TextSettings => Set<TextSetting>();
@@ -67,6 +68,8 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
         modelBuilder.Entity<ObservedHost>().HasIndex(o => o.Host).IsUnique();
 
         modelBuilder.Entity<ChromeSite>().HasIndex(c => c.Host).IsUnique();
+
+        modelBuilder.Entity<ChromeDeviceSite>().HasIndex(c => new { c.DeviceId, c.Host }).IsUnique();
 
         modelBuilder.Entity<Setting>().HasKey(s => s.Key);
 

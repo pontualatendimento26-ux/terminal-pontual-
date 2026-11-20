@@ -127,6 +127,7 @@ public static class DeviceEndpoints
         db.AssistantProfiles.RemoveRange(await db.AssistantProfiles.Where(p => p.DeviceId == id).ToListAsync(ct));
         db.WhatsAppCaptures.RemoveRange(await db.WhatsAppCaptures.Where(c => c.DeviceId == id).ToListAsync(ct));
         db.CoverageReplies.RemoveRange(await db.CoverageReplies.Where(r => r.DeviceId == id).ToListAsync(ct));
+        db.ChromeDeviceSites.RemoveRange(await db.ChromeDeviceSites.Where(c => c.DeviceId == id).ToListAsync(ct));
 
         // Tira a máquina dos públicos; a lista pode ficar vazia (ninguém), nunca vira "todas" por acidente.
         foreach (var item in await db.Items.Where(i => i.AudienceJson != null).ToListAsync(ct))

@@ -17,7 +17,10 @@ public static class CoverageEndpoints
     private sealed record ReadBody(string? Contact, string? Text);
     private sealed record ResultBody(bool? Sent, bool? Holding, string? Error);
     private sealed record ModeBody(string? Mode);
+    private sealed record AbsenceBody(bool? Absent);
     private sealed record ApproveBody(string? Message);
+    private sealed record DayBody(int? Day, bool? On, string? From, string? To);
+    private sealed record ScheduleBody(List<DayBody>? Days);
 
     private static readonly ConcurrentDictionary<Guid, byte> Busy = new();
 
@@ -28,21 +31,46 @@ public static class CoverageEndpoints
         api.MapGet("/device/assistant/coverage/outbox", OutboxAsync).Terminal().RequireRateLimiting(TerminalEndpoints.DeviceRateLimit);
 
         api.MapPut("/neural/attendants/{deviceId:guid}/coverage", SetModeAsync).Panel(Permission.ConfigEdit);
+        api.MapPut("/neural/attendants/{deviceId:guid}/coverage/schedule", SetScheduleAsync).Panel(Permission.ConfigEdit);
+        api.MapPut("/neural/attendants/{deviceId:guid}/absence", SetAbsenceAsync).Panel(Permission.ConfigEdit);
         api.MapPost("/neural/coverage/{id:guid}/approve", ApproveAsync).Panel(Permission.ConfigEdit);
         api.MapPost("/neural/coverage/{id:guid}/reject", RejectAsync).Panel(Permission.ConfigEdit);
     }
 
     /// <summary>
-    /// Modo que vale agora para a máquina: o configurado, se a assistente está ligada para ela e é horário
-    /// de atendimento; senão, desligado. É o que o heartbeat entrega ao Terminal.
+    /// Modo que vale agora para a máquina. A cobertura só existe no dia em que a supervisão marcou que a atendente
+    /// faltou: aí é "ligada" (ou "ensaio", se foi escolhido), dentro do horário dela e com a assistente ligada.
+    /// Se a atendente veio trabalhar e não está respondendo o WhatsApp, a IA não entra. É o que o heartbeat entrega.
     /// </summary>
     public static async Task<string> ActiveModeAsync(PontualDb db, IConfiguration configuration, Device device, DateTime utcNow, CancellationToken ct)
     {
-        var mode = await db.AssistantProfiles.AsNoTracking().Where(p => p.DeviceId == device.Id).Select(p => p.Coverage).FirstOrDefaultAsync(ct) ?? "";
-        return mode.Length > 0 && Coverage.WithinHours(utcNow) && await AssistantEndpoints.IsEnabledAsync(db, configuration, device, ct)
+        var profile = await db.AssistantProfiles.AsNoTracking().Where(p => p.DeviceId == device.Id)
+            .Select(p => new { p.Coverage, p.CoverageSchedule, p.AbsentOn }).FirstOrDefaultAsync(ct);
+        // Só no dia marcado como falta; o modo escolhido decide apenas entre enviar e só escrever (ensaio).
+        var mode = profile is null || profile.AbsentOn != Coverage.Day(utcNow) ? CoverageMode.Off
+            : profile.Coverage == CoverageMode.Test ? CoverageMode.Test : CoverageMode.On;
+        return mode.Length > 0 && Coverage.WithinHours(utcNow, profile?.CoverageSchedule)
+            && await AssistantEndpoints.IsEnabledAsync(db, configuration, device, ct)
             ? mode
             : CoverageMode.Off;
     }
+
+    /// <summary>Se a supervisão marcou que a atendente desta máquina faltou hoje.</summary>
+    public static async Task<bool> AbsentTodayAsync(PontualDb db, Guid deviceId, DateTime utcNow, CancellationToken ct)
+    {
+        var today = Coverage.Day(utcNow);
+        return await db.AssistantProfiles.AsNoTracking().AnyAsync(p => p.DeviceId == deviceId && p.AbsentOn == today, ct);
+    }
+
+    /// <summary>A agenda para a tela: sete dias, de domingo (0) a sábado (6). Dia desmarcado volta com 08:00 e 18:00 só para preencher os campos.</summary>
+    public static object[] ScheduleDto(string? schedule) =>
+        [.. Coverage.ParseSchedule(schedule).Select((hours, day) => (object)new
+        {
+            day,
+            on = hours is not null,
+            from = Coverage.Clock(hours?.From ?? 8 * 60),
+            to = Coverage.Clock(hours?.To ?? 18 * 60),
+        })];
 
     // ------------------------------------------------------------------ terminal
 
@@ -278,6 +306,87 @@ public static class CoverageEndpoints
         return Results.Ok(new { mode });
     }
 
+    /// <summary>Marca (ou desmarca) que a atendente faltou hoje: a IA passa a responder os clientes dela na hora.</summary>
+    private static async Task<IResult> SetAbsenceAsync(Guid deviceId, HttpContext context, PontualDb db, AuditWriter audit, TimeProvider time, CancellationToken ct)
+    {
+        var admin = context.Admin();
+        var body = await context.ReadBodyAsync<AbsenceBody>();
+        var now = time.GetUtcNow().UtcDateTime;
+        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.Id == deviceId, ct) ?? throw ApiError.NotFound("Máquina não encontrada.");
+        var profile = await db.AssistantProfiles.FirstOrDefaultAsync(p => p.DeviceId == deviceId, ct);
+        if (profile is null)
+        {
+            profile = new AssistantProfile { DeviceId = deviceId };
+            db.AssistantProfiles.Add(profile);
+        }
+
+        var absent = body.Absent == true;
+        var value = absent ? Coverage.Day(now) : "";
+        if (profile.AbsentOn != value)
+        {
+            profile.AbsentOn = value;
+            profile.UpdatedAt = now;
+            var text = absent
+                ? $"{admin.Name} marcou que {device.Label} faltou hoje (a IA responde por ela)"
+                : $"{admin.Name} desmarcou a falta de {device.Label}";
+            await audit.SaveAsync(db, AuditInfo.By(admin, "coverage.absence", text, "device", device.Id), cancellationToken: ct);
+        }
+
+        return Results.Ok(new { absent });
+    }
+
+    /// <summary>Grava os dias e horários em que a IA pode atender por esta atendente. Não liga nem desliga a cobertura.</summary>
+    private static async Task<IResult> SetScheduleAsync(Guid deviceId, HttpContext context, PontualDb db, AuditWriter audit, TimeProvider time, CancellationToken ct)
+    {
+        var admin = context.Admin();
+        var body = await context.ReadBodyAsync<ScheduleBody>();
+        var days = new Coverage.DayHours?[Coverage.DayNames.Length];
+        foreach (var day in body.Days ?? [])
+        {
+            if (day.Day is not { } index || index < 0 || index >= days.Length)
+            {
+                throw ApiError.BadRequest("Dia da semana inválido.");
+            }
+
+            if (day.On != true)
+            {
+                continue;
+            }
+
+            var name = Coverage.DayNames[index];
+            if (!Coverage.TryClock(day.From, out var from) || !Coverage.TryClock(day.To, out var to))
+            {
+                throw ApiError.BadRequest($"Preencha o início e o fim do horário de {name}.");
+            }
+
+            if (from >= to)
+            {
+                throw ApiError.BadRequest($"Em {name}, o fim precisa ser depois do início.");
+            }
+
+            days[index] = new Coverage.DayHours(from, to);
+        }
+
+        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.Id == deviceId, ct) ?? throw ApiError.NotFound("Máquina não encontrada.");
+        var profile = await db.AssistantProfiles.FirstOrDefaultAsync(p => p.DeviceId == deviceId, ct);
+        if (profile is null)
+        {
+            profile = new AssistantProfile { DeviceId = deviceId };
+            db.AssistantProfiles.Add(profile);
+        }
+
+        var schedule = Coverage.FormatSchedule(days);
+        if (Coverage.FormatSchedule(Coverage.ParseSchedule(profile.CoverageSchedule)) != schedule)
+        {
+            profile.CoverageSchedule = schedule;
+            profile.UpdatedAt = time.GetUtcNow().UtcDateTime;
+            await audit.SaveAsync(db, AuditInfo.By(admin, "coverage.schedule",
+                $"{admin.Name} definiu quando a IA atende por {device.Label}: {Coverage.Describe(days)}", "device", device.Id), cancellationToken: ct);
+        }
+
+        return Results.Ok(new { schedule = ScheduleDto(schedule) });
+    }
+
     private static async Task<IResult> ApproveAsync(Guid id, HttpContext context, PontualDb db, AuditWriter audit, TimeProvider time, CancellationToken ct)
     {
         var admin = context.Admin();
@@ -329,12 +438,17 @@ public static class CoverageEndpoints
     }
 
     /// <summary>As respostas recentes de uma máquina, para a ficha da atendente (a mais nova primeiro).</summary>
-    public static async Task<object> ListAsync(PontualDb db, Guid deviceId, CancellationToken ct)
+    public static async Task<object> ListAsync(PontualDb db, Guid deviceId, DateTime utcNow, CancellationToken ct)
     {
-        var mode = await db.AssistantProfiles.AsNoTracking().Where(p => p.DeviceId == deviceId).Select(p => p.Coverage).FirstOrDefaultAsync(ct) ?? "";
+        var profile = await db.AssistantProfiles.AsNoTracking().Where(p => p.DeviceId == deviceId)
+            .Select(p => new { p.Coverage, p.AbsentOn }).FirstOrDefaultAsync(ct);
+        var mode = profile?.Coverage ?? "";
+        var absent = profile?.AbsentOn == Coverage.Day(utcNow);
         var replies = await db.CoverageReplies.AsNoTracking()
             .Where(r => r.DeviceId == deviceId).OrderByDescending(r => r.CreatedAt).Take(60).ToListAsync(ct);
-        return new { mode, replies = replies.Select(Dto) };
+        var status = await db.Devices.AsNoTracking().Where(d => d.Id == deviceId)
+            .Select(d => new { d.CoverageStatus, d.CoverageStatusAt }).FirstOrDefaultAsync(ct);
+        return new { mode, absent, replies = replies.Select(Dto), status = status?.CoverageStatus ?? "", statusAt = status?.CoverageStatusAt };
     }
 
     private static object Dto(CoverageReply r) => new

@@ -247,17 +247,42 @@ public partial class MainWindow
           };
           const saida = { address: location.host + location.pathname, title: corta(document.title, 200), whatsapp: /(^|\.)whatsapp\.com$/.test(location.hostname), contact: '', text: '' };
           if (saida.whatsapp) {
-            const main = document.querySelector('#main');
-            if (!main) { saida.text = 'Nenhuma conversa aberta no WhatsApp.'; return saida; }
+            // A área da conversa: #main, ou (se o WhatsApp mudou) o bloco que tem a caixa de escrever e um cabeçalho.
+            let main = document.querySelector('#main') || document.querySelector('[data-testid="conversation-panel-wrapper"]');
+            if (!main) {
+              const caixa = document.querySelector('footer div[contenteditable="true"], [data-tab="10"][contenteditable="true"], div[aria-placeholder][contenteditable="true"]');
+              for (let n = caixa; n && n !== document.body; n = n.parentElement) {
+                if (n.querySelector('header') && n.querySelector('[data-pre-plain-text], [data-id^="true_"], [data-id^="false_"], [role="row"]')) { main = n; break; }
+              }
+            }
+            if (!main) {
+              const conta = (sel) => document.querySelectorAll(sel).length;
+              saida.hint = 'main=' + conta('#main') + ' lista=' + conta('#pane-side') + ' header=' + conta('header') + ' footer=' + conta('footer')
+                + ' caixa=' + conta('div[contenteditable="true"]') + ' msgs=' + conta('[data-pre-plain-text]') + ' ids=' + conta('[data-id^="true_"], [data-id^="false_"]')
+                + ' app=' + conta('#app') + ' titulo=' + corta(document.title, 40);
+              saida.text = 'Nenhuma conversa aberta no WhatsApp.'; return saida;
+            }
             const cabecalho = main.querySelector('header');
             const nome = cabecalho ? cabecalho.querySelector('span[dir="auto"], span[title]') : null;
             saida.contact = corta(nome ? (nome.innerText || nome.getAttribute('title')) : cabecalho ? cabecalho.innerText.split('\n')[0] : '', 80);
+            // Outros textos do cabeçalho: a cobertura confere o contato por qualquer um deles.
+            saida.names = cabecalho ? [...cabecalho.querySelectorAll('span[title], span[dir="auto"]')]
+              .map(s => corta(s.getAttribute('title') || s.innerText, 80)).filter(Boolean).slice(0, 8) : [];
             const linhas = [];
             for (const m of main.querySelectorAll('[data-pre-plain-text]')) {
               const hora = ((m.getAttribute('data-pre-plain-text') || '').match(/\[(\d{1,2}:\d{2})/) || [])[1] || '';
               const quem = m.closest('.message-out') ? 'Atendente' : 'Cliente';
               const texto = corta(m.innerText, 1500);
               if (texto) linhas.push('[' + hora + '] ' + quem + ': ' + texto);
+            }
+            // Outro jeito de achar as mensagens, se o WhatsApp mudou: cada uma tem data-id "true_..." (enviada) ou "false_..." (recebida).
+            if (!linhas.length) for (const b of main.querySelectorAll('[data-id^="true_"], [data-id^="false_"]')) {
+              const quem = (b.getAttribute('data-id') || '').startsWith('true_') ? 'Atendente' : 'Cliente';
+              const bruto = corta(b.innerText, 1600);
+              const horas = bruto.match(/\d{1,2}:\d{2}/g) || [];
+              const sel = b.querySelector('.selectable-text');
+              const texto = corta(sel ? sel.innerText : bruto.replace(/\s*\d{1,2}:\d{2}\s*$/, ''), 1500);
+              if (texto) linhas.push('[' + (horas[horas.length - 1] || '') + '] ' + quem + ': ' + texto);
             }
             saida.text = linhas.length ? corta(linhas.slice(-40).join('\n'), 8000, true) : corta(main.innerText, 8000, true);
             return saida;

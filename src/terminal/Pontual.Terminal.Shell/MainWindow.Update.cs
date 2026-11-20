@@ -110,47 +110,41 @@ public partial class MainWindow
         }
     }
 
-    // ------------------------------------------------------------- atualização automática
-    // A cada 30 minutos o Terminal confere a Central; havendo versão nova, ele se atualiza sozinho, mas só com o
-    // computador parado há 10 minutos, para não fechar o Terminal no meio de um atendimento. É a mesma tarefa do
-    // botão Atualizar (confere a assinatura do pacote, troca os arquivos e reinicia).
-    private static readonly TimeSpan AutoUpdateEvery = TimeSpan.FromMinutes(30);
-    private static readonly TimeSpan AutoUpdateIdle = TimeSpan.FromMinutes(10);
-    private DateTime _autoUpdateCheckedAt = DateTime.MinValue;
+    // ------------------------------------------------------------- aviso de versão nova
+    // A cada 30 minutos o Terminal confere se a Central publicou versão nova. Havendo, o botão Atualizar fica
+    // verde com a versão e aparece um aviso uma vez. Só a atendente instala, clicando no botão.
+    private static readonly TimeSpan UpdateCheckEvery = TimeSpan.FromMinutes(30);
+    private DateTime _updateCheckedAt = DateTime.MinValue;
+    private Version? _updateAnnounced;
 
-    private async Task AutoUpdateAsync()
+    private async Task CheckForUpdateAsync()
     {
         var now = DateTime.UtcNow;
-        if (_updating || _local || now - _autoUpdateCheckedAt < AutoUpdateEvery || IdleTime() < AutoUpdateIdle || !Directory.Exists(UpdateFolder))
+        if (_updating || _local || !_locked || now - _updateCheckedAt < UpdateCheckEvery)
         {
             return;
         }
 
-        _autoUpdateCheckedAt = now;
-        _updating = true;
+        _updateCheckedAt = now;
         try
         {
-            var central = new Uri(_homeOrigin).GetLeftPart(UriPartial.Authority);
-            var current = CurrentVersion;
-            if (await LatestVersionAsync(central) is not { } latest || latest <= current)
+            var latest = await LatestVersionAsync(new Uri(_homeOrigin).GetLeftPart(UriPartial.Authority));
+            var available = latest is not null && latest > CurrentVersion ? latest : null;
+            foreach (var bar in Bars)
             {
-                return;
+                bar.SetUpdateAvailable(available is null ? null : Short(available));
             }
 
-            File.Delete(Path.Combine(UpdateFolder, "estado.txt"));
-            File.WriteAllText(Path.Combine(UpdateFolder, "pedido.txt"), central, new UTF8Encoding(false));
-            RunUpdateTask();
-            Log.Info($"atualização automática: {Short(current)} -> {Short(latest)}");
+            if (available is not null && available != _updateAnnounced)
+            {
+                _updateAnnounced = available;
+                ShowToast($"Tem uma versão nova do Terminal ({Short(available)}). Clique em \"Atualizar\", no alto da tela, quando puder.");
+            }
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or FormatException or ArgumentException
-            or KeyNotFoundException or InvalidOperationException or IOException or UnauthorizedAccessException or Win32Exception)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or FormatException or ArgumentException or KeyNotFoundException or InvalidOperationException)
         {
-            // Sem rede ou sem a tarefa: tenta de novo na próxima volta.
-            Log.Error("atualização automática", ex);
-        }
-        finally
-        {
-            _updating = false;
+            // Sem rede: confere de novo na próxima volta.
+            Log.Error("atualização: consulta automática", ex);
         }
     }
 

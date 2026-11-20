@@ -15,18 +15,35 @@ public partial class MainWindow
 {
     private const string CoverageOn = "on";
     private static readonly TimeSpan CoverageEvery = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan CoverageEveryAbsent = TimeSpan.FromSeconds(10);
     /// <summary>Sem teclado nem mouse por este tempo, o computador está livre para a cobertura usar o WhatsApp.</summary>
     private static readonly TimeSpan CoverageIdle = TimeSpan.FromSeconds(90);
+    /// <summary>No dia em que a atendente faltou, quase não espera: só não atropela quem mexeu no computador agora.</summary>
+    private static readonly TimeSpan CoverageIdleAbsent = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan CoverageRetry = TimeSpan.FromMinutes(1);
 
     private string _coverage = "";
+    /// <summary>A supervisão marcou que a atendente faltou hoje: responde na hora.</summary>
+    private bool _coverageAbsent;
+    /// <summary>O que a cobertura está fazendo, em palavras simples; vai para a Central no sinal de vida.</summary>
+    private string _coverageStatus = "";
     private System.Windows.Threading.DispatcherTimer? _coverageTimer;
     private bool _coverageBusy;
     /// <summary>Conversas já abertas (e por isso marcadas como lidas) que ainda esperam uma nova tentativa.</summary>
     private readonly Dictionary<string, DateTime> _coverageRetry = [];
 
-    private void UpdateCoverage(string mode)
+    private void UpdateCoverage(string mode, bool absent = false)
     {
+        if (absent != _coverageAbsent)
+        {
+            _coverageAbsent = absent;
+            Log.Info($"cobertura: {(absent ? "atendente faltou hoje, responde na hora" : "falta desmarcada")}");
+            if (_coverageTimer is not null)
+            {
+                _coverageTimer.Interval = absent ? CoverageEveryAbsent : CoverageEvery;
+            }
+        }
+
         if (mode == _coverage)
         {
             return;
@@ -38,28 +55,45 @@ public partial class MainWindow
         {
             _coverageTimer?.Stop();
             _coverageRetry.Clear();
+            _coverageStatus = "";
             return;
         }
 
         if (_coverageTimer is null)
         {
-            _coverageTimer = new System.Windows.Threading.DispatcherTimer { Interval = CoverageEvery };
+            _coverageTimer = new System.Windows.Threading.DispatcherTimer { Interval = _coverageAbsent ? CoverageEveryAbsent : CoverageEvery };
             _coverageTimer.Tick += async (_, _) => await CoverAsync();
         }
 
+        _coverageStatus = "Começando a olhar o WhatsApp.";
         _coverageTimer.Start();
     }
 
     private async Task CoverAsync()
     {
-        if (_coverageBusy || _coverage.Length == 0 || _api is not { } api || _state != HeartbeatResponse.StateActive || IdleTime() < CoverageIdle)
+        if (_coverageBusy || _coverage.Length == 0 || _api is not { } api)
         {
+            return;
+        }
+
+        if (_state != HeartbeatResponse.StateActive)
+        {
+            _coverageStatus = "Parada: o Terminal está bloqueado ou em manutenção.";
+            return;
+        }
+
+        if (IdleTime() < (_coverageAbsent ? CoverageIdleAbsent : CoverageIdle))
+        {
+            _coverageStatus = _coverageAbsent
+                ? "Esperando: alguém mexeu neste computador agora há pouco (responde 10 segundos depois de pararem)."
+                : "Esperando: alguém está usando este computador (só responde depois de 90 segundos sem mexer no teclado ou no mouse).";
             return;
         }
 
         var tab = _tabs.FirstOrDefault(t => !t.IsClosed && t.BlockedHost is null && IsWhatsApp(t));
         if (tab?.View.CoreWebView2 is not { } core)
         {
+            _coverageStatus = "Parada: o WhatsApp não está aberto dentro do Terminal. Abra o WhatsApp pelo Terminal e deixe aberto.";
             return;
         }
 
@@ -75,10 +109,18 @@ public partial class MainWindow
             }
 
             var now = DateTime.UtcNow;
-            var contact = (await UnreadChatsAsync(core)).FirstOrDefault()
+            var unread = await UnreadChatsAsync(core);
+            if (unread is null)
+            {
+                _coverageStatus = "Parada: o WhatsApp está aberto, mas a lista de conversas não apareceu (pode estar pedindo para ler o QR code ou ainda carregando).";
+                return;
+            }
+
+            var contact = unread.FirstOrDefault()
                 ?? _coverageRetry.Where(r => r.Value <= now).Select(r => r.Key).FirstOrDefault();
             if (contact is null)
             {
+                _coverageStatus = $"Vigiando: nenhuma conversa não lida no WhatsApp ({DateTime.Now:HH:mm}).";
                 return;
             }
 
@@ -88,16 +130,22 @@ public partial class MainWindow
                 return;
             }
 
-            var (opened, transcript) = await ReadOpenChatAsync(core);
-            if (!SameContact(opened, contact) || !transcript.StartsWith('['))
+            var chat = await ReadOpenChatAsync(core);
+            var transcript = chat.Text;
+            if (!chat.Is(contact) || !transcript.StartsWith('['))
             {
                 // Abriu outra conversa, ou a página não separou as mensagens: melhor não responder nada.
-                Log.Info($"cobertura: conversa não reconhecida ({(SameContact(opened, contact) ? "mensagens sem formato" : "contato diferente")})");
+                var why = !chat.Open ? $"a conversa não abriu ao clicar (na tela: {(chat.Hint.Length > 0 ? chat.Hint : "sem detalhes")})"
+                    : !chat.Is(contact) ? $"o cabeçalho da conversa aberta mostra \"{string.Join(" | ", chat.Names.Prepend(chat.Contact).Where(n => n.Length > 0).Distinct().Take(4))}\""
+                    : "abri a conversa, mas não achei as mensagens nela";
+                Log.Info($"cobertura: conversa não reconhecida ({why})");
+                _coverageStatus = $"Achei mensagem não lida de {contact}, mas não consegui ler: {why} ({DateTime.Now:HH:mm}).";
                 _coverageRetry.Remove(contact);
                 return;
             }
 
             var action = await api.AskCoverageAsync(contact, transcript, _cts.Token);
+            _coverageStatus = $"Última conversa tratada: {contact} ({DateTime.Now:HH:mm}).";
             if (action.Action == CoverageAction.Retry)
             {
                 if (_coverageRetry.Count < 50)
@@ -118,6 +166,7 @@ public partial class MainWindow
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             Log.Error("cobertura de ausência", ex);
+            _coverageStatus = $"Erro ao tratar o WhatsApp: {ex.Message}";
         }
         finally
         {
@@ -133,8 +182,7 @@ public partial class MainWindow
             return (false, "Não achei a conversa desse contato no WhatsApp.");
         }
 
-        var (opened, _) = await ReadOpenChatAsync(core);
-        return SameContact(opened, contact) ? await SendInOpenChatAsync(core, message) : (false, "A conversa aberta não era a desse contato; nada foi enviado.");
+        return (await ReadOpenChatAsync(core)).Is(contact) ? await SendInOpenChatAsync(core, message) : (false, "A conversa aberta não era a desse contato; nada foi enviado.");
     }
 
     private async Task<(bool Sent, string? Error)> SendInOpenChatAsync(CoreWebView2 core, string message)
@@ -155,7 +203,7 @@ public partial class MainWindow
 
         // Confere na própria conversa que a mensagem apareceu como enviada.
         await Task.Delay(1800, _cts.Token);
-        var (_, transcript) = await ReadOpenChatAsync(core);
+        var transcript = (await ReadOpenChatAsync(core)).Text;
         var start = Normalize(message);
         start = start.Length > 30 ? start[..30] : start;
         var mine = transcript.Split('\n').Where(l => l.Contains("] Atendente:", StringComparison.Ordinal)).TakeLast(3);
@@ -166,35 +214,82 @@ public partial class MainWindow
 
     private async Task<bool> OpenChatAsync(CoreWebView2 core, string contact, bool search)
     {
-        var name = JsonSerializer.Serialize(contact);
-        if (await RunAsync(core, $"({OpenScript})({name})") == "true")
+        if (await ClickChatAsync(core, contact))
         {
-            await Task.Delay(1500, _cts.Token);
             return true;
         }
 
+        var name = JsonSerializer.Serialize(contact);
         if (!search || await RunAsync(core, $"({SearchScript})({name})") != "true")
         {
             return false;
         }
 
         await Task.Delay(1800, _cts.Token);
-        var opened = await RunAsync(core, $"({OpenScript})({name})") == "true";
+        var opened = await ClickChatAsync(core, contact);
         await RunAsync(core, $"({SearchScript})(\"\")");
-        if (opened)
-        {
-            await Task.Delay(1500, _cts.Token);
-        }
-
         return opened;
     }
 
-    private async Task<List<string>> UnreadChatsAsync(CoreWebView2 core)
+    /// <summary>
+    /// Clica na conversa da lista como um mouse de verdade: acha onde ela está na tela e pede ao próprio navegador
+    /// (protocolo DevTools) que faça o clique ali. O WhatsApp ignora eventos criados por script; este ele aceita.
+    /// Se o navegador não aceitar o pedido, cai no clique por script.
+    /// </summary>
+    private async Task<bool> ClickChatAsync(CoreWebView2 core, string contact)
+    {
+        var name = JsonSerializer.Serialize(contact);
+        var where = await RunAsync(core, $"({LocateScript})({name})");
+        if (where is null or "null" or "false")
+        {
+            return false;
+        }
+
+        double x, y;
+        try
+        {
+            using var doc = JsonDocument.Parse(where);
+            x = Math.Round(doc.RootElement.GetProperty("x").GetDouble(), 1);
+            y = Math.Round(doc.RootElement.GetProperty("y").GetDouble(), 1);
+        }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return false;
+        }
+
+        try
+        {
+            var at = $"\"x\":{x.ToString(System.Globalization.CultureInfo.InvariantCulture)},\"y\":{y.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", $"{{\"type\":\"mouseMoved\",{at}}}");
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", $"{{\"type\":\"mousePressed\",{at},\"button\":\"left\",\"buttons\":1,\"clickCount\":1}}");
+            await Task.Delay(80, _cts.Token);
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", $"{{\"type\":\"mouseReleased\",{at},\"button\":\"left\",\"buttons\":0,\"clickCount\":1}}");
+        }
+        catch (Exception ex) when (ex is not (OutOfMemoryException or OperationCanceledException))
+        {
+            Log.Error("cobertura: clique pelo navegador", ex);
+            if (await RunAsync(core, $"({OpenScript})({name})") != "true")
+            {
+                return false;
+            }
+        }
+
+        await Task.Delay(2500, _cts.Token);
+        return true;
+    }
+
+    /// <summary>Nomes das conversas não lidas; null quando a lista de conversas do WhatsApp não está na tela.</summary>
+    private async Task<List<string>?> UnreadChatsAsync(CoreWebView2 core)
     {
         var json = await RunAsync(core, UnreadScript);
         try
         {
-            return json is { Length: > 0 } ? JsonSerializer.Deserialize<List<string>>(json) ?? [] : [];
+            if (json is not { Length: > 0 })
+            {
+                return [];
+            }
+
+            return json == "null" ? null : JsonSerializer.Deserialize<List<string>>(json) ?? [];
         }
         catch (JsonException)
         {
@@ -202,22 +297,32 @@ public partial class MainWindow
         }
     }
 
-    private async Task<(string Contact, string Text)> ReadOpenChatAsync(CoreWebView2 core)
+    /// <summary>A conversa aberta no WhatsApp: o nome do cabeçalho (e os outros textos dele) e as mensagens.</summary>
+    private sealed record OpenChat(string Contact, string Text, string[] Names, bool Open, string Hint = "")
+    {
+        public bool Is(string expected) => SameContact(Contact, expected) || Names.Any(n => n.Length >= 3 && SameContact(n, expected));
+    }
+
+    private async Task<OpenChat> ReadOpenChatAsync(CoreWebView2 core)
     {
         if (await RunAsync(core, ScreenScript) is not { Length: > 0 } json)
         {
-            return ("", "");
+            return new("", "", [], false);
         }
 
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object)
         {
-            return ("", "");
+            return new("", "", [], false);
         }
 
         string Field(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
-        return (Field("contact"), Field("text"));
+        string[] names = root.TryGetProperty("names", out var list) && list.ValueKind == JsonValueKind.Array
+            ? [.. list.EnumerateArray().Where(n => n.ValueKind == JsonValueKind.String).Select(n => n.GetString() ?? "")]
+            : [];
+        var text = Field("text");
+        return new(Field("contact"), text, names, text != "Nenhuma conversa aberta no WhatsApp.", Field("hint"));
     }
 
     private static async Task<string?> RunAsync(CoreWebView2 core, string script) => await WithinAsync(core.ExecuteScriptAsync(script));
@@ -239,7 +344,7 @@ public partial class MainWindow
         """
         (() => { try {
           const lado = document.querySelector('#pane-side');
-          if (!lado) return [];
+          if (!lado) return null;
           const nomes = [];
           for (const linha of lado.querySelectorAll('[role="listitem"], [role="row"]')) {
             if (!linha.querySelector('span[aria-label*="não lida" i], span[aria-label*="unread" i]')) continue;
@@ -252,7 +357,23 @@ public partial class MainWindow
         } catch (e) { return []; } })()
         """;
 
-    /// <summary>Abre a conversa de nome exato que está na lista lateral.</summary>
+    /// <summary>Onde está, na tela, a conversa de nome exato da lista lateral: {x, y} do centro dela (ou null).</summary>
+    private const string LocateScript =
+        """
+        (nome) => { try {
+          const lado = document.querySelector('#pane-side');
+          if (!lado) return null;
+          const alvo = [...lado.querySelectorAll('span[title]')].find(s => (s.getAttribute('title') || '').trim() === nome);
+          if (!alvo) return null;
+          const linha = alvo.closest('[role="listitem"], [role="row"]') || alvo;
+          linha.scrollIntoView({ block: 'center' });
+          const r = linha.getBoundingClientRect();
+          if (!r.width || !r.height) return null;
+          return { x: r.left + Math.min(r.width / 2, 160), y: r.top + r.height / 2 };
+        } catch (e) { return null; } }
+        """;
+
+    /// <summary>Abre a conversa de nome exato que está na lista lateral (clique por script; só se o navegador recusar o clique real).</summary>
     private const string OpenScript =
         """
         (nome) => { try {
@@ -261,8 +382,13 @@ public partial class MainWindow
           const alvo = [...lado.querySelectorAll('span[title]')].find(s => (s.getAttribute('title') || '').trim() === nome);
           if (!alvo) return false;
           const linha = alvo.closest('[role="listitem"], [role="row"]') || alvo;
-          const clicavel = linha.querySelector('[tabindex]') || linha;
-          for (const tipo of ['mousedown', 'mouseup', 'click']) clicavel.dispatchEvent(new MouseEvent(tipo, { bubbles: true, cancelable: true, view: window }));
+          const clicavel = linha.querySelector('[tabindex]') || linha.querySelector('[role="gridcell"], [role="button"]') || linha;
+          const r = clicavel.getBoundingClientRect();
+          const pos = { bubbles: true, cancelable: true, view: window, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, buttons: 1 };
+          // O WhatsApp é uma página React: precisa dos eventos de ponteiro, não só do click.
+          for (const tipo of ['pointerdown', 'mousedown']) clicavel.dispatchEvent(tipo === 'pointerdown' ? new PointerEvent(tipo, { ...pos, pointerId: 1, pointerType: 'mouse', isPrimary: true }) : new MouseEvent(tipo, pos));
+          for (const tipo of ['pointerup', 'mouseup', 'click']) clicavel.dispatchEvent(tipo === 'pointerup' ? new PointerEvent(tipo, { ...pos, pointerId: 1, pointerType: 'mouse', isPrimary: true, buttons: 0 }) : new MouseEvent(tipo, { ...pos, buttons: 0 }));
+          try { clicavel.focus(); clicavel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true })); } catch (e) { }
           return true;
         } catch (e) { return false; } }
         """;

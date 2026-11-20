@@ -26,11 +26,78 @@ public static partial class Coverage
     public const string Queue = "queue";
     public const string None = "none";
 
-    /// <summary>Horário em que a cobertura responde: segunda a sexta, das 8h às 18h (Brasília).</summary>
-    public static bool WithinHours(DateTime utcNow)
+    /// <summary>Horário de um dia da agenda, em minutos desde a meia-noite: de <see cref="From"/> até antes de <see cref="To"/>.</summary>
+    public readonly record struct DayHours(int From, int To);
+
+    public static readonly string[] DayNames = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+
+    private static readonly DayHours Business = new(8 * 60, 18 * 60);
+
+    /// <summary>
+    /// A agenda gravada no perfil da atendente (<c>AssistantProfile.CoverageSchedule</c>), um item por dia, de
+    /// domingo a sábado; nulo = não atende no dia. Sem agenda gravada vale segunda a sexta, das 8h às 18h.
+    /// </summary>
+    public static DayHours?[] ParseSchedule(string? text)
+    {
+        var parts = (text ?? "").Split(';');
+        if (parts.Length != DayNames.Length)
+        {
+            return [null, Business, Business, Business, Business, Business, null];
+        }
+
+        var days = new DayHours?[DayNames.Length];
+        for (var i = 0; i < days.Length; i++)
+        {
+            var cut = parts[i].IndexOf('-');
+            if (cut > 0 && TryClock(parts[i][..cut], out var from) && TryClock(parts[i][(cut + 1)..], out var to) && from < to)
+            {
+                days[i] = new DayHours(from, to);
+            }
+        }
+
+        return days;
+    }
+
+    public static string FormatSchedule(DayHours?[] days) =>
+        string.Join(';', days.Select(d => d is { } hours ? $"{Clock(hours.From)}-{Clock(hours.To)}" : ""));
+
+    public static string Clock(int minutes) => $"{minutes / 60:00}:{minutes % 60:00}";
+
+    /// <summary>Lê "HH:mm" (00:00 a 23:59).</summary>
+    public static bool TryClock(string? text, out int minutes)
+    {
+        minutes = 0;
+        if (text is not { Length: 5 } || text[2] != ':' || !text.All(c => c == ':' || char.IsAsciiDigit(c)))
+        {
+            return false;
+        }
+
+        var hour = int.Parse(text.AsSpan(0, 2), System.Globalization.CultureInfo.InvariantCulture);
+        var minute = int.Parse(text.AsSpan(3, 2), System.Globalization.CultureInfo.InvariantCulture);
+        minutes = hour * 60 + minute;
+        return hour < 24 && minute < 60;
+    }
+
+    /// <summary>"segunda 08:00 às 18:00, sábado 08:00 às 12:00", para a auditoria.</summary>
+    public static string Describe(DayHours?[] days)
+    {
+        // Começa na segunda, como a tela.
+        var parts = Enumerable.Range(1, days.Length).Select(i => i % days.Length)
+            .Where(i => days[i] is not null)
+            .Select(i => $"{DayNames[i]} {Clock(days[i]!.Value.From)} às {Clock(days[i]!.Value.To)}");
+        return string.Join(", ", parts) is { Length: > 0 } text ? text : "nenhum dia";
+    }
+
+    /// <summary>O dia de hoje em Brasília (yyyy-MM-dd), para a marcação de falta.</summary>
+    public static string Day(DateTime utcNow) =>
+        TimeZoneInfo.ConvertTimeFromUtc(utcNow, AssistantPrompt.BrazilTime).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>Se a cobertura atende agora (hora de Brasília), pela agenda da atendente.</summary>
+    public static bool WithinHours(DateTime utcNow, string? schedule = null)
     {
         var local = TimeZoneInfo.ConvertTimeFromUtc(utcNow, AssistantPrompt.BrazilTime);
-        return local.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday) && local.Hour >= 8 && local.Hour < 18;
+        var minute = local.Hour * 60 + local.Minute;
+        return ParseSchedule(schedule)[(int)local.DayOfWeek] is { } hours && minute >= hours.From && minute < hours.To;
     }
 
     [GeneratedRegex(@"^\[[^\]]*\]\s*(Cliente|Atendente):", RegexOptions.CultureInvariant)]

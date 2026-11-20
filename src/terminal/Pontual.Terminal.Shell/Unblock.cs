@@ -39,6 +39,11 @@ internal static class Unblock
         (@"Software\Policies\Google\Chrome", "IncognitoModeAvailability"),
         (@"Software\Policies\Google\Chrome", "BrowserGuestModeEnabled"),
         (@"Software\Policies\Google\Chrome", "DeveloperToolsAvailability"),
+        (@"Software\Policies\Microsoft\Edge", "InPrivateModeAvailability"),
+        (@"Software\Policies\Microsoft\Edge", "BrowserGuestModeEnabled"),
+        (@"Software\Policies\Microsoft\Edge", "DeveloperToolsAvailability"),
+        (@"Software\Policies\Mozilla\Firefox", "DisablePrivateBrowsing"),
+        (@"Software\Policies\Mozilla\Firefox", "DisableDeveloperTools"),
     ];
 
     /// <summary>SID da conta logada agora (para a remoção elevada achar o registro certo em HKEY_USERS).</summary>
@@ -65,11 +70,13 @@ internal static class Unblock
         var users = Registry.Users;
         var ok = true;
 
-        // A lista de programas liberados (RestrictRun) e a de sites bloqueados no Chrome são subchaves inteiras.
+        // A lista de programas liberados (RestrictRun) e as de sites bloqueados nos navegadores são subchaves inteiras.
         try
         {
             users.DeleteSubKeyTree($@"{sid}\{RestrictRunRelative}", throwOnMissingSubKey: false);
-            users.DeleteSubKeyTree($@"{sid}\{ChromePolicy.BlocklistKey}", throwOnMissingSubKey: false);
+            users.DeleteSubKeyTree($@"{sid}\{BrowserPolicy.ChromeKey}", throwOnMissingSubKey: false);
+            users.DeleteSubKeyTree($@"{sid}\{BrowserPolicy.EdgeKey}", throwOnMissingSubKey: false);
+            users.DeleteSubKeyTree($@"{sid}\{BrowserPolicy.FirefoxKey}", throwOnMissingSubKey: false);
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or System.Security.SecurityException)
         {

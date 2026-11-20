@@ -90,8 +90,13 @@ Desde o Terminal 2.4.0, cada conversa de WhatsApp que a atendente abre entra na 
 Desde o Terminal 2.5.0. Quando uma atendente falta, a assistente responde os clientes dela no WhatsApp, como ela.
 
 - Liga na Central Neural, na ficha da atendente: **Desligada**, **Ensaio** (escreve a resposta e não envia) ou
-  **Ligada** (`AssistantProfiles.Coverage`: "", "test", "on"). O heartbeat entrega o modo ao Terminal só de segunda
-  a sexta, das 8h às 18h de Brasília (`Coverage.WithinHours`), e só com a assistente ligada para a máquina.
+  **Ligada** (`AssistantProfiles.Coverage`: "", "test", "on"). O heartbeat entrega o modo ao Terminal só nos dias e
+  horários da atendente (`Coverage.WithinHours`, hora de Brasília) e só com a assistente ligada para a máquina.
+- Os dias e horários são de cada atendente e ficam na aba **Horários da IA** da Central Neural
+  (`PUT /neural/attendants/{id}/coverage/schedule`): um horário por dia da semana, gravado em
+  `AssistantProfiles.CoverageSchedule` como sete trechos separados por ";", de domingo a sábado
+  (`;08:00-18:00;08:00-18:00;;;;09:00-12:00`). Sem nada gravado vale segunda a sexta, das 8h às 18h. A agenda não
+  liga a cobertura: fora dela o Terminal recebe o modo desligado, e o Terminal não precisou mudar.
 - O Terminal (`MainWindow.Coverage.cs`) roda a cada 20 segundos, só com o computador parado há 90 segundos: acha uma
   conversa não lida na lista do WhatsApp, abre, confere o nome do contato e manda a conversa para
   `POST /device/assistant/coverage`. Abrir a conversa a marca como lida, também no ensaio.

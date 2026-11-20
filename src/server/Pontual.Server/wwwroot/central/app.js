@@ -1147,14 +1147,19 @@ function desenharObservados() {
 }
 
 // --------------------------------------------- alertas, notificações, auditoria
-// ======================================================= sites no Chrome
-// O Terminal avisa quando a atendente abre no Chrome um site que não é operacional; o TI libera ou bloqueia.
-function decidirChrome(botao, host, decisao) {
-  const liberar = decisao === 'allow';
-  return agir(botao, () => api('POST', '/chrome-sites/decide', { host, decision: decisao }), {
-    recarregar: ['chrome', 'alerts'],
-    ok: liberar ? `${texto(host)} foi liberado no Chrome. O Terminal para de avisar.` : `${texto(host)} foi bloqueado no Chrome de todas as atendentes.`,
-  });
+// ======================================================= sites nos navegadores
+// O Terminal avisa quando a atendente abre num navegador um site que não é operacional. O TI libera ou bloqueia
+// só para aquela atendente ou para todas; a decisão de uma atendente vale mais que a decisão para todas.
+const nomeChrome = (c) => { const d = c.deviceId && maquina(c.deviceId); return d ? nomeDe(d) : texto(c.deviceLabel) || 'a atendente'; };
+// "Vale para" escolhido em cada linha esperando decisão (sobrevive à atualização da tabela a cada 4 s).
+const quemChrome = {};
+function decidirChrome(botao, host, decisao, deviceId = null, quem = '') {
+  const corpo = { host, decision: decisao };
+  if (deviceId) corpo.deviceId = deviceId;
+  const para = deviceId ? `só para ${quem}` : 'para todas as atendentes';
+  const ok = decisao === 'reset' ? `${texto(host)}: ${quem} volta a seguir a decisão para todas.`
+    : decisao === 'allow' ? `${texto(host)} foi liberado ${para}.` : `${texto(host)} foi bloqueado ${para}.`;
+  return agir(botao, () => api('POST', '/chrome-sites/decide', corpo), { recarregar: ['chrome', 'alerts'], ok });
 }
 function desenharChrome() {
   const permite = pode('apps.websites.manage');
@@ -1162,52 +1167,85 @@ function desenharChrome() {
   const pendentes = lista.filter((c) => c.status === 'pending'), decididos = lista.filter((c) => c.status !== 'pending');
   const espera = situacaoLista('chrome');
   $('chrome-frase').textContent = espera || (pendentes.length
-    ? `${plural(pendentes.length, 'site espera', 'sites esperam')} a sua decisão. Enquanto você não decide, o site continua abrindo.`
-    : 'Nenhum site esperando decisão. Quando uma atendente abrir no Chrome um site fora da lista, ele aparece aqui.');
+    ? `${plural(pendentes.length, 'pedido espera', 'pedidos esperam')} a sua decisão. Enquanto você não decide, o site continua como está: abrindo, ou bloqueado se já estava bloqueado para todas.`
+    : 'Nenhum site esperando decisão. Quando uma atendente abrir num navegador um site fora da lista, ele aparece aqui com o nome dela.');
   $('chrome-novo').hidden = !permite;
-  if (!mudou('chrome', [S.chrome, S.erro.chrome, permite, new Date().toDateString()])) return;
+
+  // Atendentes do formulário "Decidir um domínio" (mantém a escolha atual).
+  const seletor = $('chrome-quem'), atual = seletor.value;
+  const maquinas = aprovadas().map((d) => [d.id, nomeDe(d)]).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+  if (mudou('chrome-quem', maquinas)) {
+    trocar(seletor, [el('option', { value: 'all', textContent: 'Todas as atendentes' }), ...maquinas.map(([id, nome]) => el('option', { value: id, textContent: `Só ${nome}` }))]);
+    seletor.value = maquinas.some(([id]) => id === atual) ? atual : 'all';
+  }
+
+  if (!mudou('chrome', [S.chrome, S.erro.chrome, permite, maquinas, new Date().toDateString()])) return;
 
   const cabecalho = (colunas) => el('thead', {}, el('tr', {}, ...colunas.map((t) => (t ? el('th', { textContent: t, scope: 'col' }) : el('th', { scope: 'col', className: 'estreita' }, el('span', { className: 'so-leitor', textContent: 'Ações' }))))));
   const linhaUnica = (n, mensagem) => el('tbody', {}, el('tr', {}, el('td', { colSpan: n, className: 'vazio', textContent: mensagem })));
   const tempo = (min) => (!min ? 'menos de 1 min' : min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`);
-  const botao = (c, decisao) => {
-    const liberar = decisao === 'allow';
-    const b = el('button', { type: 'button', className: liberar ? 'btn claro p' : 'btn perigo p', 'data-k': `chrome:${decisao}:${c.host}` }, ic(liberar ? 'check' : 'lock', 16), liberar ? 'Liberar' : 'Bloquear');
-    b.setAttribute('aria-label', `${liberar ? 'Liberar' : 'Bloquear'} ${texto(c.host)} no Chrome`);
-    b.onclick = () => decidirChrome(b, c.host, decisao);
+  const chave = (c) => `${c.scope}:${c.deviceId || ''}:${c.host}`;
+  // escopo(): devolve o deviceId (só ela) ou null (todas) no momento do clique.
+  const botao = (c, decisao, escopo, quem) => {
+    const liberar = decisao === 'allow', voltar = decisao === 'reset';
+    const b = el('button', { type: 'button', className: voltar || liberar ? 'btn claro p' : 'btn perigo p', 'data-k': `chrome:${decisao}:${chave(c)}` },
+      ic(voltar ? 'x' : liberar ? 'check' : 'lock', 16), voltar ? 'Tirar' : liberar ? 'Liberar' : 'Bloquear');
+    b.setAttribute('aria-label', voltar ? `Tirar a decisão de ${texto(c.host)} só para ${quem}` : `${liberar ? 'Liberar' : 'Bloquear'} ${texto(c.host)}`);
+    if (voltar) b.title = `Tira a decisão só para ${quem}: volta a valer a decisão para todas.`;
+    b.onclick = () => decidirChrome(b, c.host, decisao, escopo(), quem);
     return b;
   };
   const acoes = (...botoes) => el('td', { className: 'estreita' }, permite ? el('div', { style: 'display:flex;gap:8px' }, ...botoes) : null);
-  const nada = '\u2014';
+  const nada = '—';
 
-  const colP = ['Domínio', 'Último computador', 'Vezes', 'Tempo aberto', 'Última vez', ''];
-  trocar($('tb-chrome-pendentes'), [cabecalho(colP), espera ? linhaUnica(colP.length, espera) : !pendentes.length ? linhaUnica(colP.length, 'Tudo decidido.') : el('tbody', {}, ...pendentes.map((c) => el('tr', {},
-    el('td', {}, el('span', { className: 'dominio', textContent: texto(c.host) })),
-    el('td', { textContent: texto(c.deviceLabel) || nada }),
-    el('td', { className: 'num', textContent: texto(c.visits) }),
-    el('td', { className: 'num', textContent: tempo(c.minutes) }),
-    el('td', { textContent: c.lastAt ? quando(c.lastAt) : nada }),
-    acoes(botao(c, 'block'), botao(c, 'allow')))))]);
+  const colP = ['Domínio', 'Atendente', 'Navegador', 'Vezes', 'Tempo aberto', 'Última vez', 'Vale para', ''];
+  trocar($('tb-chrome-pendentes'), [cabecalho(colP), espera ? linhaUnica(colP.length, espera) : !pendentes.length ? linhaUnica(colP.length, 'Tudo decidido.') : el('tbody', {}, ...pendentes.map((c) => {
+    const quem = nomeChrome(c), k = chave(c);
+    const ela = c.scope === 'device' && c.deviceId;
+    let vale = null;
+    if (ela) {
+      vale = el('select', { className: 'campo', 'data-k': `chrome-vale:${k}` },
+        el('option', { value: 'one', textContent: `Só ${quem}` }), el('option', { value: 'all', textContent: 'Todas as atendentes' }));
+      vale.setAttribute('aria-label', `Para quem vale a decisão sobre ${texto(c.host)}`);
+      vale.value = quemChrome[k] || 'one';
+      vale.disabled = !permite;
+      vale.onchange = () => { quemChrome[k] = vale.value; };
+    }
+    const escopo = () => (ela && (quemChrome[k] || 'one') === 'one' ? c.deviceId : null);
+    return el('tr', {},
+      el('td', {}, el('span', { className: 'dominio', textContent: texto(c.host) }),
+        c.blockedForAll ? el('div', { style: 'margin-top:4px' }, selo('bloqueado', 'Bloqueado para todas: ela pediu')) : null),
+      el('td', { textContent: c.deviceLabel ? quem : nada }),
+      el('td', { textContent: texto(c.browser) || nada }),
+      el('td', { className: 'num', textContent: texto(c.visits) }),
+      el('td', { className: 'num', textContent: tempo(c.minutes) }),
+      el('td', { textContent: c.lastAt ? quando(c.lastAt) : nada }),
+      el('td', {}, vale || 'Todas as atendentes'),
+      acoes(botao(c, 'block', escopo, quem), botao(c, 'allow', escopo, quem)));
+  }))]);
 
-  const colD = ['Domínio', 'Situação', 'Decidido por', 'Quando', 'Último computador', ''];
+  const colD = ['Domínio', 'Vale para', 'Situação', 'Decidido por', 'Quando', ''];
   trocar($('tb-chrome-decididos'), [cabecalho(colD), espera ? linhaUnica(colD.length, espera) : !decididos.length ? linhaUnica(colD.length, 'Nenhum domínio decidido ainda.') : el('tbody', {}, ...decididos.map((c) => {
-    const bloqueado = c.status === 'blocked';
+    const bloqueado = c.status === 'blocked', ela = c.scope === 'device' && c.deviceId, quem = nomeChrome(c);
+    const escopo = () => (ela ? c.deviceId : null);
     return el('tr', {},
       el('td', {}, el('span', { className: 'dominio', textContent: texto(c.host) })),
+      el('td', { textContent: ela ? `Só ${quem}` : 'Todas as atendentes' }),
       el('td', {}, bloqueado ? selo('bloqueado', 'Bloqueado') : selo('online', 'Liberado')),
       el('td', { textContent: texto(c.decidedBy) || nada }),
       el('td', { textContent: c.decidedAt ? quando(c.decidedAt) : nada }),
-      el('td', { textContent: texto(c.deviceLabel) || nada }),
-      acoes(botao(c, bloqueado ? 'allow' : 'block')));
+      ela ? acoes(botao(c, bloqueado ? 'allow' : 'block', escopo, quem), botao(c, 'reset', escopo, quem))
+        : acoes(botao(c, bloqueado ? 'allow' : 'block', escopo, quem)));
   }))]);
 }
 $('chrome-novo').addEventListener('submit', (e) => {
   e.preventDefault();
   const decisao = e.submitter && e.submitter.dataset.decisao;
   const campo = $('chrome-dominio'), host = campo.value.trim();
+  const id = $('chrome-quem').value, d = id !== 'all' ? maquina(id) : null;
   if (!decisao) return;
   if (!host) { recado('Escreva o domínio, por exemplo jogos.com.', true); campo.focus(); return; }
-  decidirChrome(e.submitter, host, decisao).then((feito) => { if (feito) campo.value = ''; });
+  decidirChrome(e.submitter, host, decisao, d ? id : null, d ? nomeDe(d) : '').then((feito) => { if (feito) campo.value = ''; });
 });
 
 function desenharAlertas() {

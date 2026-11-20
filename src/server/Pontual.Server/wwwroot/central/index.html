@@ -93,7 +93,7 @@
     <nav class="menu" aria-label="Seções">
       <button type="button" data-secao="visao" aria-current="page">Visão geral</button>
       <button type="button" data-secao="apps">Sites e programas</button>
-      <button type="button" data-secao="chrome">Sites no Chrome<span class="conta" id="conta-chrome" hidden></span></button>
+      <button type="button" data-secao="chrome">Sites nos navegadores<span class="conta" id="conta-chrome" hidden></span></button>
       <button type="button" data-secao="alertas">Alertas<span class="conta" id="conta-alertas" hidden></span></button>
       <button type="button" data-secao="notificacoes">Notificações<span class="conta azul" id="conta-notif" hidden></span></button>
       <button type="button" data-secao="assistente">Assistente</button>
@@ -167,17 +167,18 @@
     </section>
 
     <section data-painel="chrome" hidden aria-labelledby="t-chrome">
-      <div class="abertura baixa"><h1 id="t-chrome">Sites no Chrome</h1><p>As atendentes usam o Google Chrome com vários perfis, um WhatsApp em cada. Quando uma delas abre um site que não é operacional, o Terminal avisa aqui, sem mostrar nada para ela. Você decide se o site fica liberado ou bloqueado; a decisão vale para todos os computadores e para os subdomínios.</p></div>
+      <div class="abertura baixa"><h1 id="t-chrome">Sites nos navegadores</h1><p>As atendentes usam navegadores (Google Chrome, Microsoft Edge, Opera ou Mozilla Firefox) com vários perfis, um WhatsApp em cada. Quando uma delas abre um site que não é operacional, o Terminal avisa aqui, com o nome dela e o navegador, sem mostrar nada para ela. Você decide se o site fica liberado ou bloqueado só para ela ou para todas as atendentes; a decisão vale também para os subdomínios. A decisão de uma atendente vale mais que a decisão para todas: o YouTube pode estar bloqueado para todas e liberado só para uma.</p></div>
       <div class="quadro">
         <div class="quadro-topo"><div><h2>Esperando decisão</h2><p id="chrome-frase"></p></div></div>
         <div class="rolagem-x"><table id="tb-chrome-pendentes"></table></div>
       </div>
       <div class="quadro depois">
         <div class="quadro-topo">
-          <div><h2>Já decididos</h2><p>Mude a decisão quando quiser. O bloqueio chega ao Chrome das atendentes em até meio minuto.</p></div>
+          <div><h2>Já decididos</h2><p>Mude a decisão quando quiser. O bloqueio chega aos navegadores das atendentes em até meio minuto.</p></div>
         </div>
         <form class="ferramentas" id="chrome-novo" novalidate>
           <label class="busca"><span data-ic="globe"></span><input class="campo" id="chrome-dominio" placeholder="Decidir um domínio, ex.: jogos.com" aria-label="Domínio para liberar ou bloquear" autocomplete="off" spellcheck="false"></label>
+          <select class="campo" id="chrome-quem" aria-label="Para quem vale a decisão"><option value="all">Todas as atendentes</option></select>
           <button type="submit" class="btn perigo" data-decisao="block"><span data-ic="lock"></span>Bloquear</button>
           <button type="submit" class="btn claro" data-decisao="allow"><span data-ic="check"></span>Liberar</button>
         </form>

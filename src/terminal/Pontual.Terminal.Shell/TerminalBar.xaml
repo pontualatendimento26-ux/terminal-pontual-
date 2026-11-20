@@ -77,7 +77,7 @@
                                 <Path Data="M12 4v11M7 10l5 5 5-5M5 20h14" Stroke="{StaticResource Tinta}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
                             </Canvas>
                         </Viewbox>
-                        <TextBlock Text="Atualizar" VerticalAlignment="Center" />
+                        <TextBlock x:Name="UpdateText" Text="Atualizar" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
                 <TextBlock x:Name="ClockText" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource Tinta}" VerticalAlignment="Center" Margin="0,0,10,0" Text="--:--" />

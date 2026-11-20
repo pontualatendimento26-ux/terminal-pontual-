@@ -79,8 +79,9 @@ public static class NeuralEndpoints
         fileError = s.FileError,
     };
 
-    private static async Task<IResult> OverviewAsync(PontualDb db, IConfiguration configuration, CancellationToken ct)
+    private static async Task<IResult> OverviewAsync(PontualDb db, IConfiguration configuration, TimeProvider time, CancellationToken ct)
     {
+        var now = time.GetUtcNow().UtcDateTime;
         // Só os campos de cadastro; o texto de cada conhecimento é buscado quando ele é aberto.
         var items = await db.AssistantScripts.AsNoTracking().OrderBy(s => s.Title)
             .Select(s => new
@@ -103,7 +104,8 @@ public static class NeuralEndpoints
             .ToDictionaryAsync(i => i.DeviceId, ct);
         var waiting = await AssistantAnalysis.PendingAsync(db, ct);
         var whatsapp = await AssistantAnalysis.WhatsAppPendingAsync(db, ct);
-        var coverage = await db.AssistantProfiles.AsNoTracking().Where(p => p.Coverage != "").ToDictionaryAsync(p => p.DeviceId, p => p.Coverage, ct);
+        var coverage = await db.AssistantProfiles.AsNoTracking()
+            .Select(p => new { p.DeviceId, p.Coverage, p.CoverageSchedule, p.AbsentOn }).ToDictionaryAsync(p => p.DeviceId, ct);
         var coveragePending = await db.CoverageReplies.AsNoTracking().Where(r => r.Status == CoverageStatus.Pending)
             .GroupBy(r => r.DeviceId).Select(g => new { DeviceId = g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.DeviceId, g => g.Count, ct);
         var devices = await db.Devices.AsNoTracking().Where(d => d.Approved).OrderBy(d => d.AttendantName).ThenBy(d => d.Hostname).ToListAsync(ct);
@@ -131,6 +133,7 @@ public static class NeuralEndpoints
             {
                 usage.TryGetValue(d.Id, out var used);
                 insights.TryGetValue(d.Id, out var insight);
+                coverage.TryGetValue(d.Id, out var covered);
                 return new
                 {
                     deviceId = d.Id,
@@ -143,7 +146,11 @@ public static class NeuralEndpoints
                     messagesAnalyzed = insight?.MessagesAnalyzed ?? 0,
                     newMessages = waiting.GetValueOrDefault(d.Id),
                     whatsappPending = whatsapp.GetValueOrDefault(d.Id),
-                    coverage = coverage.GetValueOrDefault(d.Id, ""),
+                    coverage = covered?.Coverage ?? "",
+                    absent = covered?.AbsentOn == Coverage.Day(now),
+                    // Dias e horários em que a IA pode atender por ela, e se agora está dentro deles.
+                    schedule = CoverageEndpoints.ScheduleDto(covered?.CoverageSchedule),
+                    coverageNow = Coverage.WithinHours(now, covered?.CoverageSchedule),
                     coveragePending = coveragePending.GetValueOrDefault(d.Id),
                 };
             }),
@@ -817,7 +824,7 @@ public static class NeuralEndpoints
 
     // ------------------------------------------------------------------ atendentes
 
-    private static async Task<IResult> AttendantAsync(Guid deviceId, HttpContext context, PontualDb db, AuditWriter audit, CancellationToken ct)
+    private static async Task<IResult> AttendantAsync(Guid deviceId, HttpContext context, PontualDb db, AuditWriter audit, TimeProvider time, CancellationToken ct)
     {
         var admin = context.Admin();
         // O perfil é leitura de uso individual: vale a mesma regra das conversas, com registro de quem leu.
@@ -882,7 +889,7 @@ public static class NeuralEndpoints
             feedback = new { helpful, notHelpful },
             suggestions,
             instructions,
-            coverage = await CoverageEndpoints.ListAsync(db, deviceId, ct),
+            coverage = await CoverageEndpoints.ListAsync(db, deviceId, time.GetUtcNow().UtcDateTime, ct),
         });
     }
 

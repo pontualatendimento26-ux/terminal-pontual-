@@ -687,15 +687,15 @@ public partial class MainWindow : Window
         var api = _api!;
         try
         {
-            var heartbeat = await api.HeartbeatAsync(AppsInUse(), _sessionStartedAt, ct, Short(CurrentVersion));
+            var heartbeat = await api.HeartbeatAsync(AppsInUse(), _sessionStartedAt, ct, Short(CurrentVersion), _coverageStatus);
             _online = true;
             _state = heartbeat.State;
             _maintenance = heartbeat.Maintenance;
             _observationMode = heartbeat.ObservationMode;
             _assistantEnabled = heartbeat.Assistant;
             UpdateWhatsAppLearning(heartbeat.WhatsAppLearning);
-            UpdateCoverage(heartbeat.Coverage ?? "");
-            _ = AutoUpdateAsync();
+            UpdateCoverage(heartbeat.Coverage ?? "", heartbeat.CoverageNow);
+            _ = CheckForUpdateAsync();
             if (!string.IsNullOrWhiteSpace(heartbeat.AttendantName))
             {
                 _attendantName = heartbeat.AttendantName;
@@ -1367,12 +1367,14 @@ public partial class MainWindow : Window
 
     // ------------------------------------------------------------------ programas instalados
 
-    private void StartProgram(ConfigItem item)
+    /// <summary>Abre o programa (ou traz para a frente). Devolve null se abriu, ou o motivo de não ter aberto.</summary>
+    /// <param name="argument">Endereço passado ao navegador (pesquisa pedida pela assistente).</param>
+    private string? StartProgram(ConfigItem item, string? argument = null)
     {
-        if (_programs.TryGetValue(item.Id, out var running))
+        if (argument is null && _programs.TryGetValue(item.Id, out var running))
         {
             BringToFront(running);
-            return;
+            return null;
         }
 
         // Confere de novo no cliente: só o caminho que veio na configuração, e nunca os recusados do contrato.
@@ -1380,23 +1382,29 @@ public partial class MainWindow : Window
         {
             Log.Info($"Programa recusado pelo terminal: {item.Target}");
             ShowToast($"{item.Name} não pode ser aberto neste computador. Chame o TI.");
-            return;
+            return $"{item.Name} não pode ser aberto neste computador. Chame o TI.";
         }
 
         if (!File.Exists(item.Target))
         {
             ShowToast($"{item.Name} não está instalado neste computador. Chame o TI.");
-            return;
+            return $"{item.Name} não está instalado neste computador. Chame o TI.";
         }
 
         Process? process;
         try
         {
-            process = Process.Start(new ProcessStartInfo(item.Target)
+            var start = new ProcessStartInfo(item.Target)
             {
                 UseShellExecute = false,
                 WorkingDirectory = Path.GetDirectoryName(item.Target) ?? "",
-            });
+            };
+            if (argument is not null)
+            {
+                start.ArgumentList.Add(argument);
+            }
+
+            process = Process.Start(start);
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
         {
@@ -1407,7 +1415,14 @@ public partial class MainWindow : Window
         if (process is null)
         {
             ShowToast($"Não foi possível abrir {item.Name}. Chame o TI.");
-            return;
+            return $"Não foi possível abrir {item.Name}. Chame o TI.";
+        }
+
+        if (_programs.ContainsKey(item.Id))
+        {
+            // Navegador já aberto: a pesquisa vira uma aba nova nele, e o processo novo sai sozinho.
+            process.Dispose();
+            return null;
         }
 
         var program = new RunningProgram(item, process);
@@ -1422,6 +1437,8 @@ public partial class MainWindow : Window
         {
             OnProgramExited(program);
         }
+
+        return null;
     }
 
     private void OnProgramExited(RunningProgram program)

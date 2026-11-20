@@ -52,9 +52,9 @@ public sealed class ServerApi : IDisposable
         return response;
     }
 
-    public async Task<HeartbeatResponse> HeartbeatAsync(IEnumerable<string> appsInUse, DateTimeOffset sessionStartedAt, CancellationToken ct = default, string? version = null)
+    public async Task<HeartbeatResponse> HeartbeatAsync(IEnumerable<string> appsInUse, DateTimeOffset sessionStartedAt, CancellationToken ct = default, string? version = null, string? coverageStatus = null)
     {
-        var body = new { appsInUse = appsInUse.ToArray(), sessionStartedAt = sessionStartedAt.ToUniversalTime(), version };
+        var body = new { appsInUse = appsInUse.ToArray(), sessionStartedAt = sessionStartedAt.ToUniversalTime(), version, coverageStatus };
         var response = await PostAsync<HeartbeatResponse>("device/heartbeat", body, ct).ConfigureAwait(false);
         return response with { State = response.State ?? "" };
     }

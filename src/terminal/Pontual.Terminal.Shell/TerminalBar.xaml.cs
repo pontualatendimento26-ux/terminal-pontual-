@@ -65,6 +65,16 @@ public partial class TerminalBar : UserControl
     /// <summary>O botão Atualizar só aparece no modo bloqueado e cadastrado numa Central (é de lá que vem a versão nova).</summary>
     internal void ShowUpdate(bool show) => UpdateButton.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>Com versão nova publicada na Central, o botão fica verde e diz a versão; nada é instalado sem o clique.</summary>
+    internal void SetUpdateAvailable(string? version)
+    {
+        UpdateButton.Style = (Style)FindResource(version is null ? "BotaoClaro" : "BotaoVerde");
+        UpdateText.Text = version is null ? "Atualizar" : $"Atualizar para {version}";
+        UpdateButton.ToolTip = version is null
+            ? "Instala a versão nova do Terminal e reinicia o computador"
+            : $"Tem uma versão nova do Terminal ({version}). Clique quando puder: o Terminal reinicia em cerca de 1 minuto.";
+    }
+
     internal void SetClock(string text) => ClockText.Text = text;
 
     internal void SetAttendant(string name)

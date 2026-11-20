@@ -25,6 +25,7 @@ const IC = {
   elo: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   baixar: '<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>', enviar: '<path d="M12 16V5M7 9l5-5 5 5M5 20h14"/>',
   mira: '<circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
+  relogio: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   raio: '<path d="M13 3 5 13h6l-1 8 8-10h-6l1-8Z"/>', abrir: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
 };
 function ic(nome, tam = 18) {
@@ -84,6 +85,7 @@ const VISTAS = {
   roteiros: ['Roteiros', 'Os roteiros operacionais que a IA segue para responder.'],
   documentos: ['Documentos', 'PDF, DOCX e TXT: o texto é extraído e entra na base.'],
   aprendizado: ['Aprendizado das atendentes', 'O que as conversas ensinam. Nada vira fonte oficial sem a sua aprovação.'],
+  horarios: ['Horários da IA', 'Os dias e os horários em que a IA pode atender os clientes no lugar de cada atendente.'],
   base: ['Base de Conhecimento', 'Tudo o que a IA possui, em um só lugar.'],
   visao: ['Visão Geral', 'Os números reais do cérebro da IA.'],
 };
@@ -92,6 +94,7 @@ const VISTAS = {
 const E = {
   eu: null, d: null, vista: 'mapa', mapa: null, gaveta: null,
   ocultos: new Set(), estadoMapa: '', listas: {}, sugestoes: null, situacao: 'pending',
+  horarios: new Map(), // horários mexidos e ainda não salvos, por máquina
   itemAberto: null, ligando: null, ligarEscolha: null, sugestaoAberta: null, substituir: null, envios: [],
 };
 const item = (id) => (E.d ? E.d.items.find((i) => i.id === id) : null) || null;
@@ -197,6 +200,7 @@ function desenhar() {
   else if (E.vista === 'documentos') desenharLista('documentos');
   else if (E.vista === 'base') desenharLista('base');
   else if (E.vista === 'aprendizado') desenharAprendizado();
+  else if (E.vista === 'horarios') desenharHorarios();
   else if (E.vista === 'visao') desenharVisao();
 }
 
@@ -457,34 +461,58 @@ async function gavetaAtendente(deviceId) {
 // ============================================================= cobertura de ausência
 // Quando a atendente falta, a assistente responde os clientes dela no WhatsApp, como ela. O simples vai
 // sozinho; o que envolve dinheiro fica aqui esperando aprovação. "Ensaio" escreve as respostas sem enviar.
-const MODOS_COBERTURA = { '': 'Desligada', test: 'Ensaio', on: 'Ligada' };
+// Como a IA age no dia em que a atendente faltou. Fora da falta marcada ela nunca responde por ninguém.
+const MODOS_COBERTURA = { on: 'Responde e envia', test: 'Ensaio (só escreve)' };
 const SITUACAO_COBERTURA = {
   draft: ['Ensaio (não enviada)', 'liso'], pending: ['Esperando aprovação', 'pending'], approved: ['Aprovada, enviando', 'approved'],
   sending: ['Enviando', 'approved'], sent: ['Enviada', 'active'], rejected: ['Recusada', 'rejected'], failed: ['Não saiu', 'error'], skipped: ['Sem resposta', 'disabled'],
 };
 const DECISAO_COBERTURA = { send: 'a IA enviaria sozinha', queue: 'pede aprovação', none: 'não precisava responder' };
 
-function secaoCobertura(deviceId, a) {
-  const c = a.coverage || { mode: '', replies: [] };
-  const segmento = el('div', { className: 'segmento', role: 'group', 'aria-label': 'Cobertura de ausência' }, ...Object.entries(MODOS_COBERTURA).map(([modo, rotulo]) => {
-    const b = el('button', { type: 'button', textContent: rotulo, 'aria-pressed': String(c.mode === modo) });
+// Os três botões Desligada / Ensaio / Ligada. Usados na ficha da atendente e na aba Horários da IA.
+function segmentoCobertura(deviceId, nome, atual, depois) {
+  const efetivo = atual === 'test' ? 'test' : 'on';
+  return el('div', { className: 'segmento', role: 'group', 'aria-label': `No dia em que ${nome} faltar, a IA` }, ...Object.entries(MODOS_COBERTURA).map(([modo, rotulo]) => {
+    const b = el('button', { type: 'button', textContent: rotulo, 'aria-pressed': String(efetivo === modo) });
     b.onclick = async () => {
-      if (modo === c.mode) return;
-      if (modo === 'on' && !confirm(`Ligar a cobertura? A assistente vai abrir as conversas não lidas do WhatsApp de ${a.name} e responder sozinha, como ${a.name}, o que for simples. O que envolver valor, prazo ou proposta espera a sua aprovação aqui. Funciona de segunda a sexta, das 8h às 18h, com o WhatsApp aberto no Terminal desse computador.`)) return;
-      if (await agir(b, () => api('PUT', `/neural/attendants/${deviceId}/coverage`, { mode }), `Cobertura de ${a.name}: ${rotulo.toLowerCase()}.`)) gavetaAtendente(deviceId);
+      if (modo === efetivo) return;
+      if (await agir(b, () => api('PUT', `/neural/attendants/${deviceId}/coverage`, { mode: modo }), `Quando ${nome} faltar, a IA ${rotulo.toLowerCase()}.`) && depois) depois();
     };
     return b;
   }));
-  const explica = {
-    '': `Desligada: a assistente só ajuda quem está no computador. Ligue quando ${a.name} faltar.`,
-    test: 'Ensaio: a assistente lê as mensagens novas e escreve a resposta, mas nada vai para o cliente. Use para conferir antes de ligar.',
-    on: `Ligada: a assistente responde sozinha, como ${a.name}, o que é simples. O que envolve dinheiro espera aprovação abaixo, com um aviso curto ao cliente na hora.`,
-  }[c.mode];
+}
+
+// "Faltou hoje": a IA passa a responder pela atendente na hora, só no dia marcado.
+function botaoFalta(deviceId, nome, ausente, depois) {
+  const b = botao(ausente ? 'Desmarcar a falta' : `${nome} faltou hoje`, null, ausente ? 'btn claro' : 'btn');
+  b.title = ausente ? `A IA para de responder por ${nome}.` : `A IA responde os clientes de ${nome} no WhatsApp, hoje.`;
+  b.onclick = async () => {
+    if (!ausente && !confirm(`Marcar que ${nome} faltou hoje?\n\nA IA passa a abrir as conversas não lidas do WhatsApp de ${nome} e responder na hora, como ${nome}. O que envolver valor, prazo ou proposta espera a sua aprovação na ficha dela.\n\nVale só por hoje, nos horários da aba Horários da IA. O computador de ${nome} precisa estar ligado, com o Terminal e o WhatsApp abertos nele.`)) return;
+    if (await agir(b, () => api('PUT', `/neural/attendants/${deviceId}/absence`, { absent: !ausente }),
+      ausente ? `Falta de ${nome} desmarcada.` : `${nome} marcada como ausente hoje. A IA responde por ela.`) && depois) depois();
+  };
+  return b;
+}
+
+function secaoCobertura(deviceId, a) {
+  const c = a.coverage || { mode: '', replies: [] };
+  const segmento = segmentoCobertura(deviceId, a.name, c.mode, () => gavetaAtendente(deviceId));
+  const falta = botaoFalta(deviceId, a.name, c.absent, () => gavetaAtendente(deviceId));
+  const agenda = botao('Dias e horários', 'relogio'); agenda.onclick = () => ir('horarios');
+  const explica = c.mode === 'test'
+    ? `Ensaio: no dia da falta a assistente lê as mensagens novas e escreve a resposta, mas nada vai para o cliente. Use para conferir antes de deixar enviar.`
+    : `No dia da falta a assistente responde sozinha, como ${a.name}, o que é simples. O que envolve dinheiro espera aprovação abaixo, com um aviso curto ao cliente na hora.`;
   const pendentes = c.replies.filter((r) => r.status === 'pending' || r.status === 'failed');
   const outras = c.replies.filter((r) => !pendentes.includes(r)).slice(0, 25);
   return secao('Cobertura de ausência',
-    segmento,
+    el('div', { className: 'botoes' }, falta),
+    el('p', { className: 'nota', textContent: c.absent
+      ? `${a.name} faltou hoje: a IA está respondendo os clientes dela na hora, como se fosse ela. Amanhã volta sozinha ao normal.`
+      : `A IA só responde pelos clientes de ${a.name} no dia em que você marcar a falta. Se ${a.name} veio trabalhar e não está respondendo o WhatsApp, a IA não entra.` }),
+    el('h4', { textContent: `No dia em que ${a.name} faltar, a IA` }),
+    el('div', { className: 'botoes' }, segmento, agenda),
     el('p', { className: 'nota', textContent: explica }),
+    c.absent && c.status ? el('p', { className: 'nota', textContent: `Agora no computador: ${c.status}${c.statusAt ? ` (${quando(c.statusAt)})` : ''}` }) : null,
     pendentes.length ? el('h4', { textContent: `Esperando aprovação (${pendentes.length})` }) : null,
     ...pendentes.map((r) => cartaoCobertura(deviceId, r, true)),
     outras.length ? el('h4', { textContent: 'Últimas respostas' }) : null,
@@ -513,6 +541,66 @@ function cartaoCobertura(deviceId, r, editavel) {
   if (r.error) partes.push(el('p', { className: 'erro', textContent: r.error }));
   partes.push(el('details', {}, el('summary', { textContent: 'Ver a conversa como estava' }), el('div', { className: 'citacao', textContent: r.transcript })));
   return el('div', { className: 'sugestao' }, ...partes);
+}
+
+// ================================================================ horários da IA
+// Em que dias e horários a IA pode atender os clientes no lugar de cada atendente (a cobertura de ausência).
+// O servidor manda sete dias por atendente, na posição do dia da semana (0 = domingo); a tela começa na segunda.
+const DIAS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+const ORDEM_DIAS = [1, 2, 3, 4, 5, 6, 0];
+const mesmosDias = (a, b) => a.every((x, i) => x.on === b[i].on && (!x.on || (x.from === b[i].from && x.to === b[i].to)));
+const corpoHorario = (dias) => ({ days: dias.map((x, day) => ({ day, on: x.on, from: x.from, to: x.to })) });
+
+function desenharHorarios() {
+  const cartoes = E.d.attendants.map(cartaoHorario);
+  $('v-horarios').replaceChildren(
+    el('div', { className: 'cartao' }, el('div', { className: 'cartao-topo' }, el('div', {},
+      el('h2', { textContent: 'Quando a IA pode atender por cada atendente' }),
+      el('p', { textContent: 'Marque os dias e escreva o horário de cada atendente. A IA só responde os clientes dela no WhatsApp no dia em que você marcar a falta dela na Central Neural, e dentro do horário marcado aqui; fora disso ela não abre nem responde nada. Os horários são de Brasília e a mudança chega ao Terminal em menos de um minuto.' })))),
+    cartoes.length ? el('div', { className: 'horarios' }, ...cartoes) : vazio('Nenhuma atendente ainda', 'As máquinas aprovadas na Central do TI aparecem aqui.'));
+}
+
+function cartaoHorario(a) {
+  const salvo = a.schedule, dias = E.horarios.get(a.deviceId) || salvo.map((x) => ({ ...x }));
+  const salvar = botao('Salvar', null, 'btn mini'), desfazer = botao('Desfazer', null), copiar = botao('Usar em todas', null);
+  const situacao = el('p', { className: 'nota' });
+  const atualizar = () => {
+    const mudou = !mesmosDias(dias, salvo);
+    if (mudou) E.horarios.set(a.deviceId, dias); else E.horarios.delete(a.deviceId);
+    salvar.disabled = desfazer.disabled = !mudou;
+    situacao.textContent = mudou ? 'Há mudanças ainda não salvas neste cartão.'
+      : !dias.some((x) => x.on) ? 'Nenhum dia marcado: a IA não atende por ela, mesmo no dia em que faltar.'
+      : !a.absent ? 'Estes horários valem no dia em que você marcar que ela faltou.'
+      : a.coverageNow ? (a.coverage === 'test' ? 'Faltou hoje e está dentro do horário: a IA está escrevendo as respostas em ensaio, sem enviar.' : 'Faltou hoje e está dentro do horário: a IA está atendendo por ela.')
+      : 'Faltou hoje, mas agora está fora do horário: a IA não está atendendo por ela.';
+  };
+  const linhas = ORDEM_DIAS.map((n) => {
+    const dia = dias[n];
+    const marca = el('input', { type: 'checkbox', checked: dia.on });
+    const de = el('input', { type: 'time', className: 'campo', value: dia.from, disabled: !dia.on, 'aria-label': `${DIAS[n]} de ${a.name}: início` });
+    const ate = el('input', { type: 'time', className: 'campo', value: dia.to, disabled: !dia.on, 'aria-label': `${DIAS[n]} de ${a.name}: fim` });
+    const linha = el('div', { className: `dia${dia.on ? '' : ' fora'}` }, el('label', {}, marca, DIAS[n]), de, el('span', { textContent: 'até' }), ate);
+    marca.onchange = () => { dia.on = marca.checked; de.disabled = ate.disabled = !dia.on; linha.classList.toggle('fora', !dia.on); atualizar(); };
+    de.onchange = () => { dia.from = de.value; atualizar(); };
+    ate.onchange = () => { dia.to = ate.value; atualizar(); };
+    return linha;
+  });
+  salvar.onclick = () => agir(salvar, () => api('PUT', `/neural/attendants/${a.deviceId}/coverage/schedule`, corpoHorario(dias)), `Horários de ${a.name} salvos.`);
+  desfazer.onclick = () => { E.horarios.delete(a.deviceId); desenharHorarios(); };
+  copiar.hidden = E.d.attendants.length < 2;
+  copiar.onclick = async () => {
+    if (!(await confirmar({ titulo: `Usar os horários de ${a.name} em todas?`, texto: `Os dias e horários deste cartão passam a valer para as ${E.d.attendants.length} atendentes, no lugar dos que cada uma tem hoje. Isso não liga nem desliga a cobertura de ninguém.`, botao: 'Usar em todas' }))) return;
+    agir(copiar, async () => {
+      for (const outra of E.d.attendants) await api('PUT', `/neural/attendants/${outra.deviceId}/coverage/schedule`, corpoHorario(dias));
+      E.horarios.clear();
+    }, 'Horários aplicados a todas as atendentes.');
+  };
+  atualizar();
+  return el('div', { className: 'cartao' },
+    el('div', { className: 'cartao-topo' },
+      el('div', {}, el('h2', { textContent: a.name }), el('p', { textContent: a.hostname })),
+      segmentoCobertura(a.deviceId, a.name, a.coverage)),
+    el('div', { className: 'cartao-corpo' }, el('div', { className: 'dias' }, ...linhas), situacao, el('div', { className: 'botoes' }, salvar, desfazer, copiar)));
 }
 
 // Perfil tirado do histórico de atendimentos com clientes (importado de uma vez, não pela análise diária).
@@ -862,12 +950,14 @@ function desenharAprendizado() {
     const analisar = botao('Analisar agora', 'raio', 'btn mini'); analisar.disabled = !temNovo || !d.settings.hasKey;
     analisar.title = !d.settings.hasKey ? 'Cadastre a chave da IA primeiro.' : temNovo ? 'Lê só o que é novo e atualiza o perfil.' : 'Não há nada novo.';
     analisar.onclick = () => analisarAtendente(a.deviceId, a.name, analisar);
+    const falta = botaoFalta(a.deviceId, a.name, a.absent);
     return el('div', { className: 'pessoa' },
       el('div', {}, el('b', { textContent: a.name }), el('small', { textContent: `${plural(a.questions, 'pergunta', 'perguntas')} à assistente · ${a.newMessages ? plural(a.newMessages, 'fala nova', 'falas novas') : 'nenhuma fala nova'}` }),
         el('small', { textContent: a.whatsappPending ? `${plural(a.whatsappPending, 'conversa de WhatsApp', 'conversas de WhatsApp')} na fila da análise` : 'Nenhuma conversa de WhatsApp na fila' }),
         el('small', { textContent: a.hasProfile ? `Perfil atualizado: ${quando(a.analyzedAt)}` : 'Perfil ainda não montado' }),
-        a.coverage ? el('small', { className: a.coveragePending ? 'aviso' : null, textContent: `Cobertura de ausência: ${MODOS_COBERTURA[a.coverage].toLowerCase()}${a.coveragePending ? ` · ${plural(a.coveragePending, 'resposta esperando', 'respostas esperando')} aprovação` : ''}` }) : null),
-      el('div', { className: 'botoes' }, analisar, ver));
+        a.absent ? el('small', { className: 'aviso', textContent: 'Faltou hoje: a IA está respondendo os clientes dela' }) : null,
+        a.coverage === 'test' || a.coveragePending ? el('small', { className: a.coveragePending ? 'aviso' : null, textContent: `${a.coverage === 'test' ? 'Na falta, a IA só escreve (ensaio)' : 'Cobertura de ausência'}${a.coveragePending ? ` · ${plural(a.coveragePending, 'resposta esperando', 'respostas esperando')} aprovação` : ''}` }) : null),
+      el('div', { className: 'botoes' }, falta, analisar, ver));
   });
 
   alvo.replaceChildren(numeros,

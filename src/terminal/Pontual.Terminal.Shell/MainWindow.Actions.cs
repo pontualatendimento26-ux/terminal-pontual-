@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using Pontual.Terminal.Ipc;
@@ -42,22 +43,37 @@ public partial class MainWindow
             return (false, $"\"{name}\" não está liberado neste Terminal. O TI pode liberar na Central.");
         }
 
+        if (item.IsProgram)
+        {
+            // O resultado real vai para a conversa: se o programa não abriu, a atendente fica sabendo ali.
+            return StartProgram(item) is { } failure ? (false, failure) : (true, $"Abri {item.Name}.");
+        }
+
         OpenItem(item.Id);
         return (true, $"Abri {item.Name}.");
     }
 
+    // Navegadores que podem receber a pesquisa, na ordem de preferência (pelo nome do executável).
+    private static readonly string[] Browsers = ["chrome.exe", "msedge.exe", "firefox.exe"];
+
     private (bool Ok, string Message) SearchGoogle(string query)
     {
-        var google = _config?.Items.FirstOrDefault(i => !i.IsProgram && Host(i.Target).Contains("google.", StringComparison.OrdinalIgnoreCase));
-        if (google is null)
-        {
-            return (false, "O Google não está liberado neste Terminal. O TI pode liberar na Central.");
-        }
-
         var address = "https://www.google.com/search?q=" + Uri.EscapeDataString(query.Trim());
-        if (_policy.Evaluate(address).Verdict != NavigationVerdict.Allowed)
+
+        // Só um site do próprio Google (google.com), não o Gmail nem outro serviço que tenha "google" no endereço.
+        var google = _config?.Items.FirstOrDefault(i => !i.IsProgram && IsGoogleSearch(Host(i.Target)));
+        if (google is null || _policy.Evaluate(address).Verdict != NavigationVerdict.Allowed)
         {
-            return (false, "A pesquisa no Google não está liberada neste Terminal. O TI pode liberar na Central.");
+            // Sem o site do Google liberado, a pesquisa abre no navegador liberado (Chrome, Edge ou Firefox).
+            var browser = Browsers
+                .Select(exe => _config?.Items.FirstOrDefault(i => i.IsProgram && Path.GetFileName(i.Target).Equals(exe, StringComparison.OrdinalIgnoreCase)))
+                .FirstOrDefault(i => i is not null);
+            if (browser is null)
+            {
+                return (false, "O Google não está liberado neste Terminal. O TI pode liberar na Central.");
+            }
+
+            return StartProgram(browser, address) is { } failure ? (false, failure) : (true, $"Pesquisei no Google: {query.Trim()}");
         }
 
         if (_tabs.FirstOrDefault(t => t.Id == google.Id && !t.IsClosed) is { } tab)
@@ -98,6 +114,10 @@ public partial class MainWindow
         var decomposed = text.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
         return new string(decomposed.Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).ToArray());
     }
+
+    private static bool IsGoogleSearch(string host) =>
+        host.Equals("google.com", StringComparison.OrdinalIgnoreCase) || host.Equals("www.google.com", StringComparison.OrdinalIgnoreCase)
+        || host.Equals("google.com.br", StringComparison.OrdinalIgnoreCase) || host.Equals("www.google.com.br", StringComparison.OrdinalIgnoreCase);
 
     private static string Host(string target) => Uri.TryCreate(target, UriKind.Absolute, out var uri) ? uri.Host : "";
 }
