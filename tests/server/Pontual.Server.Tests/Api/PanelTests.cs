@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Pontual.Server.Api;
 using Pontual.Server.Data;
 
 namespace Pontual.Server.Tests.Api;
@@ -77,6 +78,42 @@ public sealed class PanelTests
     }
 
     [Fact]
+    public async Task Cinco_senhas_erradas_bloqueiam_a_conta_mesmo_com_a_senha_certa()
+    {
+        using var app = new TestApp();
+        await app.OwnerAsync();
+        var anonymous = app.Panel();
+
+        for (var i = 0; i < LoginLockout.MaxFailures; i++)
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsJsonAsync("/api/v1/auth/login",
+                new { email = TestApp.OwnerEmail, password = "senha-errada-000" })).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await anonymous.PostAsJsonAsync("/api/v1/auth/login",
+            new { email = TestApp.OwnerEmail, password = TestApp.Password })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Lida_vale_so_para_quem_abriu_as_notificacoes()
+    {
+        using var app = new TestApp();
+        var owner = await app.OwnerAsync();
+        var bia = await app.AdminAsync(owner, "Bia", "admin");
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Pontual.Server.Data.PontualDb>();
+            db.Notifications.Add(new Pontual.Server.Data.Notification { At = DateTime.UtcNow, Text = "teste" });
+            await db.SaveChangesAsync();
+        }
+
+        await owner.PostAsync("/api/v1/notifications/read", null);
+
+        Assert.True((await owner.GetAsync("/api/v1/notifications").Json())[0].GetProperty("read").GetBoolean());
+        Assert.False((await bia.GetAsync("/api/v1/notifications").Json())[0].GetProperty("read").GetBoolean());
+    }
+
+    [Fact]
     public async Task Conta_pela_tela_de_login_exige_superadministrador()
     {
         using var app = new TestApp();
@@ -101,17 +138,18 @@ public sealed class PanelTests
 
         Assert.Equal(HttpStatusCode.NoContent,
             (await anonymous.PostAsJsonAsync("/api/v1/auth/register", Body("nova@pontual.test", "admin", TestApp.OwnerEmail))).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent,
+        // Superadministrador não nasce pela tela de login, só de dentro do painel.
+        Assert.Equal(HttpStatusCode.Forbidden,
             (await anonymous.PostAsJsonAsync("/api/v1/auth/register", Body("chefe@pontual.test", "superadmin", TestApp.OwnerEmail))).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict,
             (await anonymous.PostAsJsonAsync("/api/v1/auth/register", Body("nova@pontual.test", "admin", TestApp.OwnerEmail))).StatusCode);
 
-        // Criar a conta não abre sessão; as contas novas entram com a própria senha e a função certa.
+        // Criar a conta não abre sessão; a conta nova entra com a própria senha e a função certa.
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/v1/auth/me")).StatusCode);
         var admins = (await owner.GetAsync("/api/v1/admins").Json()).EnumerateArray().ToList();
         Assert.Equal("admin", admins.Single(a => a.GetProperty("email").GetString() == "nova@pontual.test").GetProperty("role").GetString());
-        Assert.Equal("superadmin", admins.Single(a => a.GetProperty("email").GetString() == "chefe@pontual.test").GetProperty("role").GetString());
-        await TestApp.LoginAsync(app.Panel(), "chefe@pontual.test");
+        Assert.DoesNotContain(admins, a => a.GetProperty("email").GetString() == "chefe@pontual.test");
+        await TestApp.LoginAsync(app.Panel(), "nova@pontual.test");
 
         var audit = await owner.GetAsync("/api/v1/audit").Json();
         Assert.Contains("pela tela de login", audit.GetRawText());

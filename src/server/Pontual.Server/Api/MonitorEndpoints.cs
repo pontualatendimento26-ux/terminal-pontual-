@@ -9,6 +9,7 @@ namespace Pontual.Server.Api;
 public static class MonitorEndpoints
 {
     private sealed record AllowBody(string? Host, Guid? ItemId);
+    private sealed record ReadBody(long? UpTo);
 
     public static void Map(RouteGroupBuilder api)
     {
@@ -59,22 +60,47 @@ public static class MonitorEndpoints
         return Results.NoContent();
     }
 
-    private static async Task<IResult> NotificationsAsync(PontualDb db, CancellationToken ct)
+    // "Lida" é de cada pessoa: guarda, por conta, o número da última notificação que ela viu.
+    // Assim, quando um do TI abre a lista, a bolinha "Nova" continua para os outros.
+    private static string ReadKey(Guid adminId) => $"notifRead:{adminId:N}";
+
+    private static async Task<IResult> NotificationsAsync(HttpContext context, PontualDb db, CancellationToken ct)
     {
+        var key = ReadKey(context.Admin().Id);
+        var lastRead = await db.Settings.AsNoTracking().Where(s => s.Key == key).Select(s => (long?)s.Value).FirstOrDefaultAsync(ct) ?? 0;
+
         var notifications = await db.Notifications.AsNoTracking()
             .OrderByDescending(n => n.Id)
             .Take(100)
-            .Select(n => new { id = n.Id, at = n.At, text = n.Text, urgent = n.Urgent, read = n.Read })
+            .Select(n => new { id = n.Id, at = n.At, text = n.Text, urgent = n.Urgent, read = n.Id <= lastRead })
             .ToListAsync(ct);
 
         return Results.Ok(notifications);
     }
 
     // Marcar como lida não é registrada na auditoria: não muda nada do que o sistema controla,
-    // e o painel faz isso sozinho ao abrir a lista.
-    private static async Task<IResult> MarkReadAsync(PontualDb db, CancellationToken ct)
+    // e o painel faz isso sozinho ao abrir a lista. Só vale para quem está logado.
+    private static async Task<IResult> MarkReadAsync(HttpContext context, PontualDb db, CancellationToken ct)
     {
-        await db.Notifications.Where(n => !n.Read).ExecuteUpdateAsync(s => s.SetProperty(n => n.Read, true), ct);
+        var key = ReadKey(context.Admin().Id);
+        // O corpo é opcional: sem ele, marca até a mais nova.
+        var body = context.Request.ContentLength is > 0 ? await context.ReadBodyAsync<ReadBody>() : new ReadBody(null);
+        var newest = await db.Notifications.MaxAsync(n => (long?)n.Id, ct) ?? 0;
+        if (body.UpTo is { } upTo && upTo < newest)
+        {
+            newest = upTo;
+        }
+        var setting = await db.Settings.FirstOrDefaultAsync(s => s.Key == key, ct);
+        if (setting is null)
+        {
+            db.Settings.Add(new Setting { Key = key, Value = newest });
+        }
+        else if (setting.Value < newest)
+        {
+            setting.Value = newest;
+        }
+
+        await db.SaveChangesAsync(ct);
         return Results.NoContent();
     }
 
@@ -90,8 +116,8 @@ public static class MonitorEndpoints
 
     private static async Task<IResult> VerifyAsync(PontualDb db, CancellationToken ct)
     {
-        var records = await db.Audit.AsNoTracking().OrderBy(a => a.Sequence).ToListAsync(ct);
-        var result = AuditChain.Verify(records.Select(r => r.ToEntry()));
+        // Lê a cadeia em partes, sem carregar a tabela inteira na memória.
+        var result = AuditChain.Verify(AuditPages(db, ct));
 
         return Results.Ok(new
         {
@@ -105,6 +131,29 @@ public static class MonitorEndpoints
                 _ => null,
             },
         });
+    }
+
+    private static IEnumerable<AuditEntry> AuditPages(PontualDb db, CancellationToken ct)
+    {
+        const int page = 2000;
+        long after = long.MinValue;
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            var chunk = db.Audit.AsNoTracking().Where(a => a.Sequence > after).OrderBy(a => a.Sequence).Take(page).ToList();
+            foreach (var record in chunk)
+            {
+                yield return record.ToEntry();
+            }
+
+            if (chunk.Count < page)
+            {
+                yield break;
+            }
+
+            after = chunk[^1].Sequence;
+            db.ChangeTracker.Clear();
+        }
     }
 
     private static async Task<IResult> ObservedAsync(PontualDb db, CancellationToken ct)

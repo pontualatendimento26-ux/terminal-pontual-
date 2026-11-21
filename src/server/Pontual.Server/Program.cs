@@ -34,6 +34,8 @@ builder.Services.AddDbContext<PontualDb>((services, options) =>
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AuditWriter>();
+builder.Services.AddSingleton<LoginLockout>();
+builder.Services.AddHostedService<Pontual.Server.Data.RetentionWorker>();
 builder.Services.AddSingleton<ScreenWatch>();
 builder.Services.AddSingleton<Pontual.Server.Assistant.AssistantUsageLog>();
 builder.Services.AddSingleton<Pontual.Server.Assistant.IAssistantModel, Pontual.Server.Assistant.ClaudeAssistantModel>();

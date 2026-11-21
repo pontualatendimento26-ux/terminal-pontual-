@@ -9,7 +9,7 @@ param([string]$Versao = '', [string]$Chave = '')
 
 $ErrorActionPreference = 'Stop'
 if (-not $Chave) { $Chave = Join-Path $env:APPDATA 'Pontual\chave-atualizacao-terminal.xml' }
-if (-not $Versao) { $Versao = (Get-Date -Format 'yyyy.MMdd.HHmm') }
+if (-not $Versao) { $Versao = (Get-Date -Format 'yyyy.MMdd.HHmmss') }  # com segundos: a instalada já usa esse formato, e HHmm ficaria "menor"
 $versaoAssinada = ([version]$Versao).ToString()
 $Raiz = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $Saida = Join-Path $Raiz 'dist\_central-nova'

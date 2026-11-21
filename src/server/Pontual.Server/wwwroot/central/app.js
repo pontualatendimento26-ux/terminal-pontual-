@@ -503,8 +503,9 @@ async function marcarLidas() {
   for (const n of naoLidas) S.novas.add(n.id);   // continuam marcadas como "Nova" enquanto a tela está aberta
   S.marcando = true;
   try {
-    await api('POST', '/notifications/read');
-    for (const n of S.notifs || []) n.read = true;
+    const ate = Math.max(...naoLidas.map((n) => n.id));
+    await api('POST', '/notifications/read', { upTo: ate });
+    for (const n of S.notifs || []) if (n.id <= ate) n.read = true;
   } catch { /* tenta de novo na próxima consulta */ } finally { S.marcando = false; }
   if (S.me) { desenharTopo(); if (S.secao === 'notificacoes') desenharNotificacoes(); }
 }

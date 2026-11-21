@@ -132,7 +132,7 @@ public static class AccountEndpoints
     }
 
     private static async Task<IResult> LoginAsync(
-        HttpContext context, PontualDb db, AuditWriter audit, IPasswordHasher<Admin> hasher, TimeProvider time, CancellationToken ct)
+        HttpContext context, PontualDb db, AuditWriter audit, IPasswordHasher<Admin> hasher, TimeProvider time, LoginLockout lockout, CancellationToken ct)
     {
         var body = await context.ReadBodyAsync<LoginBody>();
         var email = Input.Clean(body.Email).ToLowerInvariant();
@@ -142,11 +142,15 @@ public static class AccountEndpoints
             ? await db.Admins.FirstOrDefaultAsync(a => a.Email == email, ct)
             : null;
 
+        lockout.ThrowIfLocked(email);
         var result = hasher.VerifyHashedPassword(admin!, admin?.PasswordHash ?? DummyHash.Value, password);
         if (admin is null || !admin.Active || result == PasswordVerificationResult.Failed)
         {
+            await FailAsync(db, audit, lockout, admin, email, "no login", ct);
             throw new ApiError(StatusCodes.Status401Unauthorized, "E-mail ou senha incorretos.");
         }
+
+        lockout.Succeed(email);
 
         if (result == PasswordVerificationResult.SuccessRehashNeeded)
         {
@@ -212,17 +216,20 @@ public static class AccountEndpoints
     /// o próprio e-mail e senha no mesmo pedido. Só cria as funções administrador e superadministrador.
     /// </summary>
     private static async Task<IResult> RegisterAsync(
-        HttpContext context, PontualDb db, AuditWriter audit, IPasswordHasher<Admin> hasher, TimeProvider time, CancellationToken ct)
+        HttpContext context, PontualDb db, AuditWriter audit, IPasswordHasher<Admin> hasher, TimeProvider time, LoginLockout lockout, CancellationToken ct)
     {
         var body = await context.ReadBodyAsync<RegisterBody>();
         var name = Input.Required(body.Name, "o nome", 80);
         var email = Input.Email(body.Email);
         var password = Input.Password(body.Password);
+
+        // Pela tela de login, sem sessão, só nasce administrador. Superadministrador novo só
+        // é criado por um superadministrador já logado, na seção Administradores.
         var role = body.Role switch
         {
-            "admin" => Role.Admin,
-            "superadmin" => Role.SuperAdmin,
-            _ => throw ApiError.BadRequest("Tipo de conta inválido. Use admin ou superadmin."),
+            null or "" or "admin" => Role.Admin,
+            "superadmin" => throw ApiError.Forbidden("Superadministrador só pode ser criado de dentro do painel, na seção Administradores."),
+            _ => throw ApiError.BadRequest("Tipo de conta inválido."),
         };
 
         var authEmail = Input.Clean(body.AuthEmail).ToLowerInvariant();
@@ -232,11 +239,15 @@ public static class AccountEndpoints
             ? await db.Admins.FirstOrDefaultAsync(a => a.Email == authEmail, ct)
             : null;
 
+        lockout.ThrowIfLocked(authEmail);
         var result = hasher.VerifyHashedPassword(authorizer!, authorizer?.PasswordHash ?? DummyHash.Value, authPassword);
         if (authorizer is null || !authorizer.Active || result == PasswordVerificationResult.Failed)
         {
+            await FailAsync(db, audit, lockout, authorizer, authEmail, "ao autorizar \"Adicionar conta\"", ct);
             throw new ApiError(StatusCodes.Status401Unauthorized, "E-mail ou senha do superadministrador incorretos.");
         }
+
+        lockout.Succeed(authEmail);
 
         if (!PermissionMatrix.IsAllowed(authorizer.Role, Permission.AdminsManage))
         {
@@ -245,6 +256,17 @@ public static class AccountEndpoints
 
         await AddAdminAsync(db, audit, hasher, time, authorizer, name, email, password, role, " pela tela de login", ct);
         return Results.NoContent();
+    }
+
+    /// <summary>Conta a senha errada e, quando a conta acaba de ser bloqueada, registra na auditoria.</summary>
+    private static async Task FailAsync(PontualDb db, AuditWriter audit, LoginLockout lockout, Admin? admin, string email, string where, CancellationToken ct)
+    {
+        if (lockout.Fail(email) && admin is not null)
+        {
+            await audit.SaveAsync(db, AuditInfo.By(admin, "auth.locked",
+                $"A conta de {admin.Name} foi bloqueada por {(int)LoginLockout.LockFor.TotalMinutes} minutos depois de {LoginLockout.MaxFailures} senhas erradas {where}",
+                "admin", admin.Id), cancellationToken: ct);
+        }
     }
 
     private static async Task<Admin> AddAdminAsync(
