@@ -202,6 +202,34 @@ public sealed class NeuralTests
     }
 
     [Fact]
+    public async Task Aprendizado_sobre_os_sistemas_da_pontual_vai_para_a_ia()
+    {
+        var model = new FakeBrain();
+        using var app = new TestApp { AssistantModel = model };
+        var owner = await app.OwnerAsync();
+        var (_, terminal) = await app.ApprovedDeviceAsync(owner, "PC-01", "Maria Souza");
+        await owner.PutAsJsonAsync("/api/v1/assistant/settings", new { apiKey = Key });
+
+        var created = await owner.PostAsJsonAsync("/api/v1/neural/items", new
+        {
+            kind = "system", title = "Como funciona o Terminal Pontual", bank = "Terminal Pontual",
+            content = "O botão Atualizar instala a versão nova publicada pelo TI.",
+        }).Json();
+        Assert.Equal("system", created.GetProperty("kind").GetString());
+
+        await AskAsync(terminal, "Para que serve o botão Atualizar?");
+        var shared = model.Requests[^1].SharedInstructions;
+        Assert.Contains("<sistema_pontual titulo=\"Como funciona o Terminal Pontual\"", shared);
+        Assert.Contains("O botão Atualizar instala a versão nova", shared);
+        // Os resumos da pasta sistemas-iniciais (o Nexus) entram sozinhos, uma vez, no ramo Sistemas da Pontual.
+        var systems = Items(await owner.GetAsync("/api/v1/neural").Json(), "system").Select(i => i.GetProperty("title").GetString()).ToList();
+        Assert.Contains("Como funciona o Terminal Pontual", systems);
+        Assert.Contains("Nexus - esteira, carteira e gestão", systems);
+        Assert.Equal(systems.Count, systems.Distinct().Count());
+        Assert.Contains("O operacional aprova, e ela vai para \"Em Digitação\"", shared);
+    }
+
+    [Fact]
     public async Task Documento_enviado_tem_o_texto_extraido_e_pdf_escaneado_fica_desligado()
     {
         var model = new FakeBrain();

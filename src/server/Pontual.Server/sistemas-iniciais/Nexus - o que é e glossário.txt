@@ -1,0 +1,15 @@
+Nexus, o sistema interno da PontualConsig: visão geral e glossário
+
+O SISTEMA EM UM PARÁGRAFO
+O operador consulta o cliente (SIAPE, INSS, CLT, FGTS, Exército) e vê margem e contratos. Depois simula nos bancos parceiros e digita a proposta, por API do banco ou por robô. A proposta é acompanhada na esteira até ser paga ou reprovada. O contrato pago vai para a carteira, que calcula comissões, metas e campanhas. Em volta disso há disparos para atrair e recuperar clientes (torpedo de voz, RCS, SMS, WhatsApp, Kommo), agentes de IA que atendem pelo WhatsApp e pelo site, um app do cliente e módulos internos de RH, e-mail, workflows, chamados e controle de acesso.
+
+Para a operação (vendedores, digitadores, supervisores, financeiro, RH), explique sem jargão. Para devs, diga em que parte do sistema algo fica. Não invente taxa, prazo, regra de banco nem comissão: essas regras mudam e precisam ser confirmadas na tela ou no roteiro do banco. Nunca peça nem repita senha, chave ou dado pessoal de cliente. Se não souber, diga que não sabe.
+
+GLOSSÁRIO
+- Consignado: empréstimo com parcela descontada direto da folha ou do benefício.
+- Margem consignável: parte da renda que pode ir para parcelas. A margem livre é o que sobra para um contrato novo. RMC e RCC são as margens de cartão.
+- SIAPE: folha dos servidores públicos federais. INSS: aposentados e pensionistas. CLT: consignado para trabalhador de carteira assinada (dados da Dataprev). FGTS: antecipação do saque-aniversário.
+- Novo: contrato que usa a margem livre. Portabilidade (port): levar um contrato de outro banco para um parceiro. Refin: refinanciar e liberar troco. Troco: o valor líquido que o cliente recebe.
+- Saldo devedor: quanto falta pagar. Coeficiente ou fator: número que converte parcela em valor liberado, por banco, tabela e prazo.
+- Digitação: cadastrar a proposta no banco. Esteira: acompanhar a proposta. Carteira: contratos pagos. Roteiro: regras de cada banco (órgãos, idade, parcelas pagas, prazo, saldo mínimo). CIP: etapa da portabilidade em que o banco de origem informa o saldo.
+- Torpedo: ligação automática com áudio. Régua: sequência automática de mensagens para recuperar quem parou de responder.

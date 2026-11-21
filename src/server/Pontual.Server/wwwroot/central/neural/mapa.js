@@ -4,12 +4,12 @@
 // Não fala com o servidor: recebe os nós prontos de neural.js.
 //
 // Um nó: { id, pai, tipo, rotulo, sub, estado, novo }
-//   tipo: 'nucleo' | 'ramo' | 'grupo' | 'script' | 'document' | 'knowledge' | 'attendant' | 'suggestion' | 'manual'
+//   tipo: 'nucleo' | 'ramo' | 'grupo' | 'script' | 'document' | 'knowledge' | 'system' | 'attendant' | 'suggestion' | 'manual'
 //   estado: 'active' | 'disabled' | 'pending' | 'error'
 'use strict';
 
 const MAPA_CORES = {
-  nucleo: '#4fd8ff', script: '#4fd8ff', document: '#5b8cff', knowledge: '#9b8cff',
+  nucleo: '#4fd8ff', script: '#4fd8ff', document: '#5b8cff', knowledge: '#9b8cff', system: '#ffd76a',
   attendant: '#3ddc97', suggestion: '#ffb454', manual: '#ff8fb8', erro: '#ff6b7d',
 };
 

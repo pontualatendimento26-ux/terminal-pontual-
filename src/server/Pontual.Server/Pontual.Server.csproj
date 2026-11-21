@@ -16,6 +16,7 @@
   <ItemGroup>
     <!-- Roteiros operacionais que a assistente recebe na primeira subida do servidor (um arquivo por banco). -->
     <Content Include="roteiros-iniciais\**\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="sistemas-iniciais\**\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

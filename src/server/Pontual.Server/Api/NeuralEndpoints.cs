@@ -399,9 +399,9 @@ public static class NeuralEndpoints
         var admin = context.Admin();
         Grow(context, JsonBody);
         var body = await context.ReadBodyAsync<ItemBody>();
-        var kind = body.Kind is KnowledgeKind.Script or KnowledgeKind.Knowledge
-            ? body.Kind
-            : throw ApiError.BadRequest("Tipo inválido. Roteiros e conhecimentos são escritos aqui; documentos entram pelo envio de arquivo.");
+        var kind = KnowledgeKind.IsWritable(body.Kind)
+            ? body.Kind!
+            : throw ApiError.BadRequest("Tipo inválido. Roteiros, conhecimentos e aprendizados sobre os sistemas são escritos aqui; documentos entram pelo envio de arquivo.");
         await EnsureCountAsync(db, ct);
 
         var now = time.GetUtcNow().UtcDateTime;
@@ -424,8 +424,8 @@ public static class NeuralEndpoints
 
         if (body.Kind is not null && body.Kind != item.Kind)
         {
-            // Um documento continua documento (tem arquivo); roteiro e conhecimento podem trocar entre si.
-            if (item.Kind == KnowledgeKind.Document || body.Kind is not (KnowledgeKind.Script or KnowledgeKind.Knowledge))
+            // Um documento continua documento (tem arquivo); os tipos escritos à mão podem trocar entre si.
+            if (item.Kind == KnowledgeKind.Document || !KnowledgeKind.IsWritable(body.Kind))
             {
                 throw ApiError.BadRequest("Este conhecimento não pode mudar para esse tipo.");
             }
@@ -779,8 +779,8 @@ public static class NeuralEndpoints
         }
         else
         {
-            var kind = body.CreateKind is KnowledgeKind.Script or KnowledgeKind.Knowledge
-                ? body.CreateKind
+            var kind = KnowledgeKind.IsWritable(body.CreateKind)
+                ? body.CreateKind!
                 : throw ApiError.BadRequest("Escolha transformar em roteiro, em conhecimento, ou vincular a um conhecimento existente.");
             if (content.Length == 0)
             {

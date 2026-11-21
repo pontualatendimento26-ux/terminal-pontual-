@@ -1,0 +1,33 @@
+Nexus: atendimento com IA
+
+TRÊS AGENTES, MESMA BASE
+1. Agente Huggy: atende pelo CRM Huggy, com a persona "Pedro" do atendimento.
+2. Agente PontualConsig: atende pelo WhatsApp próprio. Tem perfil SIAPE e perfil INSS, entende áudio, print, extrato e DED, e move o cliente no funil do CRM.
+3. Chat do site: atende o visitante anônimo e, se a IA cair, segue um roteiro fixo. As conversas viram cards num Kanban.
+
+FLUXO DE UMA MENSAGEM
+1. O webhook responde na hora.
+2. O sistema enfileira por conversa e junta mensagens picadas (cerca de 8 segundos de silêncio).
+3. Monta o contexto e chama o modelo.
+4. O modelo usa ferramentas: registrar nome e consentimento, identificar o cliente pelos 4 primeiros dígitos do CPF, enviar a proposta, consultar status, consultar benefício INSS, transferir para humano, registrar opt-out.
+5. O sistema responde e grava tudo.
+
+PRINCÍPIOS
+- O modelo não inventa números: tudo vem de ferramenta.
+- As regras duras (consentimento antes de identificar, no máximo 3 tentativas de CPF, não reenviar proposta) ficam no código, fora do alcance do modelo.
+- Nos agentes de WhatsApp, o CPF é mascarado no contexto do modelo.
+- Há só dois jeitos de passar para humano: um atendente escreve na conversa ou o agente transfere. Pausa, opt-out e falhas só silenciam o agente.
+- Se a IA cair, o sistema tenta outro provedor, e o atendimento não quebra.
+- O horário humano é de segunda a sexta, das 08:15 às 17:50.
+
+RÉGUA DE RECUPERAÇÃO
+Mensagens automáticas quando o cliente some: espera pelo consultor, prévia sem resposta, extrato não enviado e retomadas. Fora da janela de 24 horas do WhatsApp, só vale mensagem por template.
+
+MODELOS
+- Provedores: OpenAI, Anthropic (Claude), Groq, Gemini e OpenRouter.
+- Cada função (agente, leitura de extrato, classificação etc.) tem provedor e modelo configuráveis, inclusive por parceiro.
+- O uso e o custo ficam registrados.
+- Uma guarda de gasto pode revogar a chave da OpenAI automaticamente (tela de controle da OpenAI).
+
+OUTROS USOS DE IA
+Leitura de extrato, DED e documentos; classificação de retorno de disparos; voz do torpedo; transcrição de áudio; triagem de chamados; copiloto do robô do Paraná.

@@ -1,0 +1,38 @@
+Nexus: arquitetura, acesso e segurança
+
+TECNOLOGIA
+- Um único backend Node.js/Express (pasta backend/) com banco PostgreSQL. As telas são HTML/CSS/JS sem build, servidas pelo próprio backend.
+- Há um SQL Server externo, só para leitura. Socket.io envia avisos em tempo real. Puppeteer roda robôs e prints.
+- Não há Redis nem Docker. As filas ficam em memória ou em tabelas do Postgres.
+- Os robôs em Python (nexus_agente, distribuído como .exe) rodam na máquina do operador, para bancos sem API.
+- O app do cliente é em Flutter, em outro repositório.
+
+AMBIENTES
+Homologação e produção ficam na mesma máquina Windows, em pastas separadas, e usam o mesmo banco.
+- Homologação: branch dev_pedro, API na porta 3000, telas na 5501, agendadores desligados.
+- Produção: branch main, API na porta 3001, telas na 5500, agendadores ligados.
+Mudança entra por PR na main e chega à produção pelo script deploy.ps1. Nada se edita nem se builda direto na pasta da produção. Uma tarefa agendada do Windows sobe a produção sozinha.
+
+LOGIN E SESSÃO
+- Usuário e senha (ou Google), com 2FA por código no e-mail.
+- O IP precisa estar na lista de IPs liberados (exceto para quem tem liberação).
+- A sessão é única: um login novo derruba o anterior. A sessão vale 8 horas, num cookie protegido com CSRF.
+- Usuário com mensalidade vencida é bloqueado e recebe um PIX para pagar.
+
+QUEM VÊ O QUÊ (SETORES)
+- 1 Dev: vê tudo, de todos os parceiros.
+- 7 Master: vê os parceiros dele.
+- 6 Supervisor: vê ele e a equipe vinculada.
+- 2 Operacional: vê ele e os usuários vinculados.
+- 3 Venda: vê só o próprio trabalho.
+As telas que cada pessoa acessa vêm do nível de acesso (um pacote de menus) mais menus extras, gravados na tabela nexus_user_menus. Tirar uma tela de alguém vale na hora. A gestão fica na tela Gestão de Acessos e, para o Master, na tela Minha Equipe.
+
+COFRE DE CHAVES
+As chaves dos bancos e fornecedores ficam cifradas no banco (tela Utilizadores > API keys) e valem mais que o .env. As chaves de IA só funcionam pelo cofre. Um parceiro pode cadastrar credencial própria de algumas integrações (tela Integrações).
+
+JOBS AUTOMÁTICOS
+Um processo só, eleito por trava no Postgres, roda os sincronismos: status de propostas da Facta e do PAN; status dos cartões; saldo devedor e refin do Agilus/Inter; saldos do dia; envio de contratos para o Kommo às 9h e às 18h; relógio de ponto do RH; custos.
+Também sobem com o servidor as réguas dos agentes, as filas de consulta CLT e C6, a sincronia de e-mail, a guarda de gasto da OpenAI e os avisos do app.
+
+QUALIDADE
+Testes automáticos, lint e teste de tela no navegador rodam no CI em todo PR. Os logs mascaram CPF, telefone e segredos. Há rotinas de retenção e anonimização (LGPD).

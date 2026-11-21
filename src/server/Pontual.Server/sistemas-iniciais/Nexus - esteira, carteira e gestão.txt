@@ -1,0 +1,42 @@
+Nexus: esteira, carteira e gestão
+
+ESTEIRA (internamente "iFlow", tabela nexus_iflow)
+Cada linha é um contrato. Os contratos ficam em 4 abas:
+- Pendente Aprovação: digitado na tela, ainda não enviado ao banco.
+- Pendentes: "Pendência Correspondente": o vendedor precisa resolver algo.
+- Reprovados: reprovados pelo operacional ou pelo banco.
+- Digitados: enviados ao banco.
+
+Ciclo típico:
+1. A proposta nasce como "Pendente no Banco / Aguardando".
+2. O operacional aprova, e ela vai para "Em Digitação", enviada por API, robô ou tabulação. Ou então volta como pendência, ou é reprovada.
+3. Depois de enviada, o banco atualiza o status: aguardando CIP, saldo retornado, pendente de autorização, até "Aprovada Paga".
+
+Quem pode o quê:
+- Dev, Operacional e Supervisor aprovam, reprovam e fazem ações em lote.
+- Venda só resolve pendência, redigita e edita os próprios contratos. Venda não aprova.
+- Só Dev e o Master da Pontual excluem.
+
+A esteira também tem: registro de quem liberou e quando; anexos e documentos; acompanhamento CIP; cálculo de saldo devedor e refin; notificações no sino; o painel analítico Dashboard iTech.
+
+CARTEIRA
+- É o que os bancos efetivamente pagaram, lido dos relatórios de cada banco (Excel/CSV). A esteira só serve para descobrir quem foi o atendente.
+- Tem importação, atualização pelo número AF e ajustes manuais.
+- Tem tabelas de comissão por banco, órgão e tabela, meta do mês por pessoa, e campanhas com faixas de premiação (vendedores, TI, coordenação).
+- A comissão tem um fluxo com recibo, PIX e anexos.
+- Cruza com a Planilha Google.
+- Venda vê só a própria linha.
+
+DASHBOARDS
+- Dashboard Operacional: planilhas trabalhadas, torpedo, TenTec, RCS e simulações SIAPE.
+- Métrica de Performance e Métrica de Liberações.
+- Quitação Port: tabela de aprovação com os saldos do dia.
+- Quitação Refin, Dashboard Cartão e Controle Financeiro (faturamento dos parceiros e cobrança).
+
+OUTROS MÓDULOS
+- Oportunidades: abas CIP, Reprovados e RCS, para retrabalhar clientes.
+- Oferta Kamila: dados vindos do SQL Server.
+- Planilhas internas, Planilha Google e Central de Relatórios (exportação em fila).
+- Workflows ("FlowRunner"): automações visuais no estilo n8n, com nós e gatilho por webhook. Exemplo: avisar o cliente quando o status do contrato muda.
+- Chamados: botão "Reportar problema" em qualquer tela, com print. A IA faz a triagem e um agente pode propor correção pelo GitHub Actions.
+- Utilitários: Minha Equipe (o Master cria vendedores e supervisores), Gestão de Acessos, Controle de IPs, Tokens de autenticador dos portais, tour guiado e histórico de lotes.

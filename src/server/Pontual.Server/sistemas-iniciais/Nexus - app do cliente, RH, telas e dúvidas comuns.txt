@@ -1,0 +1,40 @@
+Nexus: app do cliente, RH, telas do painel e dúvidas comuns
+
+APP DO CLIENTE (Flutter, API em /api/app)
+- Três perfis num app só: cliente, atendente e administrador.
+- O cliente pode:
+  - acompanhar as propostas (buscadas pelo CPF da conta);
+  - receber push quando o status muda (o banco avisa o servidor, que manda socket, notificação e push);
+  - conversar com o atendente (texto, imagem e áudio);
+  - enviar o extrato para simulação de refinanciamento (lido por IA);
+  - pedir exclusão da conta, também por uma página pública.
+- O status do banco é traduzido para uma linguagem simples no app.
+- Segurança: login com primeiro acesso por código (e-mail ou SMS) e MFA para funcionários; sessão curta com renovação; bloqueio progressivo depois de senha errada; auditoria e retenção LGPD.
+- Simulação fica indisponível se houver proposta em andamento nos últimos 15 dias.
+
+RH (portal do colaborador e tela RH — Gestão)
+- Documentos e holerites em lote, com conferência e assinatura ou ciência.
+- Solicitações, atestados e comunicados.
+- Cadastro do colaborador.
+- Ponto integrado ao relógio Control iD, com banco de horas.
+- Férias, benefícios, treinamentos e pesquisas.
+- Avisos automáticos de vencimento, férias, banco de horas e treinamentos.
+
+PAINEL INTERNO (AS TELAS DO NEXUS)
+- Um menu único (navbar), filtrado pelas permissões de cada pessoa.
+- Modo escuro, endereços limpos (sem .html), traduções e um tour guiado.
+- Política de segurança (CSP): nada de script inline. Se uma tela abre em branco depois do deploy, confira a tela Segurança.
+- Telas por área:
+  - Consultas: SIAPE, INSS, CLT, C6, Exército, Filtro SIAPE, Órgãos, Robô RPA, Lote CLT, Telefones.
+  - Digitação e simuladores: iTech/SIAPE, INSS, INSS iCred, Exército, CLT, CLT Storm, Cartão, simuladores Daycoval, Inter e Quero Mais.
+  - Acompanhamento: Esteira, Dashboards, Quitação Port e Refin, Dashboard Cartão, Oportunidades, Carteira, Controle Financeiro.
+  - Disparos: Torpedo, TenTec, RCS, RCS Ótima, SMS Ótima.
+  - Atendimento: Agente Huggy, Agente PontualConsig, Kanban do chat do site, Chat, E-mails.
+  - Gestão: Usuários, Equipe, Integrações, Tokens, IPs, OpenAI, Segurança, Workflows, Chamados, Exportar, Planilhas, Histórico, Configurações, Referência da API.
+  - RH: Portal RH, RH — Gestão, Documentos.
+
+DÚVIDAS COMUNS
+- A tela sumiu do menu: falta a permissão daquela tela no nível de acesso da pessoa.
+- Fui deslogado sozinho: outra pessoa entrou com o mesmo usuário (sessão única), ou houve um erro de permissão.
+- O status do app está errado: um texto de status novo do banco ainda não foi mapeado e aparece como "em análise".
+- A leitura do extrato falhou: a chave de IA (Anthropic) não está ativa no cofre.

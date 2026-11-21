@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Pontual.Domain.Audit;
 using Pontual.Server.Api;
+using Pontual.Server.Assistant;
 
 namespace Pontual.Server.Data;
 
@@ -215,6 +216,71 @@ public static class DbInitializer
                 $"Sistema cadastrou os {added} roteiros iniciais da assistente"));
     }
 
+    /// <summary>
+    /// Carrega os aprendizados sobre os sistemas da Pontual da pasta <c>sistemas-iniciais</c>: cada arquivo .txt
+    /// vira um item do ramo "Sistemas da Pontual", com o nome do arquivo como título. Cada arquivo entra uma única
+    /// vez (o nome fica guardado); um arquivo novo colocado depois entra na próxima vez que a Central iniciar.
+    /// </summary>
+    private static async Task SeedSystemsAsync(PontualDb db, IServiceProvider services)
+    {
+        var folder = Path.Combine(AppContext.BaseDirectory, "sistemas-iniciais");
+        if (!Directory.Exists(folder))
+        {
+            return;
+        }
+
+        var mark = await db.TextSettings.FirstOrDefaultAsync(s => s.Key == TextSetting.AssistantSystemsSeeded);
+        var loaded = new HashSet<string>((mark?.Value ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries), StringComparer.OrdinalIgnoreCase);
+        var now = services.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime;
+        var added = 0;
+        foreach (var file in Directory.GetFiles(folder, "*.txt").Order(StringComparer.Ordinal))
+        {
+            var name = Path.GetFileName(file);
+            if (!loaded.Add(name) || await db.AssistantScripts.CountAsync() >= KnowledgeLimits.Items)
+            {
+                continue;
+            }
+
+            var title = Input.Truncated(Path.GetFileNameWithoutExtension(file), 80);
+            var content = AssistantEndpoints.Multiline(await File.ReadAllTextAsync(file));
+            if (title.Length == 0 || content.Length == 0 || content.Length > KnowledgeLimits.Item)
+            {
+                continue;
+            }
+
+            db.AssistantScripts.Add(new AssistantScript
+            {
+                Id = Guid.NewGuid(), Kind = KnowledgeKind.System, Title = title, Content = content,
+                Bank = title.StartsWith("Nexus", StringComparison.OrdinalIgnoreCase) ? "Nexus" : "",
+                Category = "Sistemas da Pontual",
+                AiInstructions = "Resumo de um sistema interno da Pontual. Para a operação, explique sem jargão e diga em que tela fica cada coisa. Não invente taxa, prazo, regra de banco nem comissão: isso muda e deve ser confirmado na tela ou no roteiro do banco.",
+                CreatedAt = now, UpdatedAt = now, UpdatedByName = "Sistema", Source = "sistema",
+            });
+            added++;
+        }
+
+        var value = string.Join('\n', loaded.Order(StringComparer.Ordinal));
+        if (mark is null)
+        {
+            db.TextSettings.Add(new TextSetting { Key = TextSetting.AssistantSystemsSeeded, Value = value });
+        }
+        else
+        {
+            mark.Value = value;
+        }
+
+        if (added == 0)
+        {
+            await db.SaveChangesAsync();
+            return;
+        }
+
+        await services.GetRequiredService<AuditWriter>().SaveAsync(
+            db,
+            new AuditInfo(ActorType.System, null, "Sistema", "assistant.system.seed",
+                $"Sistema cadastrou {added} aprendizado(s) sobre os sistemas da Pontual"));
+    }
+
     public static async Task InitializeAsync(IServiceProvider services)
     {
         await using var scope = services.CreateAsyncScope();
@@ -235,6 +301,7 @@ public static class DbInitializer
         await AddMissingColumnsAsync(db, "AssistantProfiles");
         await AddMissingColumnsAsync(db, "Devices");
         await SeedScriptsAsync(db, scope.ServiceProvider);
+        await SeedSystemsAsync(db, scope.ServiceProvider);
 
         if (!await db.Settings.AnyAsync(s => s.Key == Setting.ConfigVersion))
         {

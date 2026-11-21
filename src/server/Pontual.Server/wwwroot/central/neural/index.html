@@ -62,6 +62,7 @@
           <div class="menu" id="mapa-menu" hidden>
             <button type="button" data-novo="script"><i data-ic="roteiro"></i>Novo roteiro</button>
             <button type="button" data-novo="knowledge"><i data-ic="conhecimento"></i>Novo conhecimento</button>
+            <button type="button" data-novo="system"><i data-ic="conhecimento"></i>Aprendizado sobre os sistemas</button>
             <button type="button" data-novo="document"><i data-ic="documento"></i>Enviar documento</button>
           </div>
         </div>
@@ -93,7 +94,7 @@
 <dialog id="dlg-item" class="largo" aria-labelledby="item-titulo-dlg"><form class="dlg" novalidate>
   <h2 id="item-titulo-dlg">Novo roteiro</h2><p id="item-explica"></p>
   <div class="grade">
-    <label id="item-tipo-caixa">Tipo<select class="campo" id="item-tipo"><option value="script">Roteiro</option><option value="knowledge">Conhecimento operacional</option></select></label>
+    <label id="item-tipo-caixa">Tipo<select class="campo" id="item-tipo"><option value="script">Roteiro</option><option value="knowledge">Conhecimento operacional</option><option value="system">Aprendizado sobre os sistemas da Pontual</option></select></label>
     <label>Status<select class="campo" id="item-status"><option value="1">Ativo: a IA usa</option><option value="0">Desativado: guardado, a IA não usa</option></select></label>
     <label class="toda">Nome<input class="campo" id="item-nome" maxlength="120" autocomplete="off" placeholder="Ex.: Banco Exemplo — portabilidade INSS"></label>
     <label class="toda">Descrição<input class="campo" id="item-descricao" maxlength="500" autocomplete="off" placeholder="Uma frase sobre o que este conteúdo cobre"></label>
@@ -125,6 +126,7 @@
   <div class="grade">
     <label class="toda">Destino<select class="campo" id="sug-destino">
       <option value="knowledge">Transformar em conhecimento novo</option>
+      <option value="system">Transformar em aprendizado sobre os sistemas</option>
       <option value="script">Transformar em roteiro novo</option>
       <option value="existente">Acrescentar a um conhecimento que já existe</option>
     </select></label>

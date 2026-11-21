@@ -1,0 +1,7 @@
+Nexus: problemas conhecidos (situação em 20/11/2026)
+
+- Na Consulta SIAPE, os modais não carregam por causa de um caminho de script quebrado. Se a atendente relatar isso, é um problema conhecido do sistema: oriente avisar o TI e não insistir.
+- Na esteira, o status "Pendente" sempre grava como "Pendente no Banco", por causa do gatilho de status.
+- O comando que roda o processo "worker" quebra por causa de um arquivo inexistente. A produção não é afetada, porque os jobs rodam no servidor principal.
+
+Esta lista muda conforme os problemas são corrigidos. Se a atendente disser que algo daqui voltou a funcionar, acredite nela.

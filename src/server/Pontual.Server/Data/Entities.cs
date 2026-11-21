@@ -287,6 +287,8 @@ public sealed class TextSetting
     public const string AssistantInstructions = "assistant.instructions";
     /// <summary>Marca de que os roteiros iniciais já foram carregados (não voltam se a Central apagar algum).</summary>
     public const string AssistantScriptsSeeded = "assistant.scriptsSeeded";
+    /// <summary>Nomes (um por linha) dos arquivos da pasta <c>sistemas-iniciais</c> já carregados na base.</summary>
+    public const string AssistantSystemsSeeded = "assistant.systemsSeeded";
     /// <summary>"0" desliga a análise automática das conversas (perfil das atendentes e sugestões); o padrão é ligada.</summary>
     public const string AssistantAutoAnalysis = "assistant.autoAnalysis";
     /// <summary>"0" impede a assistente de receber a tela e o WhatsApp da atendente junto com a pergunta; o padrão é ligado.</summary>
@@ -306,13 +308,19 @@ public static class KnowledgeKind
     public const string Script = "script";
     public const string Document = "document";
     public const string Knowledge = "knowledge";
+    /// <summary>Como funcionam os sistemas da Pontual (Terminal, Central, IA...): resumos que a IA usa para explicar e orientar.</summary>
+    public const string System = "system";
 
-    public static readonly string[] All = [Script, Document, Knowledge];
+    public static readonly string[] All = [Script, Document, Knowledge, System];
+
+    /// <summary>Tipos escritos à mão na Central Neural (documentos entram só por arquivo).</summary>
+    public static bool IsWritable(string? kind) => kind is Script or Knowledge or System;
 
     public static string Label(string kind) => kind switch
     {
         Document => "documento",
         Knowledge => "conhecimento",
+        System => "aprendizado sobre os sistemas da Pontual",
         _ => "roteiro",
     };
 }

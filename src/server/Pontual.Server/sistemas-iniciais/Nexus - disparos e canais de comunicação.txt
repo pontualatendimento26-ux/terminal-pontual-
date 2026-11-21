@@ -1,0 +1,17 @@
+Nexus: disparos e canais de comunicação
+
+- Torpedo de voz (Elme). Campanhas pela tela ou por API externa. O áudio é montado com voz sintética (ElevenLabs ou OpenAI) e ffmpeg. O retorno de "aceite" chega por webhook e pode disparar SMS automático.
+- TenTec. Outro fornecedor de torpedo, com tela, API externa e retorno classificado por IA.
+- RCS e SMS (Ótima). Envio em lote com retorno de entrega e leitura por webhook. Há um fallback: quem não leu o RCS recebe torpedo de voz. Existe também o RCS Unipix, mais antigo.
+- Kommo (CRM pós-venda). Contratos que mudam de status se acumulam e são enviados às 9h e às 18h, agrupados por CPF.
+- WhatsApp:
+  - celular conectado por QR (whatsapp-web.js) para mensagens do financeiro e métricas em grupos;
+  - integração com o CRM de WhatsApp da Pontual;
+  - ficha de contato recebida por webhook.
+- Chat interno entre funcionários, em tempo real por socket.
+- E-mail. E-mail do sistema por SMTP. As caixas conectadas (IMAP) permitem ler e responder e-mails dentro do Nexus, com sincronia a cada 2 minutos.
+- Webhooks recebidos (/webhook/*):
+  - Cada parceiro tem um token próprio, com modo "observar" ou "bloquear".
+  - A aba Webhooks lista todas as rotas.
+  - Um webhook pode ser encaminhado para outros destinos.
+  - Quase todos os disparos rodam em loop em memória e gravam o histórico no banco: se o servidor reinicia no meio, o lote para.

@@ -1,0 +1,49 @@
+Nexus: consultas de cliente
+
+SIAPE (tela Consultas > SIAPE)
+- Busca por CPF, telefone ou nome na base própria.
+- Mostra matrículas, órgão, margens e contratos vigentes, com saldo estimado e valor liberado pela tabela do banco escolhido.
+- Um card de roteiro por banco classifica cada contrato:
+  - verde: passa;
+  - laranja: atenção, o órgão tem critério;
+  - "conferir": falta saber as parcelas pagas, então peça o extrato;
+  - não passa, com o motivo.
+- Regra de idade: a partir de 68 anos a tabela trava no "fator idade", e a partir de 74 o liberado é zero.
+- Um contrato que já está na esteira aparece como "intencionado" e não pode ser digitado de novo por 15 dias.
+- Sem o cliente na base, dá para ler o extrato em PDF na própria tela.
+- A tela gera o PDF da proposta ou leva para a digitação.
+
+ROTEIRO DE BANCOS
+- As regras de cada banco são escritas em texto, estruturadas por IA e salvas.
+- Um motor compara cada contrato com as regras: banco de origem, parcelas pagas, prazo, idade, saldo mínimo, órgão e UPAG.
+- Entre os bancos que aceitam o contrato, vence o que libera mais.
+- Na dúvida, o motor não reprova: marca para conferir.
+
+FILTRO SIAPE
+Monta listas de servidores para campanha, com até 20 mil CPFs. Filtra por órgão, banco, prazo, DDD, status de disparos, valor liberado e roteiro, e exporta pronto para o disparo.
+
+OUTRAS TELAS SIAPE
+Órgãos SIAPE guarda as regras por órgão. Robô RPA roda consultas de refin nos portais dos bancos por meio do agente local.
+
+INSS (tela Consultas > INSS)
+- Consulta paga na RVX, reaproveitada por 7 dias.
+- Mostra benefício, espécie, bloqueio, margens (empréstimo, RMC, RCC), contratos e o roteiro por banco (Finanto, iCred, C6, Paraná, Digio, Inter, Fintech).
+- Mostra também as oportunidades pré-classificadas.
+- A tela C6 consulta em lote o saldo de quitação de contratos INSS.
+
+CLT E FGTS
+- A tela CLT consulta em fila no servidor (Facta, com dados da Dataprev), e o operador pode fechar a tela.
+- O Lote CLT faz a consulta offline da Facta ou a simulação Ajin.
+- A Storm simula CLT, FGTS e INSS em vários bancos de uma vez.
+- Também chegam leads CLT por webhook.
+
+EXÉRCITO
+Um robô consulta o sistema de origem dos militares. A primeira consulta do dia demora, e depois o resultado fica em cache por 24 horas.
+
+TELEFONES
+- Uma base própria de telefones guarda importação, higienização e flags.
+- O número que respondeu bem a um disparo sobe para o 1º lugar ("telefone quente").
+- A Lemit complementa os dados do cliente.
+
+LEITURA DE DOCUMENTOS POR IA
+Extrato de consignações, DED/contracheque e documento de identidade são lidos por IA nos agentes, no app e nas digitações.

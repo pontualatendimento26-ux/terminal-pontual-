@@ -1,0 +1,36 @@
+Nexus: bancos parceiros, simulação, digitação e status
+
+FLUXO GERAL
+1. Digitação. O operador escolhe contratos e banco de destino e grava. Cada contrato vira uma linha na esteira (tabela nexus_iflow).
+2. Aprovação. Na esteira, o operacional aprova e escolhe o modo:
+   - API: o sistema envia ao banco;
+   - robô: o agente Python digita no portal do banco;
+   - apenas tabular: só marca o status, quando a digitação é feita por fora.
+3. Retorno. O número da proposta e o link de formalização voltam para a esteira.
+4. Status. Jobs, webhooks e importação de planilha atualizam o status. Um gatilho no banco padroniza os textos de status de cada banco.
+Algumas telas digitam direto, sem esteira: iCred, Storm CLT, Cartão e Ajin CLT.
+
+BANCOS E COMO CADA UM INTEGRA
+- Inter (via Agilus): SIAPE, INSS, Exército: port e refin; simulador de refin de carteira. Integração por API.
+- Facta: SIAPE e INSS: portabilidade; consulta CLT. API, com status sincronizado a cada minuto.
+- PAN: SIAPE: novo e refin. API, com status a cada 10 min (sem webhook).
+- Daycoval: SIAPE: portabilidade. API, mais simulador próprio.
+- Banrisul: portabilidade. API.
+- C6: INSS: novo, refin, port. API; consulta de margem por robô.
+- Finanto e Quali (plataforma JoinBank): INSS: novo, refin, port + refin. API.
+- iCred: INSS. API com webhook.
+- Fintech do Corban: INSS: IN100 e simulação. API, proposta tabulada.
+- BRB, Paraná, Digio: SIAPE (Digio também INSS): port + refin. Robô no nexus_agente; o do Paraná tem 2FA e copiloto de IA.
+- Storm: CLT, FGTS, INSS. API com webhook.
+- Cartão (Backoffice/Lotus): cartões consignados e benefício. API, status a cada 30 min.
+- Safra, TED BRB: só tabulação.
+
+OUTRAS PEÇAS
+- Status das APIs. Cada banco pode ser marcado em "Manutenção", e as telas avisam o operador.
+- Fatores. As tabelas de juros e coeficientes por banco, produto e prazo ficam em nexus_fatores. Sem fator cadastrado, o roteiro fica mudo para aquele banco.
+- Simuladores. Daycoval, Quero Mais e Inter (refin em lote).
+- Agente local (nexus_agente). Programa instalado no computador do operador. Busca trabalhos de robô no servidor, executa no portal do banco e devolve o resultado. Atualiza por release no GitHub.
+- Roteiros. Cada banco tem um roteiro com: de quais bancos aceita portar, parcelas pagas mínimas, prazo, faixa de idade, saldo mínimo e tabela padrão. Pontos que o sistema não lê sozinho, como alguns prefixos de contrato e o "canal corban", precisam ser conferidos no extrato.
+
+ERROS
+Erros de banco aparecem no campo de motivo da proposta, com o nome do banco na frente.

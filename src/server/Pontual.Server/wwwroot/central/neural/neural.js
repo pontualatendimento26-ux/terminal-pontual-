@@ -71,6 +71,7 @@ const TIPOS = {
   script: { um: 'Roteiro', varios: 'Roteiros', cor: MAPA_CORES.script },
   document: { um: 'Documento', varios: 'Documentos', cor: MAPA_CORES.document },
   knowledge: { um: 'Conhecimento', varios: 'Conhecimentos operacionais', cor: MAPA_CORES.knowledge },
+  system: { um: 'Aprendizado sobre os sistemas', varios: 'Sistemas da Pontual', cor: MAPA_CORES.system },
   attendant: { um: 'Atendente', varios: 'Atendentes', cor: MAPA_CORES.attendant },
   suggestion: { um: 'Sugestão pendente', varios: 'Aprendizado', cor: MAPA_CORES.suggestion },
   manual: { um: 'Manual de comunicação', varios: 'Manual de comunicação', cor: MAPA_CORES.manual },
@@ -208,7 +209,7 @@ function desenhar() {
 // ==================================================================== mapa
 function grafo() {
   const d = E.d, nos = [{ id: 'ia', pai: null, tipo: 'nucleo', rotulo: 'IA Pontual' }];
-  for (const tipo of ['script', 'document', 'knowledge']) {
+  for (const tipo of ['script', 'document', 'knowledge', 'system']) {
     const itens = itensDe(tipo), ramo = `r:${tipo}`;
     nos.push({ id: ramo, pai: 'ia', tipo: 'ramo', ramo: tipo, rotulo: TIPOS[tipo].varios, n: itens.length });
     const bancos = new Map();
@@ -250,7 +251,7 @@ function aplicarFiltroMapa() {
 }
 
 function desenharFiltrosMapa() {
-  const d = E.d, contagem = { script: itensDe('script').length, document: itensDe('document').length, knowledge: itensDe('knowledge').length, attendant: d.attendants.length, suggestion: d.suggestions.pending, manual: d.settings.manual ? 1 : 0 };
+  const d = E.d, contagem = { script: itensDe('script').length, document: itensDe('document').length, knowledge: itensDe('knowledge').length, system: itensDe('system').length, attendant: d.attendants.length, suggestion: d.suggestions.pending, manual: d.settings.manual ? 1 : 0 };
   const chips = Object.keys(contagem).map((tipo) => {
     const b = el('button', { type: 'button', className: 'filtro', style: `--c:${TIPOS[tipo].cor}`, 'aria-pressed': String(!E.ocultos.has(tipo)), title: `Mostrar ou esconder: ${TIPOS[tipo].varios}` },
       el('i'), tipo === 'suggestion' ? 'Sugestões pendentes' : TIPOS[tipo].varios, el('b', { textContent: mil(contagem[tipo]) }));
@@ -353,12 +354,12 @@ function gavetaRamo(no) {
     b.onclick = () => verNoMapa(f.id);
     return b;
   });
-  const novo = { 'r:script': 'script', 'r:knowledge': 'knowledge', 'r:document': 'document' }[no.id];
+  const novo = { 'r:script': 'script', 'r:knowledge': 'knowledge', 'r:system': 'system', 'r:document': 'document' }[no.id];
   let acao = null;
   if (novo) { acao = botao(novo === 'document' ? 'Enviar documento' : `Novo ${TIPOS[novo].um.toLowerCase()}`, novo === 'document' ? 'enviar' : 'mais', 'btn mini'); acao.onclick = () => (novo === 'document' ? escolherArquivo(null) : abrirFormulario(null, novo)); }
   if (no.id === 'r:suggestion') { acao = botao('Abrir o aprendizado', 'aprender', 'btn mini'); acao.onclick = () => ir('aprendizado'); }
   if (no.id === 'r:manual') { acao = botao(E.d.settings.manual ? 'Editar o manual' : 'Escrever o manual', 'editar', 'btn mini'); acao.onclick = abrirManual; }
-  const vazios = { 'r:script': 'Nenhum roteiro cadastrado.', 'r:document': 'Nenhum documento enviado ainda.', 'r:knowledge': 'Nenhum conhecimento operacional cadastrado ainda.', 'r:attendant': 'Nenhuma máquina aprovada ainda.', 'r:suggestion': 'Nenhuma sugestão pendente. Elas aparecem quando uma atendente corrige uma resposta ou quando a IA analisa as conversas.', 'r:manual': 'O manual ainda não foi escrito.' };
+  const vazios = { 'r:script': 'Nenhum roteiro cadastrado.', 'r:document': 'Nenhum documento enviado ainda.', 'r:knowledge': 'Nenhum conhecimento operacional cadastrado ainda.', 'r:system': 'Nenhum aprendizado sobre os sistemas da Pontual ainda. Cole aqui o resumo de como funciona cada sistema (Terminal, Central, IA) para a IA saber explicar.', 'r:attendant': 'Nenhuma máquina aprovada ainda.', 'r:suggestion': 'Nenhuma sugestão pendente. Elas aparecem quando uma atendente corrige uma resposta ou quando a IA analisa as conversas.', 'r:manual': 'O manual ainda não foi escrito.' };
   gaveta(no.id,
     topoGaveta(selo(`${no.ramo} liso`, no.tipo === 'ramo' ? 'Ramo' : 'Grupo')),
     el('h2', { textContent: no.rotulo }),
@@ -397,7 +398,7 @@ async function gavetaItem(id) {
     const soltar = iconeBotao('x', `Desvincular de ${l.title}`); soltar.onclick = () => agir(soltar, () => api('DELETE', `/neural/links/${l.linkId}`), 'Ligação desfeita.').then(() => E.gaveta === id && gavetaItem(id));
     return el('div', {}, el('i', { className: 'ponto', style: `--c:${TIPOS[l.kind].cor}` }), ir, soltar);
   });
-  const vinculos = ['script', 'document', 'knowledge'].map((tipo) => { const linhas = porTipo(tipo); return linhas.length ? secao(`${TIPOS[tipo].varios} vinculados`, el('div', { className: 'lista-simples' }, ...linhas)) : null; });
+  const vinculos = ['script', 'document', 'knowledge', 'system'].map((tipo) => { const linhas = porTipo(tipo); return linhas.length ? secao(`${TIPOS[tipo].varios} vinculados`, el('div', { className: 'lista-simples' }, ...linhas)) : null; });
 
   gaveta(id,
     topoGaveta(selo(i.kind, TIPOS[i.kind].um), selo(estado, ESTADOS[estado]), recente(i.updatedAt) ? selo('liso', 'Atualizado há pouco') : null),
@@ -888,7 +889,7 @@ function desenharLista(vista) {
     cartao.append(solte, el('div', { className: 'envios', id: 'envios' }));
   }
   cartao.append(el('div', { className: 'ferramentas' }, busca,
-    fixo ? null : escolha('tipo', 'Todos os tipos', ['script', 'document', 'knowledge'].map((t) => [t, TIPOS[t].varios])),
+    fixo ? null : escolha('tipo', 'Todos os tipos', ['script', 'document', 'knowledge', 'system'].map((t) => [t, TIPOS[t].varios])),
     escolha('banco', 'Todos os bancos', unicos('bank').map((b) => [b, b])),
     escolha('categoria', 'Todas as categorias', unicos('category').map((c) => [c, c])),
     escolha('estado', 'Todas as situações', [['active', 'Ativos'], ['disabled', 'Desativados'], ['pending', 'Aguardando leitor de PDF'], ['instrucoes', 'Com instruções para a IA']]),
