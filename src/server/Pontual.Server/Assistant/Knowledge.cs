@@ -327,13 +327,63 @@ public sealed class KnowledgeTools(IReadOnlyList<AssistantScript> ordered) : IAs
 
 public sealed record ExtractedText(string Text, string Status, string Error);
 
+/// <summary>
+/// Leitor de PDF escaneado: chama o Pontual Tools local (<c>POST /api/pdf/read</c>, OCR do Windows em pt-BR), instalado
+/// por <c>Instalar-PontualTools.ps1</c> e escutando só em 127.0.0.1. Sem ele, devolve null e o PDF fica desligado como antes.
+/// Endereço trocável pela variável <c>PONTUAL_TOOLS_URL</c> (vazio desliga).
+/// </summary>
+public static class ScannedOcr
+{
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(10) };
+
+    public static string? BaseUrl { get; set; } =
+        Environment.GetEnvironmentVariable("PONTUAL_TOOLS_URL") is { } url ? url : "http://127.0.0.1:8787";
+
+    public static string? Read(string fileName, byte[] bytes, ILogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(BaseUrl))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var form = new MultipartFormDataContent();
+            var file = new ByteArrayContent(bytes);
+            file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/pdf");
+            form.Add(file, "file", "documento.pdf");
+            form.Add(new StringContent("text"), "mode");
+            form.Add(new StringContent("auto"), "ocr");
+            using var resp = Http.PostAsync(BaseUrl.TrimEnd('/') + "/api/pdf/read", form).GetAwaiter().GetResult();
+            if (!resp.IsSuccessStatusCode)
+            {
+                logger.LogWarning("Pontual Tools recusou o PDF escaneado {File}: HTTP {Status}", fileName, (int)resp.StatusCode);
+                return null;
+            }
+
+            using var json = JsonDocument.Parse(resp.Content.ReadAsStream());
+            var root = json.RootElement;
+            var ocrPages = root.TryGetProperty("ocr_pages", out var n) && n.ValueKind == JsonValueKind.Number ? n.GetInt32() : 0;
+            var text = root.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
+            logger.LogInformation("PDF escaneado {File} lido por OCR: {Pages} página(s)", fileName, ocrPages);
+            return text;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
+        {
+            logger.LogWarning("Pontual Tools indisponível para ler {File}: {Error}", fileName, ex.Message);
+            return null;
+        }
+    }
+}
+
 /// <summary>Tira o texto de um arquivo enviado (PDF com texto, DOCX ou TXT).</summary>
 public static class DocumentText
 {
     public static readonly string[] Extensions = [".pdf", ".docx", ".txt"];
 
     public const string ScannedPdf =
-        "O PDF não tem texto para ler: parece escaneado (imagem). Ele fica guardado e desligado até o leitor de PDF escaneado ser conectado.";
+        "O PDF não tem texto para ler: parece escaneado (imagem) e o leitor de PDF escaneado (Pontual Tools) não respondeu neste computador. " +
+        "Ele fica guardado e desligado; ligue o Pontual Tools e envie de novo, ou escreva o texto à mão.";
 
     public static ExtractedText Extract(string fileName, byte[] bytes, ILogger logger)
     {
@@ -352,7 +402,14 @@ public static class DocumentText
                     text = Pdf(bytes, out var pages);
                     if (text.Count(char.IsLetterOrDigit) < 40 * Math.Max(pages, 1))
                     {
-                        return new ExtractedText("", FileStatus.NoText, ScannedPdf);
+                        // PDF escaneado: o Pontual Tools deste PC lê com o OCR do Windows (nada sai da máquina).
+                        var ocr = ScannedOcr.Read(fileName, bytes, logger);
+                        if (ocr is null || ocr.Count(char.IsLetterOrDigit) == 0)
+                        {
+                            return new ExtractedText("", FileStatus.NoText, ScannedPdf);
+                        }
+
+                        text = ocr;
                     }
 
                     break;

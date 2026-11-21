@@ -136,8 +136,16 @@ a auditoria registra a alteração. O texto de referência está em `docs/MANUAL
 
 ## Publicar na Central
 
-A Central roda como tarefa agendada do Windows na conta SISTEMA, então a troca precisa de administrador:
+A Central roda como SISTEMA; a troca só aceita pacote **assinado** (mesma chave e esquema do Terminal,
+texto assinado `Central do TI|versão|sha256`, versão só sobe).
 
-1. `dotnet publish src/server/Pontual.Server -c Release -r win-x64 --self-contained true -o dist/_central-nova`
-2. Dois cliques em `dist\Atualizar a Central.cmd` (copia a pasta atual para `backup-central-<data>`,
-   troca os arquivos, religa e confere).
+Uma vez, como administrador: `src\installer\Instalar-Atualizador-Central.ps1` (instala o atualizador em
+Arquivos de Programas, recria a tarefa "Atualizar a Central do TI" como SISTEMA e tira a gravação de
+usuários de `dist\Central-do-TI`, exceto `wwwroot\baixar`).
+
+Cada publicação (sem administrador):
+
+1. `powershell -ExecutionPolicy Bypass -File src\installer\gerar-pacote-central.ps1` (publica e assina em `dist\_central-nova`)
+2. `schtasks /Run /TN "Atualizar a Central do TI"` (ou `dist\Atualizar a Central.cmd`). Cópia de segurança em
+   `ProgramData\Pontual\Central\backup-central-<data>`; registro em
+   `Arquivos de Programas\Pontual\Atualizador da Central\atualizacao.log`.

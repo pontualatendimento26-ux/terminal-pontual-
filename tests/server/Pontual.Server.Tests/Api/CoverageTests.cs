@@ -104,9 +104,17 @@ public sealed class CoverageTests
 
         // A IA recebe as regras da cobertura, o nome da atendente, a base e a conversa.
         var request = Assert.Single(model.Requests);
-        Assert.Contains("MODO COBERTURA DE AUSÊNCIA", request.Instructions);
-        Assert.Contains("A atendente Gabi está ausente", request.Instructions);
-        Assert.Contains("Você está conversando com Gabi", request.Instructions);
+        Assert.Contains("MODO COBERTURA DE AUSÊNCIA", request.AllInstructions);
+        Assert.Contains("A atendente Gabi está ausente", request.AllInstructions);
+        Assert.Contains("Você está conversando com Gabi", request.AllInstructions);
+
+        // A base vai em cache e igual para todas as atendentes; o perfil e as regras dela vêm depois, também em cache.
+        var cached = Assert.IsAssignableFrom<IReadOnlyList<string>>(request.CachedInstructions);
+        Assert.Equal(2, cached.Count);
+        Assert.DoesNotContain("Gabi", cached[0]);
+        Assert.Contains("Você está conversando com Gabi", cached[1]);
+        Assert.Contains("MODO COBERTURA DE AUSÊNCIA", cached[1]);
+        Assert.Equal("", request.Instructions);
         Assert.Contains("<mensagens_novas_do_cliente>\n[09:05] Cliente: Mandei o extrato", request.Input);
 
         var id = first.GetProperty("id").GetGuid();

@@ -572,6 +572,41 @@ public sealed class AssistantMessage
     public string Context { get; set; } = "";
 }
 
+/// <summary>Para que a IA foi chamada; aparece no consumo da Central.</summary>
+public static class UsageKind
+{
+    public const string Question = "pergunta";
+    public const string Test = "teste";
+    public const string Coverage = "cobertura";
+    public const string Analysis = "analise";
+    public const string Other = "outro";
+}
+
+/// <summary>
+/// Consumo de um pedido à IA, como a própria API informou. Uma pergunta no modo índice faz várias
+/// chamadas (consulta à base, resposta) e vira uma linha só, com a soma.
+/// O que se paga por token: entrada normal 1×, gravação do cache de 1 hora 2×, leitura do cache 0,1×.
+/// </summary>
+public sealed class AssistantUsage
+{
+    public long Id { get; set; }
+    public DateTime At { get; set; }
+    public required string Kind { get; set; }
+    public Guid? DeviceId { get; set; }
+    /// <summary>A fala da atendente (<see cref="AssistantMessage"/>) que gerou o consumo, quando é uma pergunta.</summary>
+    public long? QuestionId { get; set; }
+    public required string Model { get; set; }
+    /// <summary>Quantas chamadas à API o pedido fez.</summary>
+    public int Calls { get; set; }
+    /// <summary>Tokens de entrada cobrados por inteiro (o que veio depois do ponto de cache).</summary>
+    public long InputTokens { get; set; }
+    /// <summary>Tokens lidos do cache: se ficar em zero pergunta após pergunta, o cache não está pegando.</summary>
+    public long CacheReadTokens { get; set; }
+    /// <summary>Tokens gravados no cache (a primeira pergunta depois que ele expira ou a base muda).</summary>
+    public long CacheWriteTokens { get; set; }
+    public long OutputTokens { get; set; }
+}
+
 /// <summary>
 /// Registro de auditoria gravado. Guarda tudo o que <see cref="AuditChain"/> usou no hash, para a cadeia
 /// poder ser reconstruída e verificada.

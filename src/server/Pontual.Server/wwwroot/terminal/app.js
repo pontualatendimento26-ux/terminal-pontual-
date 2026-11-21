@@ -18,6 +18,7 @@
     headset: '<path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="13" width="4" height="6" rx="1.5"/><rect x="17" y="13" width="4" height="6" rx="1.5"/><path d="M19 19c0 1.5-2 2-5 2"/>',
     wrench: '<path d="M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.6 2.6-2-2 2.6-2.6Z"/>',
     ban: '<circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    pdf: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
     calc: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/>',
     grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
     lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
@@ -61,7 +62,7 @@
   const parametros = new URLSearchParams(location.search);
   const injetado = window.PONTUAL && typeof window.PONTUAL === 'object' ? window.PONTUAL : null;
   const P = injetado && injetado.hosted === true
-    ? { token: texto(injetado.token, 500), hostname: texto(injetado.hostname, 100), hosted: true, local: injetado.local === true, locked: injetado.locked === true, apps: injetado.apps === true, calc: injetado.calc === true }
+    ? { token: texto(injetado.token, 500), hostname: texto(injetado.hostname, 100), hosted: true, local: injetado.local === true, locked: injetado.locked === true, apps: injetado.apps === true, calc: injetado.calc === true, pdf: injetado.pdf === true }
     : { token: parametros.get('token') || '', hostname: parametros.get('hostname') || 'Navegador', hosted: false, local: false };
   // Modo janela da calculadora: o Terminal (2.11+) abre esta mesma página numa janela própria do Windows com ?calc=1.
   const modoCalc = parametros.get('calc') === '1';
@@ -617,6 +618,8 @@
   }
   $('at-ver-aviso').onclick = () => { S.avisoAberto = true; desenhar(); };
   $('at-calc').onclick = abrirCalculadora;
+  // Ferramentas de PDF: janela própria do Terminal com o Pontual Tools local (MainWindow.PdfTools.cs).
+  if (P.hosted && P.pdf && ponte) { $('at-pdf').hidden = false; $('at-pdf').onclick = () => aoPrograma({ type: 'pdf' }); }
   $('at-veu').onclick = (e) => { if (e.target === $('at-veu')) { if (S.appsAberto) fecharAplicativos(); else if (S.calcAberto) fecharCalculadora(); else fecharAviso(); } };
   document.addEventListener('keydown', (e) => {
     if (S.calcAberto) { teclaCalculadora(e); return; }

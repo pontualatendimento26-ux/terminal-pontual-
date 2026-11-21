@@ -258,7 +258,7 @@ public static class AssistantAnalysis
                 .Append(batch.Count > 0 ? conversations : "Nenhuma pergunta nova.\n")
                 .Append("</perguntas_a_assistente>");
 
-            var json = await model.AskJsonAsync(new AssistantJsonRequest(apiKey, modelId, Instructions, input.ToString(), Schema), ct);
+            var json = await model.AskJsonAsync(new AssistantJsonRequest(apiKey, modelId, Instructions, input.ToString(), Schema, Usage: new AssistantUsageTag(UsageKind.Analysis, deviceId)), ct);
 
             JsonElement root;
             try
@@ -391,6 +391,10 @@ public sealed class AnalysisWorker(IServiceProvider services, ILogger<AnalysisWo
                 catch (Exception ex) when (ex is AssistantFailure or ApiError or DbUpdateException)
                 {
                     logger.LogWarning(ex, "A análise automática das conversas parou nesta rodada: {Message}", ex.Message);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    logger.LogError(ex, "Erro inesperado na análise automática das conversas; a Central segue e tenta de novo na próxima rodada.");
                 }
 
                 await Task.Delay(Every, stoppingToken);

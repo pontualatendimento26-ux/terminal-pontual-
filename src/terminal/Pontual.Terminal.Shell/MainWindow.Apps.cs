@@ -7,8 +7,8 @@ namespace Pontual.Terminal.Shell;
 
 /// <summary>
 /// Lista "Aplicativos" da tela inicial: a atendente abre os aplicativos do Windows, os instalados e os baixados. O que é
-/// programa cadastrado pelo TI ou já liberado abre sem aviso; aplicativo novo abre e vira um pedido de liberação na Central
-/// (evento <see cref="DeviceEvent.AppOpened"/>); aplicativo bloqueado pelo TI não abre e é fechado se estiver aberto.
+/// programa cadastrado pelo TI ou já liberado abre sem aviso; aplicativo novo instalado abre e vira um pedido de liberação na
+/// Central (evento <see cref="DeviceEvent.AppOpened"/>); aplicativo novo da pasta Downloads NÃO abre: só vira o pedido; aplicativo bloqueado pelo TI não abre e é fechado se estiver aberto.
 /// A decisão do TI é por nome do .exe (docs/APLICATIVOS-DO-COMPUTADOR.md).
 /// </summary>
 public partial class MainWindow
@@ -100,6 +100,12 @@ public partial class MainWindow
                 Log.Info($"Aplicativo bloqueado pelo TI: {app.Path}");
                 ShowToast($"O TI bloqueou {app.Name} neste computador.");
                 Record(DeviceEvent.AppOpened, app.Name, app.Path);
+                return;
+            case AppVerdict.Request when app.Source == "downloaded":
+                // Baixado da internet e ainda sem decisão do TI: não roda na conta bloqueada; só vira pedido na Central.
+                Log.Info($"Aplicativo baixado sem liberação, pedido enviado ao TI: {app.Path}");
+                Record(DeviceEvent.AppOpened, app.Name, app.Path);
+                ShowToast($"{app.Name} foi baixado da internet e ainda não foi liberado. O TI recebeu o pedido; tente de novo depois da liberação.");
                 return;
         }
 

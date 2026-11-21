@@ -3,10 +3,14 @@ using System.Text.Json;
 using Anthropic;
 using Anthropic.Exceptions;
 using Anthropic.Models.Messages;
+using Pontual.Server.Data;
 
 namespace Pontual.Server.Assistant;
 
 public sealed record AssistantTurn(string Role, string Text);
+
+/// <summary>De onde veio o pedido, para o consumo gravado em <see cref="AssistantUsage"/>.</summary>
+public sealed record AssistantUsageTag(string Kind, Guid? DeviceId = null, long? QuestionId = null);
 
 /// <summary>
 /// Um pedido à IA. <see cref="SharedInstructions"/> é igual para todas as atendentes (regras + base de
@@ -25,10 +29,27 @@ public sealed record AssistantRequest(
     IAssistantTools? Tools = null,
     Func<string, Task>? OnStatus = null,
     string? ScreenText = null,
-    byte[]? ScreenImage = null);
+    byte[]? ScreenImage = null,
+    AssistantUsageTag? Usage = null);
 
-/// <summary>Um pedido cuja resposta é um JSON no formato de <see cref="Schema"/> (análise das conversas).</summary>
-public sealed record AssistantJsonRequest(string ApiKey, string Model, string Instructions, string Input, Dictionary<string, JsonElement> Schema);
+/// <summary>
+/// Um pedido cuja resposta é um JSON no formato de <see cref="Schema"/> (análise das conversas, cobertura de ausência).
+/// <see cref="CachedInstructions"/> vão primeiro, cada uma com um ponto de cache, na ordem do mais estável para o
+/// menos estável; <see cref="Instructions"/> vem depois e muda a cada pedido. Use o cache só quando o mesmo começo
+/// se repete em poucos minutos: gravar no cache custa 25% a mais que mandar sem cache.
+/// </summary>
+public sealed record AssistantJsonRequest(
+    string ApiKey,
+    string Model,
+    string Instructions,
+    string Input,
+    Dictionary<string, JsonElement> Schema,
+    IReadOnlyList<string>? CachedInstructions = null,
+    AssistantUsageTag? Usage = null)
+{
+    /// <summary>Todas as instruções na ordem em que a IA lê.</summary>
+    public string AllInstructions => string.Join("\n\n", [.. CachedInstructions ?? [], Instructions]).Trim();
+}
 
 /// <summary>Falha prevista ao falar com a IA; a mensagem já está pronta para aparecer na tela.</summary>
 public sealed class AssistantFailure(string message, Exception? inner = null) : Exception(message, inner);
@@ -52,7 +73,7 @@ public interface IAssistantModel
 }
 
 /// <summary>Claude, pela API da Anthropic.</summary>
-public sealed class ClaudeAssistantModel(ILogger<ClaudeAssistantModel> logger) : IAssistantModel
+public sealed class ClaudeAssistantModel(ILogger<ClaudeAssistantModel> logger, AssistantUsageLog usageLog) : IAssistantModel
 {
     /// <summary>Teto de idas e voltas com a base numa pergunta; as ferramentas têm o próprio teto de leitura.</summary>
     private const int MaxRounds = 8;
@@ -61,21 +82,34 @@ public sealed class ClaudeAssistantModel(ILogger<ClaudeAssistantModel> logger) :
     private string? _clientKey;
     private AnthropicClient? _client;
 
-    public Task<string?> AskAsync(AssistantRequest request, Func<string, Task> onText, CancellationToken ct) =>
-        GuardAsync(() => request.Tools is null ? StreamAsync(request, onText, ct) : LoopAsync(request, request.Tools, onText, ct));
+    public Task<string?> AskAsync(AssistantRequest request, Func<string, Task> onText, CancellationToken ct)
+    {
+        var meter = new UsageMeter();
+        return MeteredAsync(meter, request.Model, request.Usage, () =>
+            request.Tools is null ? StreamAsync(request, meter, onText, ct) : LoopAsync(request, request.Tools, meter, onText, ct));
+    }
 
-    public Task<string> AskJsonAsync(AssistantJsonRequest request, CancellationToken ct) => GuardAsync(async () =>
+    public Task<string> AskJsonAsync(AssistantJsonRequest request, CancellationToken ct)
+    {
+        var meter = new UsageMeter();
+        return MeteredAsync(meter, request.Model, request.Usage, () => JsonAsync(request, meter, ct));
+    }
+
+    private async Task<string> JsonAsync(AssistantJsonRequest request, UsageMeter meter, CancellationToken ct)
     {
         var parameters = new MessageCreateParams
         {
             Model = request.Model,
             MaxTokens = 16000,
             OutputConfig = new OutputConfig { Format = new JsonOutputFormat { Schema = request.Schema } },
-            System = new List<TextBlockParam> { new() { Text = request.Instructions } },
+            System = JsonSystemOf(request),
             Messages = [new UserMessageParam { Content = request.Input }],
         };
 
         var response = await ClientFor(request.ApiKey).Messages.Create(parameters, cancellationToken: ct);
+        // O consumo (com cache lido e gravado) vai para o log e para a tabela em MeteredAsync.
+        meter.Add(response.Usage);
+
         var stop = response.StopReason?.Raw();
         if (stop == AssistantStop.Refusal)
         {
@@ -97,12 +131,52 @@ public sealed class ClaudeAssistantModel(ILogger<ClaudeAssistantModel> logger) :
         }
 
         return json.ToString();
-    });
+    }
+
+    /// <summary>
+    /// Roda o pedido traduzindo as falhas e, no fim, grava o que ele consumiu, mesmo se parou no meio
+    /// (o que já foi processado é cobrado do mesmo jeito).
+    /// </summary>
+    private async Task<T> MeteredAsync<T>(UsageMeter meter, string model, AssistantUsageTag? tag, Func<Task<T>> call)
+    {
+        try
+        {
+            return await GuardAsync(call);
+        }
+        finally
+        {
+            if (meter.Calls > 0)
+            {
+                await usageLog.RecordAsync(tag ?? new AssistantUsageTag(UsageKind.Other), model, meter);
+            }
+        }
+    }
+
+    private static List<TextBlockParam> JsonSystemOf(AssistantJsonRequest request)
+    {
+        var blocks = new List<TextBlockParam>();
+        foreach (var text in request.CachedInstructions ?? [])
+        {
+            if (text.Length > 0)
+            {
+                blocks.Add(new() { Text = text, CacheControl = new CacheControlEphemeral() });
+            }
+        }
+
+        if (request.Instructions.Length > 0 || blocks.Count == 0)
+        {
+            blocks.Add(new() { Text = request.Instructions });
+        }
+
+        return blocks;
+    }
 
     private List<TextBlockParam> SystemOf(AssistantRequest request) =>
     [
         // Tudo até aqui é idêntico entre atendentes e entre perguntas: fica em cache e custa uma fração.
-        new() { Text = request.SharedInstructions, CacheControl = new CacheControlEphemeral() },
+        // Uma hora, e não os 5 minutos padrão: com poucas atendentes e perguntas espaçadas, o cache curto
+        // expirava entre uma pergunta e outra e cada pergunta pagava a gravação em vez da leitura.
+        new() { Text = request.SharedInstructions, CacheControl = new CacheControlEphemeral { Ttl = Ttl.Ttl1h } },
         new() { Text = request.PersonalInstructions },
     ];
 
@@ -144,7 +218,7 @@ public sealed class ClaudeAssistantModel(ILogger<ClaudeAssistantModel> logger) :
     }
 
     /// <summary>A base inteira já está nas instruções: a resposta chega em fluxo.</summary>
-    private async Task<string?> StreamAsync(AssistantRequest request, Func<string, Task> onText, CancellationToken ct)
+    private async Task<string?> StreamAsync(AssistantRequest request, UsageMeter meter, Func<string, Task> onText, CancellationToken ct)
     {
         var parameters = new MessageCreateParams
         {
@@ -157,15 +231,30 @@ public sealed class ClaudeAssistantModel(ILogger<ClaudeAssistantModel> logger) :
         };
 
         string? stop = null;
+        var started = false;
         await foreach (var streamEvent in ClientFor(request.ApiKey).Messages.CreateStreaming(parameters, cancellationToken: ct))
         {
             if (streamEvent.TryPickContentBlockDelta(out var blockDelta) && blockDelta.Delta.TryPickText(out var text))
             {
                 await onText(text.Text);
             }
-            else if (streamEvent.TryPickDelta(out var messageDelta) && messageDelta.Delta.StopReason is { } reason)
+            else if (streamEvent.TryPickStart(out var start))
             {
-                stop = reason.Raw();
+                // A entrada (e o cache) vem no começo; a saída acumulada chega no fim.
+                meter.Add(start.Message.Usage);
+                started = true;
+            }
+            else if (streamEvent.TryPickDelta(out var messageDelta))
+            {
+                if (started)
+                {
+                    meter.Update(messageDelta.Usage);
+                }
+
+                if (messageDelta.Delta.StopReason is { } reason)
+                {
+                    stop = reason.Raw();
+                }
             }
         }
 
@@ -176,7 +265,7 @@ public sealed class ClaudeAssistantModel(ILogger<ClaudeAssistantModel> logger) :
     /// Modo índice: a IA pede os conhecimentos de que precisa, o servidor os entrega e ela responde. Só o texto
     /// da resposta final vai para a atendente; enquanto isso ela vê o que está sendo consultado.
     /// </summary>
-    private async Task<string?> LoopAsync(AssistantRequest request, IAssistantTools tools, Func<string, Task> onText, CancellationToken ct)
+    private async Task<string?> LoopAsync(AssistantRequest request, IAssistantTools tools, UsageMeter meter, Func<string, Task> onText, CancellationToken ct)
     {
         var client = ClientFor(request.ApiKey);
         var messages = MessagesOf(request);
@@ -204,6 +293,7 @@ public sealed class ClaudeAssistantModel(ILogger<ClaudeAssistantModel> logger) :
             };
 
             var response = await client.Messages.Create(parameters, cancellationToken: ct);
+            meter.Add(response.Usage);
             var stop = response.StopReason?.Raw();
 
             // Não há atalho para devolver a resposta como entrada: cada bloco é remontado no formato de envio.

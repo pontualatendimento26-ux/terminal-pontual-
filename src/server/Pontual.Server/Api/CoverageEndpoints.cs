@@ -129,13 +129,13 @@ public static class CoverageEndpoints
             try
             {
                 var settings = await db.TextSettings.AsNoTracking().ToDictionaryAsync(s => s.Key, s => s.Value, ct);
-                var instructions = await InstructionsAsync(db, device, settings, incoming, now, ct);
+                var (cached, found) = await InstructionsAsync(db, device, settings, incoming, now, ct);
                 var input = new StringBuilder()
                     .Append("<contato>").Append(contact).Append("</contato>\n\n")
                     .Append("<conversa_na_tela>\n").Append(transcript).Append("\n</conversa_na_tela>\n\n")
                     .Append("<mensagens_novas_do_cliente>\n").Append(incoming).Append("\n</mensagens_novas_do_cliente>");
                 var json = await model.AskJsonAsync(
-                    new AssistantJsonRequest(apiKey, AssistantEndpoints.ModelOf(settings), instructions, input.ToString(), Coverage.Schema), ct);
+                    new AssistantJsonRequest(apiKey, AssistantEndpoints.ModelOf(settings), found, input.ToString(), Coverage.Schema, cached, new AssistantUsageTag(UsageKind.Coverage, device.Id)), ct);
                 decision = Coverage.Parse(json);
             }
             catch (AssistantFailure)
@@ -209,35 +209,39 @@ public static class CoverageEndpoints
     }
 
     /// <summary>
-    /// As mesmas instruções da assistente (regras, base de conhecimento, perfil desta atendente) mais as da
-    /// cobertura. Com a base grande demais para ir inteira, vão os trechos que casam com a mensagem do cliente.
+    /// As instruções da cobertura em duas partes. A parte em cache é a base (igual para todas as atendentes) e,
+    /// depois, o perfil e as regras desta atendente (iguais o dia todo): cada mensagem de cliente lê do cache em vez
+    /// de pagar a base inteira de novo. Com a base grande, os trechos achados para a mensagem mudam a cada pedido e
+    /// por isso vão por último, fora do cache.
     /// </summary>
-    private static async Task<string> InstructionsAsync(
+    private static async Task<(IReadOnlyList<string> Cached, string Found)> InstructionsAsync(
         PontualDb db, Device device, Dictionary<string, string> settings, string incoming, DateTime now, CancellationToken ct)
     {
         var scripts = KnowledgeText.Ordered(await db.AssistantScripts.AsNoTracking().Where(s => s.Enabled && s.Content != "").ToListAsync(ct));
         var general = settings.GetValueOrDefault(TextSetting.AssistantInstructions, "");
         string shared;
+        var found = "";
         if (AssistantEndpoints.FitsInline(scripts.Sum(s => (long)s.Content.Length)))
         {
             shared = AssistantPrompt.Shared(general, scripts);
         }
         else
         {
-            var found = new StringBuilder(AssistantPrompt.Index(general, scripts)).Append("\n\nTrechos da base que tratam do que o cliente escreveu:\n");
+            shared = AssistantPrompt.Index(general, scripts);
+            var hits = new StringBuilder("Trechos da base que tratam do que o cliente escreveu:\n");
             foreach (var hit in KnowledgeText.Search(scripts, incoming, 6, 400))
             {
                 var parts = KnowledgeText.Parts(hit.Item.Content);
-                found.Append(AssistantPrompt.Render(hit.Item, parts[hit.Part - 1], parts.Count > 1 ? $"parte {hit.Part} de {parts.Count}" : null)).Append('\n');
+                hits.Append(AssistantPrompt.Render(hit.Item, parts[hit.Part - 1], parts.Count > 1 ? $"parte {hit.Part} de {parts.Count}" : null)).Append('\n');
             }
 
-            shared = found.ToString();
+            found = hits.ToString();
         }
 
         var profile = await db.AssistantProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.DeviceId == device.Id, ct);
         var personal = AssistantPrompt.Personal(device, profile, now, await AssistantEndpoints.LearnedAsync(db, device, settings, ct));
         var name = string.IsNullOrWhiteSpace(device.AttendantName) ? "desta máquina" : device.AttendantName;
-        return shared + "\n\n" + personal + "\n\n" + Coverage.Rules(name);
+        return ([shared, personal + "\n\n" + Coverage.Rules(name)], found);
     }
 
     /// <summary>O Terminal conta se a mensagem saiu. O aviso imediato não muda a situação: a resposta continua esperando aprovação.</summary>

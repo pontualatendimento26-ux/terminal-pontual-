@@ -412,7 +412,12 @@ public static class AssistantEndpoints
 
             // No modo índice a IA consulta a base antes de responder; a atendente vê o que está sendo consultado.
             var request = await BuildRequestAsync(db, device, apiKey, conversationId, now, status => SendAsync(context, new { status }, ct), ct)
-                with { ScreenText = Join(screen.Text, AppsText(body.Apps)), ScreenImage = screen.Image };
+                with
+                {
+                    ScreenText = Join(screen.Text, AppsText(body.Apps)),
+                    ScreenImage = screen.Image,
+                    Usage = new AssistantUsageTag(UsageKind.Question, device.Id, asked.Id),
+                };
 
             context.Response.ContentType = "text/event-stream";
             context.Response.Headers.CacheControl = "no-store";
@@ -710,7 +715,8 @@ public static class AssistantEndpoints
         {
             await model.AskAsync(
                 new AssistantRequest(apiKey, ModelOf(settings), "Este é um teste de conexão.", "Responda somente com a palavra: funcionando",
-                    [new AssistantTurn(AssistantRole.User, "Teste de conexão.")]),
+                    [new AssistantTurn(AssistantRole.User, "Teste de conexão.")],
+                    Usage: new AssistantUsageTag(UsageKind.Test)),
                 piece => { answer.Append(piece); return Task.CompletedTask; },
                 ct);
         }

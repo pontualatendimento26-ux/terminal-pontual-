@@ -35,6 +35,7 @@ builder.Services.AddDbContext<PontualDb>((services, options) =>
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AuditWriter>();
 builder.Services.AddSingleton<ScreenWatch>();
+builder.Services.AddSingleton<Pontual.Server.Assistant.AssistantUsageLog>();
 builder.Services.AddSingleton<Pontual.Server.Assistant.IAssistantModel, Pontual.Server.Assistant.ClaudeAssistantModel>();
 // Lê as conversas novas das atendentes de tempos em tempos (perfil de atendimento e sugestões para a base).
 builder.Services.AddHostedService<Pontual.Server.Assistant.AnalysisWorker>();

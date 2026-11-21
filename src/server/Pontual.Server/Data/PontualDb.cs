@@ -30,6 +30,7 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
     public DbSet<AttendantInsight> AttendantInsights => Set<AttendantInsight>();
     public DbSet<WhatsAppCapture> WhatsAppCaptures => Set<WhatsAppCapture>();
     public DbSet<CoverageReply> CoverageReplies => Set<CoverageReply>();
+    public DbSet<AssistantUsage> AssistantUsage => Set<AssistantUsage>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -88,6 +89,8 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
         });
 
         modelBuilder.Entity<AssistantMessage>().HasIndex(m => new { m.DeviceId, m.Id });
+
+        modelBuilder.Entity<AssistantUsage>().HasIndex(u => u.At);
 
         modelBuilder.Entity<KnowledgeLink>().HasIndex(l => new { l.FromId, l.ToId }).IsUnique();
 

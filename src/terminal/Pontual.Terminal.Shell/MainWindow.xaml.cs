@@ -181,6 +181,7 @@ public partial class MainWindow : Window
         Toast.IsOpen = false;
         CloseAssistant();
         CloseCalculator();
+        ClosePdfTools();
         if (_hwndSource is not null)
         {
             NativeMethods.UnregisterHotKey(_hwndSource.Handle, ExitHotkeyId);
@@ -455,8 +456,8 @@ public partial class MainWindow : Window
         }
 
         object data = _local
-            ? new { hosted = true, local = true, locked = _locked, hostname = Environment.MachineName, config = _config, calc = true }
-            : new { token = _enrollment.Token, hostname = Environment.MachineName, hosted = true, locked = _locked, apps = true, calc = true };
+            ? new { hosted = true, local = true, locked = _locked, hostname = Environment.MachineName, config = _config, calc = true, pdf = true }
+            : new { token = _enrollment.Token, hostname = Environment.MachineName, hosted = true, locked = _locked, apps = true, calc = true, pdf = true };
 
         // Só a página do próprio Terminal, e só o quadro principal, recebe o objeto (ele carrega o token).
         // O serializador escapa <, >, & e aspas, então o JSON pode ir direto para o script.
@@ -940,6 +941,10 @@ public partial class MainWindow : Window
                 case "calc":
                     // Calculadora numa janela própria (MainWindow.Calculator.cs): solta, redimensionável e visível em qualquer aba.
                     _ = ShowCalculatorAsync();
+                    break;
+                case "pdf":
+                    // Ferramentas de PDF (ler, compactar, converter) numa janela própria (MainWindow.PdfTools.cs).
+                    _ = ShowPdfToolsAsync();
                     break;
                 case "apps" when !_local:
                     // Lista "Aplicativos": a varredura do computador roda fora da linha da interface.
