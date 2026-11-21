@@ -18,6 +18,7 @@
     headset: '<path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="13" width="4" height="6" rx="1.5"/><rect x="17" y="13" width="4" height="6" rx="1.5"/><path d="M19 19c0 1.5-2 2-5 2"/>',
     wrench: '<path d="M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.6 2.6-2-2 2.6-2.6Z"/>',
     ban: '<circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    calc: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/>',
     grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
     lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
     power: '<path d="M12 4v8"/><path d="M7 7a7 7 0 1 0 10 0"/>', folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>', load: '<path d="M12 3a9 9 0 1 0 9 9"/>',
@@ -60,8 +61,10 @@
   const parametros = new URLSearchParams(location.search);
   const injetado = window.PONTUAL && typeof window.PONTUAL === 'object' ? window.PONTUAL : null;
   const P = injetado && injetado.hosted === true
-    ? { token: texto(injetado.token, 500), hostname: texto(injetado.hostname, 100), hosted: true, local: injetado.local === true, locked: injetado.locked === true, apps: injetado.apps === true }
+    ? { token: texto(injetado.token, 500), hostname: texto(injetado.hostname, 100), hosted: true, local: injetado.local === true, locked: injetado.locked === true, apps: injetado.apps === true, calc: injetado.calc === true }
     : { token: parametros.get('token') || '', hostname: parametros.get('hostname') || 'Navegador', hosted: false, local: false };
+  // Modo janela da calculadora: o Terminal (2.11+) abre esta mesma página numa janela própria do Windows com ?calc=1.
+  const modoCalc = parametros.get('calc') === '1';
   const ponte = P.hosted && window.chrome && window.chrome.webview ? window.chrome.webview : null;
   const aoPrograma = (mensagem) => { if (ponte) ponte.postMessage(mensagem); };
 
@@ -84,6 +87,8 @@
     apps: null,              // aplicativos do computador, informados pelo programa: [{ id, name, exe, source, status, open }]
     appsAberto: false,
     appsBusca: '',
+    calcAberto: false,
+    calc: { expr: '', ultima: '' }, // calculadora própria do Terminal
     uso: lerUso(),
   };
 
@@ -414,17 +419,20 @@
       $('at-manut-texto').textContent = `O TI está trabalhando nesta máquina.${motivo ? ` Motivo: ${motivo}.` : ''}${ate ? ` Previsão de retorno: ${ate}.` : ''}`;
       S.avisoAberto = false;
       S.appsAberto = false;
+      S.calcAberto = false;
     }
 
     const veu = $('at-veu'), folha = $('at-folha');
-    const folhaAberta = S.avisoAberto || S.appsAberto;
+    const folhaAberta = S.avisoAberto || S.appsAberto || S.calcAberto;
     const estavaFechada = veu.hidden;
     veu.hidden = !folhaAberta;
     folha.classList.toggle('larga', S.appsAberto);
+    folha.classList.toggle('calc', S.calcAberto);
     for (const parte of document.querySelectorAll('#app-at > header, #app-at > main, #app-at > footer')) parte.inert = emManutencao || folhaAberta;
 
     if (emManutencao && estavaEscondida) manut.focus();
     if (S.appsAberto) desenharAplicativos(folha, estavaFechada);
+    if (S.calcAberto) desenharCalculadora(folha, estavaFechada);
     if (S.avisoAberto && estavaFechada) {
       focoAntes = document.activeElement;
       const ok = el('button', { type: 'button', className: 'btn', textContent: 'Entendi' });
@@ -488,6 +496,110 @@
   }
   function fecharAplicativos() { S.appsAberto = false; desenhar(); }
 
+  // Calculadora própria do Terminal (pedido do dono, 20/11/2026): a da Loja do Windows não abre na conta bloqueada.
+  // Quatro operações e porcentagem, com a vírgula como decimal. Sem eval: a conta é lida por um analisador próprio.
+  const TECLAS_CALC = [['C', 'apaga'], ['⌫', 'apaga'], ['%', 'op'], ['÷', 'op'], ['7'], ['8'], ['9'], ['×', 'op'], ['4'], ['5'], ['6'], ['-', 'op'], ['1'], ['2'], ['3'], ['+', 'op'], ['00'], ['0'], [','], ['=', 'igual']];
+  function avaliarCalc(texto) {
+    const t = texto.replace(/\s+/g, '').replace(/,/g, '.');
+    if (!t) return null;
+    let i = 0;
+    const falha = () => { throw new Error('conta inválida'); };
+    function numero() {
+      let sinal = 1;
+      while (t[i] === '-' || t[i] === '+') { if (t[i] === '-') sinal = -sinal; i++; }
+      const m = /^(\d+\.?\d*|\.\d+)%?/.exec(t.slice(i));
+      if (!m) falha();
+      i += m[0].length;
+      const v = parseFloat(m[0]);
+      return sinal * (m[0].endsWith('%') ? v / 100 : v);
+    }
+    function termo() { let v = numero(); while (t[i] === '×' || t[i] === '÷') { const op = t[i++]; const d = numero(); v = op === '×' ? v * d : v / d; } return v; }
+    function soma() { let v = termo(); while (t[i] === '+' || t[i] === '-') { const op = t[i++]; const d = termo(); v = op === '+' ? v + d : v - d; } return v; }
+    const v = soma();
+    if (i !== t.length || !Number.isFinite(v)) falha();
+    return v;
+  }
+  const formatarCalc = (v) => Number(v.toPrecision(12)).toLocaleString('pt-BR', { maximumFractionDigits: 10, useGrouping: false });
+  function digitarCalc(tecla) {
+    const c = S.calc;
+    const ultimo = c.expr.slice(-1), operador = (x) => '+-×÷'.includes(x) && x !== '';
+    if (tecla === 'C') { c.expr = ''; }
+    else if (tecla === '⌫') { c.expr = c.expr.slice(0, -1); }
+    else if (tecla === '=') {
+      try { const v = avaliarCalc(c.expr); if (v !== null) { c.ultima = `${c.expr} = ${formatarCalc(v)}`; c.expr = formatarCalc(v); } } catch { /* conta incompleta: fica como está */ }
+    } else if (operador(tecla)) {
+      if (!c.expr && tecla !== '-') return;
+      if (operador(ultimo)) c.expr = c.expr.slice(0, -1);
+      c.expr += tecla;
+    } else if (tecla === '%') { if (/\d$/.test(ultimo)) c.expr += '%'; }
+    else if (tecla === ',') { const atual = c.expr.split(/[+\-×÷]/).pop(); if (!atual.includes(',') && !atual.includes('%')) c.expr += (/\d$/.test(ultimo) ? '' : '0') + ','; }
+    else if (/^\d+$/.test(tecla)) { if (ultimo === '%') return; if (c.expr.length < 60) c.expr += tecla; }
+    if (modoCalc) desenharCalculadora($('calc-janela'), false); else desenhar();
+  }
+  function teclaCalculadora(e) {
+    const mapa = { Enter: '=', Backspace: '⌫', Delete: 'C', Escape: null, '*': '×', x: '×', '/': '÷', '.': ',', ',': ',', '+': '+', '-': '-', '%': '%', '=': '=' };
+    if (e.key === 'Escape') { fecharCalculadora(); return; }
+    const tecla = /^\d$/.test(e.key) ? e.key : mapa[e.key];
+    if (tecla === undefined) return;
+    e.preventDefault();
+    digitarCalc(tecla);
+  }
+  function desenharCalculadora(folha, primeira) {
+    const c = S.calc;
+    let previa = '', erro = false;
+    try { const v = avaliarCalc(c.expr); previa = v === null ? '' : formatarCalc(v); } catch { erro = /[+\-×÷]$|^$/.test(c.expr) ? false : true; }
+    if (!primeira && $('calc-expr')) {
+      $('calc-ultima').textContent = c.ultima;
+      $('calc-expr').textContent = c.expr || '0';
+      const res = $('calc-res'); res.textContent = erro ? 'Conta incompleta' : previa; res.classList.toggle('erro', erro);
+      return;
+    }
+    const fechar = el('button', { type: 'button', className: 'btn claro', textContent: 'Fechar' });
+    fechar.onclick = fecharCalculadora;
+    const teclas = el('div', { className: 'calc-teclas' }, ...TECLAS_CALC.map(([t, classe]) => {
+      const b = el('button', { type: 'button', className: classe || '', textContent: t });
+      b.setAttribute('aria-label', { C: 'Limpar', '⌫': 'Apagar', '×': 'Multiplicar', '÷': 'Dividir', '=': 'Igual', ',': 'Vírgula', '%': 'Porcentagem' }[t] || t);
+      b.onclick = () => digitarCalc(t);
+      return b;
+    }));
+    const visor = el('div', { className: 'calc-visor', 'aria-live': 'polite' }, el('div', { id: 'calc-ultima', className: 'calc-ultima', textContent: c.ultima }),
+      el('div', { id: 'calc-expr', className: 'calc-expr', textContent: c.expr || '0' }),
+      el('div', { id: 'calc-res', className: `calc-res${erro ? ' erro' : ''}`, textContent: erro ? 'Conta incompleta' : previa }));
+    if (modoCalc) {
+      // Janela própria: a barra de título do Windows já diz "Calculadora" e tem o X; aqui ficam só o visor e as teclas.
+      folha.replaceChildren(visor, teclas);
+      return;
+    }
+    folha.setAttribute('aria-labelledby', 'calc-titulo');
+    folha.replaceChildren(el('h2', { id: 'calc-titulo', textContent: 'Calculadora' }), visor,
+      teclas, el('p', { className: 'calc-dica', textContent: 'Dá para digitar pelo teclado: números, + - * /, Enter para o resultado, Backspace para apagar e Esc para fechar.' }),
+      el('div', { className: 'acoes' }, fechar));
+    fechar.focus();
+  }
+  // Dentro do Terminal 2.11+, a calculadora abre numa janela própria do Windows (solta, redimensionável, visível em qualquer
+  // aba), pedido do dono em 21/11/2026. Nos Terminais antigos, no celular e no navegador continua a folha sobre a tela inicial.
+  function abrirCalculadora() {
+    if (P.hosted && P.calc && ponte) { aoPrograma({ type: 'calc' }); return; }
+    if (S.calcAberto) return; S.appsAberto = false; S.calcAberto = true; desenhar();
+  }
+  function fecharCalculadora() {
+    if (modoCalc) { aoPrograma({ type: 'calc-close' }); return; }
+    S.calcAberto = false; desenhar();
+  }
+  if (modoCalc) {
+    // Só a calculadora, ocupando a janela toda; o resto da tela inicial (e as ligações com o servidor) não roda.
+    document.title = 'Calculadora';
+    $('app-at').hidden = true;
+    document.body.classList.add('modo-calc');
+    const janela = el('div', { id: 'calc-janela', className: 'calc-janela' });
+    janela.setAttribute('role', 'application');
+    janela.setAttribute('aria-label', 'Calculadora');
+    document.body.append(janela);
+    desenharCalculadora(janela, true);
+    document.addEventListener('keydown', teclaCalculadora);
+    return;
+  }
+
   // ================================================================ ligações
   $('busca').oninput = desenhar;
   $('at-chamar').onclick = chamarTi;
@@ -504,8 +616,10 @@
     $('at-aplicativos').onclick = abrirAplicativos;
   }
   $('at-ver-aviso').onclick = () => { S.avisoAberto = true; desenhar(); };
-  $('at-veu').onclick = (e) => { if (e.target === $('at-veu')) { if (S.appsAberto) fecharAplicativos(); else fecharAviso(); } };
+  $('at-calc').onclick = abrirCalculadora;
+  $('at-veu').onclick = (e) => { if (e.target === $('at-veu')) { if (S.appsAberto) fecharAplicativos(); else if (S.calcAberto) fecharCalculadora(); else fecharAviso(); } };
   document.addEventListener('keydown', (e) => {
+    if (S.calcAberto) { teclaCalculadora(e); return; }
     if (S.appsAberto) { if (e.key === 'Escape') fecharAplicativos(); return; }
     if (!S.avisoAberto) return;
     if (e.key === 'Escape') fecharAviso();

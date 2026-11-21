@@ -26,7 +26,7 @@ public static class NeuralEndpoints
     private sealed record LinkBody(Guid? From, Guid? To);
     private sealed record SuggestionBody(string? Title, string? Detail, string? ProposedContent, string? Bank, string? Category);
     private sealed record ApproveBody(string? CreateKind, Guid? ItemId, string? Title, string? Content, string? Bank, string? Category, string? Description);
-    private sealed record SettingsBody(bool? AutoAnalysis, bool? WhatsAppLearning);
+    private sealed record SettingsBody(bool? AutoAnalysis, bool? WhatsAppLearning, string? Manual);
 
     public static void Map(RouteGroupBuilder api)
     {
@@ -178,8 +178,10 @@ public static class NeuralEndpoints
                 autoAnalysis = settings.GetValueOrDefault(TextSetting.AssistantAutoAnalysis, "1") != "0",
                 whatsappLearning = settings.GetValueOrDefault(TextSetting.AssistantWhatsAppLearning, "1") != "0",
                 generalInstructions = settings.GetValueOrDefault(TextSetting.AssistantInstructions, "").Length,
+                // O manual de comportamento e comunicação: o mesmo texto das orientações gerais da Central do TI.
+                manual = settings.GetValueOrDefault(TextSetting.AssistantInstructions, ""),
             },
-            limits = new { item = KnowledgeLimits.Item, upload = KnowledgeLimits.Upload, extensions = DocumentText.Extensions, title = MaxTitle },
+            limits = new { item = KnowledgeLimits.Item, upload = KnowledgeLimits.Upload, extensions = DocumentText.Extensions, title = MaxTitle, manual = AssistantEndpoints.MaxGeneralInstructions },
         });
     }
 
@@ -187,9 +189,9 @@ public static class NeuralEndpoints
     {
         var admin = context.Admin();
         var body = await context.ReadBodyAsync<SettingsBody>();
-        if (body.AutoAnalysis is null && body.WhatsAppLearning is null)
+        if (body.AutoAnalysis is null && body.WhatsAppLearning is null && body.Manual is null)
         {
-            throw ApiError.BadRequest("Informe o que deve ser ligado ou desligado.");
+            throw ApiError.BadRequest("Informe o que deve ser alterado.");
         }
 
         var changes = new List<string>();
@@ -219,6 +221,26 @@ public static class NeuralEndpoints
                 // Desligado: o que estava na fila e ainda não foi lido pela IA é apagado.
                 db.WhatsAppCaptures.RemoveRange(await db.WhatsAppCaptures.ToListAsync(ct));
             }
+        }
+
+        if (body.Manual is not null)
+        {
+            // O manual de comunicação é o mesmo texto das "orientações gerais" editadas em Central do TI → Assistente.
+            var manual = AssistantEndpoints.Multiline(body.Manual);
+            if (manual.Length > AssistantEndpoints.MaxGeneralInstructions)
+            {
+                throw ApiError.BadRequest($"O manual de comunicação aceita no máximo {AssistantEndpoints.MaxGeneralInstructions} caracteres.");
+            }
+
+            var setting = await db.TextSettings.FirstOrDefaultAsync(s => s.Key == TextSetting.AssistantInstructions, ct);
+            if (setting is null)
+            {
+                setting = new TextSetting { Key = TextSetting.AssistantInstructions };
+                db.TextSettings.Add(setting);
+            }
+
+            setting.Value = manual;
+            changes.Add(manual.Length > 0 ? "alterou o manual de comunicação da IA" : "apagou o manual de comunicação da IA");
         }
 
         await audit.SaveAsync(db, AuditInfo.By(admin, "neural.settings", $"{admin.Name} {string.Join(" e ", changes)}"), cancellationToken: ct);

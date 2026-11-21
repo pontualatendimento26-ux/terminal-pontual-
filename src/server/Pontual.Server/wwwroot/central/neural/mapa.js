@@ -1,15 +1,16 @@
 // Central Neural — o mapa interativo do cérebro da IA.
-// Canvas 2D puro, sem biblioteca: núcleo holográfico no centro, ramos em volta, zoom, arrasto,
-// expandir/recolher, busca e seleção. Não fala com o servidor: recebe os nós prontos de neural.js.
+// Canvas 2D puro, sem biblioteca: núcleo holográfico no centro, ramos em volta, zoom, arrasto do mapa,
+// arrasto de cada círculo (a posição fica guardada no navegador), expandir/recolher, busca e seleção.
+// Não fala com o servidor: recebe os nós prontos de neural.js.
 //
 // Um nó: { id, pai, tipo, rotulo, sub, estado, novo }
-//   tipo: 'nucleo' | 'ramo' | 'grupo' | 'script' | 'document' | 'knowledge' | 'attendant' | 'suggestion'
+//   tipo: 'nucleo' | 'ramo' | 'grupo' | 'script' | 'document' | 'knowledge' | 'attendant' | 'suggestion' | 'manual'
 //   estado: 'active' | 'disabled' | 'pending' | 'error'
 'use strict';
 
 const MAPA_CORES = {
   nucleo: '#4fd8ff', script: '#4fd8ff', document: '#5b8cff', knowledge: '#9b8cff',
-  attendant: '#3ddc97', suggestion: '#ffb454', erro: '#ff6b7d',
+  attendant: '#3ddc97', suggestion: '#ffb454', manual: '#ff8fb8', erro: '#ff6b7d',
 };
 
 class MapaNeural {
@@ -28,6 +29,7 @@ class MapaNeural {
     this.camAlvo = null;
     this.sel = null; this.sobre = null; this.destaque = null;
     this.brilhos = new Map();
+    this.posicoes = this.lerPosicoes();   // deslocamentos feitos com o mouse, por id de nó
     this.calmo = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.tempo = 0;
     this.primeiraVez = true;
@@ -46,8 +48,11 @@ class MapaNeural {
     const antigos = this.nos;
     this.nos = new Map();
     for (const dado of nos) {
-      const velho = antigos.get(dado.id);
-      this.nos.set(dado.id, { ...dado, filhos: [], x: velho ? velho.x : null, y: velho ? velho.y : null, tx: 0, ty: 0, ang: 0, prof: 0 });
+      const velho = antigos.get(dado.id), guardado = this.posicoes[dado.id];
+      this.nos.set(dado.id, {
+        ...dado, filhos: [], x: velho ? velho.x : null, y: velho ? velho.y : null, tx: 0, ty: 0, ang: 0, prof: 0,
+        dx: velho ? velho.dx : (guardado ? Number(guardado[0]) || 0 : 0), dy: velho ? velho.dy : (guardado ? Number(guardado[1]) || 0 : 0),
+      });
     }
     for (const no of this.nos.values()) {
       const pai = no.pai ? this.nos.get(no.pai) : null;
@@ -102,22 +107,54 @@ class MapaNeural {
     this.aneis = []; for (let p = 1; p <= maisFundo; p++) this.aneis.push(raio(p));
 
     this.visiveis = [];
-    const por = (no, inicio, fatia) => {
+    const por = (no, inicio, fatia, ox, oy) => {
       no.ang = inicio + fatia / 2;
       const fs = mostrados(no);
       let r = raio(no.prof);
       if (no.prof >= 2 && !fs.length && no.irmaos > 5) r += no.indice % 2 ? 34 : -8;
-      no.tx = Math.cos(no.ang) * r; no.ty = Math.sin(no.ang) * r;
+      // Deslocamento feito com o mouse: o nó e tudo o que pende dele saem juntos do lugar calculado.
+      ox += no.dx || 0; oy += no.dy || 0;
+      no.tx = Math.cos(no.ang) * r + ox; no.ty = Math.sin(no.ang) * r + oy;
       if (no.x === null) { const pai = this.nos.get(no.pai); no.x = pai ? (pai.x ?? pai.tx) : no.tx; no.y = pai ? (pai.y ?? pai.ty) : no.ty; }
       no.r = no.tipo === 'nucleo' ? 62 : no.tipo === 'ramo' ? 24 : no.tipo === 'grupo' ? 14 : no.tipo === 'attendant' ? 11 : 8.5;
       no.ocultos = this.recolhidos.has(no.id) ? no.filhos.filter((f) => f.passa).length : 0;
       this.visiveis.push(no);
       let a = inicio;
-      fs.forEach((f, i) => { f.indice = i; f.irmaos = fs.length; const parte = fatia * (f.peso / no.peso); por(f, a, parte); a += parte; });
+      fs.forEach((f, i) => { f.indice = i; f.irmaos = fs.length; const parte = fatia * (f.peso / no.peso); por(f, a, parte, ox, oy); a += parte; });
     };
     raiz.tx = 0; raiz.ty = 0;
-    por(raiz, -Math.PI / 2, Math.PI * 2);
+    por(raiz, -Math.PI / 2, Math.PI * 2, 0, 0);
     raiz.tx = 0; raiz.ty = 0;
+  }
+
+  // ------------------------------------------------------- posições do mouse
+  // Move um nó com o mouse. O deslocamento fica no nó, vale para o que pende dele e sobrevive à reorganização.
+  deslocar(no, dx, dy) {
+    no.dx = (no.dx || 0) + dx; no.dy = (no.dy || 0) + dy;
+    this.organizar();
+    const puxar = (n) => { n.x = n.tx; n.y = n.ty; for (const f of n.filhos) puxar(f); };
+    puxar(no);   // acompanha o mouse na hora, sem a animação de aproximação
+  }
+
+  lerPosicoes() {
+    try {
+      const lido = JSON.parse(localStorage.getItem('neural.mapa.posicoes') || '{}');
+      return lido && typeof lido === 'object' && !Array.isArray(lido) ? lido : {};
+    } catch { return {}; }
+  }
+
+  guardarPosicoes() {
+    this.posicoes = {};
+    for (const no of this.nos.values()) if (no.dx || no.dy) this.posicoes[no.id] = [Math.round(no.dx), Math.round(no.dy)];
+    try { localStorage.setItem('neural.mapa.posicoes', JSON.stringify(this.posicoes)); } catch { /* sem armazenamento: vale só até recarregar */ }
+  }
+
+  // Desfaz os arrastos: cada círculo volta ao lugar calculado, e o mapa é enquadrado.
+  arrumar() {
+    for (const no of this.nos.values()) { no.dx = 0; no.dy = 0; }
+    this.guardarPosicoes();
+    this.organizar();
+    this.ajustar();
   }
 
   // ---------------------------------------------------------------- comandos
@@ -193,7 +230,9 @@ class MapaNeural {
     c.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       c.setPointerCapture(e.pointerId);
-      preso = { ...local(e), arrastou: false };
+      // Segurar um círculo (menos o núcleo) e arrastar muda o lugar dele; segurar o fundo move o mapa.
+      const p = local(e), no = this.noEm(p.x, p.y);
+      preso = { ...p, arrastou: false, no: no && no.tipo !== 'nucleo' ? no : null };
     });
     c.addEventListener('pointermove', (e) => {
       const p = local(e);
@@ -201,7 +240,8 @@ class MapaNeural {
         const dx = p.x - preso.x, dy = p.y - preso.y;
         if (!preso.arrastou && Math.hypot(dx, dy) < 4) return;
         preso.arrastou = true; this.camAlvo = null;
-        this.cam.x -= dx / this.cam.z; this.cam.y -= dy / this.cam.z;
+        if (preso.no) this.deslocar(preso.no, dx / this.cam.z, dy / this.cam.z);
+        else { this.cam.x -= dx / this.cam.z; this.cam.y -= dy / this.cam.z; }
         preso.x = p.x; preso.y = p.y;
         c.style.cursor = 'grabbing';
         this.aoPassar(null);
@@ -214,8 +254,9 @@ class MapaNeural {
     });
     const soltar = (e) => {
       if (!preso) return;
-      const foiClique = !preso.arrastou;
+      const foiClique = !preso.arrastou, moveuNo = preso.arrastou && Boolean(preso.no);
       preso = null; c.style.cursor = 'grab';
+      if (moveuNo) this.guardarPosicoes();
       if (!foiClique || e.type === 'pointercancel') return;
       const p = local(e), no = this.noEm(p.x, p.y);
       if (no && !this.ehFolha(no) && no.tipo !== 'nucleo') this.alternar(no.id);

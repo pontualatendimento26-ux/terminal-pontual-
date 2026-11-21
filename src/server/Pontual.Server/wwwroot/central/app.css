@@ -289,7 +289,6 @@ dialog { max-height: calc(100vh - 32px); overflow-y: auto; }
 @media (max-width: 1040px) { .menu { order: 3; width: 100%; margin: 0; overflow-x: auto; } .topo > div { flex-wrap: wrap; padding: 10px 0; } .recado { position: static; } }
 @media (max-width: 900px) { .pessoas { grid-template-columns: 1fr; } .dados { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
-.ad .topo > div { gap: 16px; } .ad .topo .fim { gap: 8px; } .ad .menu { margin-left: 4px; } .ad .menu button { padding: 0 12px; }
 .eu > span:nth-child(2) { min-width: 0; } .eu small { display: block; white-space: nowrap; }
 .eu b, .eu small { max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pessoas { max-height: 196px; overflow-y: auto; overscroll-behavior: contain; }
@@ -357,7 +356,11 @@ textarea.campo.ia-texto-medio { min-height: 220px; }
 .ia-fala.eu { justify-self: end; background: var(--azul-100); border-color: transparent; }
 .ia-fala small { display: block; font-size: 12px; color: var(--suave); margin-bottom: 2px; }
 .ia-fala p { color: var(--tinta); white-space: pre-wrap; overflow-wrap: anywhere; }
-/* Com a seção "Assistente" o menu tem um item a mais: o cabeçalho aperta mais cedo para não transbordar. */
-@media (max-width: 1400px) { .ad .produto { display: none; } .ad .menu button { padding: 0 9px; } .ad .eu small { display: none; } }
-@media (max-width: 1160px) { .ad .menu button { padding: 0 6px; font-size: 14px; } }
-@media (max-width: 1100px) { .ad .menu { order: 3; width: 100%; margin: 0; overflow-x: auto; } .ad .topo > div { flex-wrap: wrap; padding: 10px 0; } }
+/* Cabeçalho da Central: as oito seções não cabem ao lado da logo e do usuário na caixa de 1160px,
+   então o menu fica sempre numa linha própria, abaixo da logo. Assim o cabeçalho nunca fica mais largo
+   que a janela e a página não ganha rolagem horizontal (o botão do tema fica sempre à vista). */
+.ad .topo > div { flex-wrap: wrap; gap: 4px 16px; min-height: 0; padding: 10px 0 8px; }
+.ad .topo .fim { gap: 8px; }
+.ad .menu { order: 3; flex: 1 1 100%; width: 100%; min-width: 0; margin: 0; flex-wrap: wrap; overflow: visible; }
+.ad .menu button { padding: 0 12px; }
+@media (max-width: 1160px) { .ad .menu button { padding: 0 8px; font-size: 14px; } }

@@ -73,6 +73,7 @@ const TIPOS = {
   knowledge: { um: 'Conhecimento', varios: 'Conhecimentos operacionais', cor: MAPA_CORES.knowledge },
   attendant: { um: 'Atendente', varios: 'Atendentes', cor: MAPA_CORES.attendant },
   suggestion: { um: 'Sugestão pendente', varios: 'Aprendizado', cor: MAPA_CORES.suggestion },
+  manual: { um: 'Manual de comunicação', varios: 'Manual de comunicação', cor: MAPA_CORES.manual },
 };
 const SUGESTOES = { correction: 'Correção de atendente', gap: 'Lacuna de conhecimento', new_info: 'Informação nova', review: 'Conteúdo a revisar' };
 const SITUACAO = { pending: 'Pendente', approved: 'Aprovada', rejected: 'Rejeitada' };
@@ -232,6 +233,10 @@ function grafo() {
     if (n) nos.push({ id: `g:sug:${tipo}`, pai: 'r:suggestion', tipo: 'grupo', ramo: 'suggestion', rotulo: SUGESTOES[tipo], n });
   }
   for (const s of d.pendingSuggestions) nos.push({ id: `s:${s.id}`, pai: agruparSug ? `g:sug:${s.kind}` : 'r:suggestion', tipo: 'suggestion', rotulo: s.title, estado: 'pending' });
+  // O manual de comportamento e comunicação: um ramo com um único texto, que a IA lê em toda resposta.
+  const manual = Boolean(d.settings.manual);
+  nos.push({ id: 'r:manual', pai: 'ia', tipo: 'ramo', ramo: 'manual', rotulo: 'Manual de comunicação', n: manual ? 1 : 0 });
+  nos.push({ id: 'm:manual', pai: 'r:manual', tipo: 'manual', ramo: 'manual', rotulo: 'Comportamento e comunicação com o cliente', estado: manual ? 'active' : 'disabled' });
   return { nos, ligacoes: d.links.map((l) => ({ a: l.from, b: l.to })) };
 }
 
@@ -245,7 +250,7 @@ function aplicarFiltroMapa() {
 }
 
 function desenharFiltrosMapa() {
-  const d = E.d, contagem = { script: itensDe('script').length, document: itensDe('document').length, knowledge: itensDe('knowledge').length, attendant: d.attendants.length, suggestion: d.suggestions.pending };
+  const d = E.d, contagem = { script: itensDe('script').length, document: itensDe('document').length, knowledge: itensDe('knowledge').length, attendant: d.attendants.length, suggestion: d.suggestions.pending, manual: d.settings.manual ? 1 : 0 };
   const chips = Object.keys(contagem).map((tipo) => {
     const b = el('button', { type: 'button', className: 'filtro', style: `--c:${TIPOS[tipo].cor}`, 'aria-pressed': String(!E.ocultos.has(tipo)), title: `Mostrar ou esconder: ${TIPOS[tipo].varios}` },
       el('i'), tipo === 'suggestion' ? 'Sugestões pendentes' : TIPOS[tipo].varios, el('b', { textContent: mil(contagem[tipo]) }));
@@ -257,12 +262,12 @@ function desenharFiltrosMapa() {
       .map(([v, r]) => el('option', { value: v, textContent: r, selected: v === E.estadoMapa })));
   estado.onchange = () => { E.estadoMapa = estado.value; aplicarFiltroMapa(); };
   $('mapa-filtros').replaceChildren(...chips, estado);
-  $('mapa-rodape').textContent = `${plural(d.items.length, 'conhecimento', 'conhecimentos')} · ${plural(d.links.length, 'ligação', 'ligações')} · ${plural(d.attendants.length, 'atendente', 'atendentes')}. Arraste para mover, role para aproximar, clique num ramo para abrir ou fechar.`;
+  $('mapa-rodape').textContent = `${plural(d.items.length, 'conhecimento', 'conhecimentos')} · ${plural(d.links.length, 'ligação', 'ligações')} · ${plural(d.attendants.length, 'atendente', 'atendentes')}. Arraste o fundo para mover o mapa e um círculo para mudá-lo de lugar; role para aproximar; clique num ramo para abrir ou fechar.`;
 }
 
 $('z-mais').onclick = () => E.mapa.zoom(1.25);
 $('z-menos').onclick = () => E.mapa.zoom(1 / 1.25);
-$('z-tudo').onclick = () => E.mapa.ajustar();
+$('z-tudo').onclick = () => E.mapa.arrumar();   // enquadra e devolve ao lugar os círculos arrastados
 $('z-abrir').onclick = () => E.mapa.expandirTudo();
 $('z-fechar').onclick = () => E.mapa.recolherTudo();
 
@@ -279,6 +284,7 @@ function dicaDoNo(no, x, y) {
   else if (no.tipo === 'ramo' || no.tipo === 'grupo') linhas.push(`${plural(no.n ?? no.filhos.length, 'item', 'itens')}. Clique para ${E.mapa.recolhidos.has(no.id) ? 'abrir' : 'fechar'}.`);
   else if (no.tipo === 'attendant') linhas.push('Atendente', no.estado === 'active' ? 'Perfil montado pela IA' : no.estado === 'pending' ? 'Tem conversas ainda sem análise' : 'Ainda sem conversas para analisar');
   else if (no.tipo === 'suggestion') linhas.push('Sugestão pendente de aprovação');
+  else if (no.tipo === 'manual') linhas.push('Como a IA se comporta e escreve para o cliente', no.estado === 'active' ? 'Escrito e em uso em toda resposta' : 'Ainda não escrito');
   else linhas.push(`${TIPOS[no.tipo].um}${no.sub ? ` · ${no.sub}` : ''}`, `${ESTADOS[no.estado] || ''}${no.novo ? ' · atualizado nos últimos 7 dias' : ''}`);
   dica.replaceChildren(el('b', { textContent: no.rotulo }), ...linhas.filter(Boolean).map((l) => el('span', { textContent: l })));
   dica.hidden = false;
@@ -294,6 +300,7 @@ function aoSelecionarNo(no) {
   else if (no.tipo === 'ramo' || no.tipo === 'grupo') gavetaRamo(no);
   else if (no.tipo === 'attendant') gavetaAtendente(no.id.slice(2));
   else if (no.tipo === 'suggestion') gavetaSugestao(no.id.slice(2));
+  else if (no.tipo === 'manual') gavetaManual();
   else gavetaItem(no.id);
 }
 
@@ -350,7 +357,8 @@ function gavetaRamo(no) {
   let acao = null;
   if (novo) { acao = botao(novo === 'document' ? 'Enviar documento' : `Novo ${TIPOS[novo].um.toLowerCase()}`, novo === 'document' ? 'enviar' : 'mais', 'btn mini'); acao.onclick = () => (novo === 'document' ? escolherArquivo(null) : abrirFormulario(null, novo)); }
   if (no.id === 'r:suggestion') { acao = botao('Abrir o aprendizado', 'aprender', 'btn mini'); acao.onclick = () => ir('aprendizado'); }
-  const vazios = { 'r:script': 'Nenhum roteiro cadastrado.', 'r:document': 'Nenhum documento enviado ainda.', 'r:knowledge': 'Nenhum conhecimento operacional cadastrado ainda.', 'r:attendant': 'Nenhuma máquina aprovada ainda.', 'r:suggestion': 'Nenhuma sugestão pendente. Elas aparecem quando uma atendente corrige uma resposta ou quando a IA analisa as conversas.' };
+  if (no.id === 'r:manual') { acao = botao(E.d.settings.manual ? 'Editar o manual' : 'Escrever o manual', 'editar', 'btn mini'); acao.onclick = abrirManual; }
+  const vazios = { 'r:script': 'Nenhum roteiro cadastrado.', 'r:document': 'Nenhum documento enviado ainda.', 'r:knowledge': 'Nenhum conhecimento operacional cadastrado ainda.', 'r:attendant': 'Nenhuma máquina aprovada ainda.', 'r:suggestion': 'Nenhuma sugestão pendente. Elas aparecem quando uma atendente corrige uma resposta ou quando a IA analisa as conversas.', 'r:manual': 'O manual ainda não foi escrito.' };
   gaveta(no.id,
     topoGaveta(selo(`${no.ramo} liso`, no.tipo === 'ramo' ? 'Ramo' : 'Grupo')),
     el('h2', { textContent: no.rotulo }),
@@ -686,6 +694,44 @@ function aoEnviar(idDialogo, idErro, enviar) {
   });
 }
 for (const b of document.querySelectorAll('[data-fechar]')) b.onclick = () => b.closest('dialog').close();
+
+// ------------------------------------------------- manual de comunicação
+// Um texto só, gravado na mesma chave das "orientações gerais" da Central do TI → Assistente.
+function gavetaManual() {
+  const texto = E.d.settings.manual || '', limite = E.d.limits.manual;
+  const editar = botao(texto ? 'Editar o manual' : 'Escrever o manual', 'editar', 'btn mini'); editar.onclick = abrirManual;
+  const abrir = botao('Abrir o texto', 'abrir'); abrir.disabled = !texto;
+  abrir.onclick = () => { $('texto-titulo').textContent = 'Manual de comunicação'; $('texto-sub').textContent = `${mil(texto.length)} caracteres. A IA lê este texto em toda resposta.`; $('texto-corpo').textContent = texto; $('dlg-texto').showModal(); };
+  gaveta('m:manual',
+    topoGaveta(selo('manual liso', 'Manual'), selo(texto ? 'active' : 'disabled', texto ? 'Em uso' : 'Não escrito')),
+    el('h2', { textContent: 'Comportamento e comunicação com o cliente' }),
+    el('p', { className: 'frase', textContent: 'Como a IA escreve para o cliente: lê a pessoa pela conversa, ajusta a explicação à necessidade dela e preserva o jeito da atendente. Não ensina o que a Pontual faz; isso vem da base. Vale no chat das atendentes e na cobertura de ausência.' }),
+    el('dl', { className: 'dados' },
+      dado('Tamanho', texto ? `${mil(texto.length)} de ${mil(limite)} caracteres` : 'Nenhum texto'),
+      dado('Quando a IA lê', 'Em toda resposta, junto das regras fixas')),
+    el('div', { className: 'botoes' }, editar, abrir),
+    texto
+      ? secao('Começo do texto', el('p', { className: 'frase', textContent: texto.length > 600 ? `${texto.slice(0, 600)}…` : texto }))
+      : el('p', { className: 'nota', textContent: 'Sem manual, a IA segue só as regras fixas e trata todo cliente do mesmo jeito.' }));
+}
+
+function abrirManual() {
+  const campo = $('manual-texto'), limite = E.d.limits.manual;
+  campo.value = E.d.settings.manual || '';
+  $('manual-erro').hidden = true;
+  const contar = () => { $('manual-conta').textContent = `${mil(campo.value.length)} de ${mil(limite)} caracteres.`; };
+  campo.oninput = contar; contar();
+  $('dlg-manual').showModal();
+}
+
+aoEnviar('dlg-manual', 'manual-erro', async () => {
+  const texto = $('manual-texto').value.trim();
+  exigir(texto.length <= E.d.limits.manual, `O manual aceita no máximo ${mil(E.d.limits.manual)} caracteres.`);
+  await api('PUT', '/neural/settings', { manual: texto });
+  await carregar();
+  if (E.gaveta === 'm:manual') gavetaManual();
+  return texto ? 'Manual salvo. A IA já usa na próxima resposta.' : 'Manual apagado. A IA volta a seguir só as regras fixas.';
+});
 
 aoEnviar('dlg-item', 'item-erro', async () => {
   const aberto = E.itemAberto, i = aberto ? aberto.item : null;
@@ -1060,7 +1106,7 @@ function desenharVisao() {
     el('div', { className: 'cartao-corpo' },
       el('div', { className: `medidor${cheio >= 100 ? ' cheio' : ''}`, style: `--p:${cheio}%` }),
       el('p', { className: 'nota', textContent: `${mil(d.brain.enabledChars)} de ${mil(d.brain.inlineBudget)} caracteres da leitura completa (${cheio}%). Quando a base passar disso, a IA muda sozinha para o índice, para a pergunta não ficar cara. O teto total é de ${mil(d.brain.limitChars)} caracteres.` }),
-      el('p', { className: 'nota', textContent: `Modelo: ${d.settings.model}. Orientações gerais: ${d.settings.generalInstructions ? `${mil(d.settings.generalInstructions)} caracteres` : 'nenhuma escrita'} (editadas em Central do TI → Assistente).` })));
+      el('p', { className: 'nota', textContent: `Modelo: ${d.settings.model}. Manual de comunicação: ${d.settings.generalInstructions ? `${mil(d.settings.generalInstructions)} caracteres` : 'ainda não escrito'} (no ramo Manual de comunicação do mapa; é o mesmo texto das orientações gerais em Central do TI → Assistente).` })));
 
   const barras = (campo, vazioTexto) => {
     const conta = new Map();

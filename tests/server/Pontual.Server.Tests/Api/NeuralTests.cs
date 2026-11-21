@@ -132,6 +132,31 @@ public sealed class NeuralTests
     }
 
     [Fact]
+    public async Task Manual_de_comunicacao_salvo_no_mapa_chega_a_ia_em_toda_resposta()
+    {
+        var model = new FakeBrain();
+        using var app = new TestApp { AssistantModel = model };
+        var owner = await app.OwnerAsync();
+        var (_, terminal) = await app.ApprovedDeviceAsync(owner, "PC-01", "Maria Souza");
+        await owner.PutAsJsonAsync("/api/v1/assistant/settings", new { apiKey = Key });
+
+        var saved = await owner.PutAsJsonAsync("/api/v1/neural/settings", new { manual = "Leia o cliente pela conversa.\r\nA voz é da atendente, a dose é do cliente." });
+        Assert.Equal(HttpStatusCode.NoContent, saved.StatusCode);
+
+        var overview = await owner.GetAsync("/api/v1/neural").Json();
+        Assert.Equal("Leia o cliente pela conversa.\nA voz é da atendente, a dose é do cliente.", overview.GetProperty("settings").GetProperty("manual").GetString());
+        Assert.Equal(8000, overview.GetProperty("limits").GetProperty("manual").GetInt32());
+
+        // É o mesmo texto das orientações gerais: entra na parte comum das instruções da IA.
+        await AskAsync(terminal, "Como respondo um cliente confuso?");
+        Assert.Contains("A voz é da atendente, a dose é do cliente.", Assert.Single(model.Requests).SharedInstructions);
+
+        var tooLong = await owner.PutAsJsonAsync("/api/v1/neural/settings", new { manual = new string('a', 8001) });
+        Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+        Assert.Contains("alterou o manual de comunicação", (await owner.GetAsync("/api/v1/audit").Json()).GetRawText());
+    }
+
+    [Fact]
     public async Task Conhecimento_cadastrado_vai_para_a_ia_e_some_quando_desligado()
     {
         var model = new FakeBrain();

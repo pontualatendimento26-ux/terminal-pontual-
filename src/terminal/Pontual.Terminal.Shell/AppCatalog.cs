@@ -67,6 +67,13 @@ internal static class AppCatalog
             Add(found, Path.Combine(system, file), name, "windows");
         }
 
+        // Notas Autoadesivas: sem lançador na System32 desde o Windows 10 1607, só o pacote da Loja. O executável do pacote
+        // registrado para a conta entra como aplicativo do Windows; a abertura é pelo gerenciador de ativação (StoreApps).
+        foreach (var (path, name) in StoreApps.InstalledWithoutLauncher())
+        {
+            Add(found, path, name, "windows");
+        }
+
         foreach (var root in new[] { Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), Environment.GetFolderPath(Environment.SpecialFolder.Programs) })
         {
             foreach (var shortcut in Enumerate(root, "*.lnk", recurse: true))

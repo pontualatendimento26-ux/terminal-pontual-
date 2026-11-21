@@ -116,6 +116,16 @@ Desde o Terminal 2.5.0. Quando uma atendente falta, a assistente responde os cli
 - Os seletores do WhatsApp Web (lista `#pane-side`, selo de não lida, campo `#main footer [contenteditable]`, botão
   de enviar) não foram testados na página real. Use o ensaio primeiro.
 
+## Manual de comunicação
+
+Ramo "Manual de comunicação" do mapa: um texto só, sobre como a IA se comporta e escreve para o
+cliente (ler a pessoa pela conversa, ajustar a explicação, preservar o jeito da atendente). Não ensina
+o que a Pontual faz; isso é a base. Gravado na chave `assistant.instructions`, a mesma das "orientações
+gerais" em Central do TI → Assistente, e lido pela IA em toda resposta, no chat e na cobertura, como o
+bloco `<orientacoes_gerais>` das instruções comuns (vale abaixo das regras fixas e das regras da
+cobertura). Edita-se pela gaveta do ramo (`PUT /neural/settings` com `manual`, até 8000 caracteres);
+a auditoria registra a alteração. O texto de referência está em `docs/MANUAL-COMUNICACAO-IA.md`.
+
 ## Pendências conhecidas
 
 - **PDF escaneado:** o arquivo é guardado com `FileStatus = no_text`, sem texto e desligado. Falta

@@ -263,6 +263,8 @@ async function agir(botao, fazer, { recarregar = [], ok = '' } = {}) {
 function mostrarTela(nome) {
   for (const id of ['carga', 'rede', 'setup', 'login', 'conta']) $(`tela-${id}`).hidden = id !== nome;
   $('app-ad').hidden = nome !== 'app';
+  // O botão do tema solto no canto é só das telas de entrada; na Central ele fica no cabeçalho.
+  $('tema-entrada').hidden = nome === 'app';
 }
 let novaTentativa = null;
 async function iniciar() {

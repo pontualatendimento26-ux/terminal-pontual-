@@ -69,7 +69,7 @@
       <div class="mapa-zoom" role="group" aria-label="Controles do mapa">
         <button type="button" class="icone" id="z-mais" title="Aproximar" aria-label="Aproximar"><i data-ic="mais"></i></button>
         <button type="button" class="icone" id="z-menos" title="Afastar" aria-label="Afastar"><i data-ic="menos"></i></button>
-        <button type="button" class="icone" id="z-tudo" title="Enquadrar tudo" aria-label="Enquadrar tudo"><i data-ic="enquadrar"></i></button>
+        <button type="button" class="icone" id="z-tudo" title="Enquadrar tudo e devolver os círculos ao lugar" aria-label="Enquadrar tudo e devolver os círculos ao lugar"><i data-ic="enquadrar"></i></button>
         <button type="button" class="icone" id="z-abrir" title="Expandir todos os ramos" aria-label="Expandir todos os ramos"><i data-ic="expandir"></i></button>
         <button type="button" class="icone" id="z-fechar" title="Recolher os ramos" aria-label="Recolher os ramos"><i data-ic="recolher"></i></button>
       </div>
@@ -143,6 +143,16 @@
   <pre class="leitura" id="texto-corpo" tabindex="0"></pre>
   <div class="acoes"><button type="button" class="btn" data-fechar>Fechar</button></div>
 </div></dialog>
+
+<dialog id="dlg-manual" class="largo" aria-labelledby="manual-titulo"><form class="dlg" novalidate>
+  <h2 id="manual-titulo">Manual de comunicação</h2>
+  <p>Como a IA se comporta e escreve para o cliente. Ela lê este texto em toda resposta, junto das regras fixas. Ele não substitui a base de conhecimento nem as regras da cobertura.</p>
+  <div class="grade">
+    <label class="toda">Texto<textarea class="campo alto" id="manual-texto" spellcheck="false" placeholder="Como ler o cliente pela conversa, como ajustar a explicação à necessidade dele e o que preservar do jeito da atendente."></textarea><span class="dica" id="manual-conta"></span></label>
+  </div>
+  <p class="erro" id="manual-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Salvar</button></div>
+</form></dialog>
 
 <dialog id="dlg-confirmar" aria-labelledby="conf-titulo" aria-describedby="conf-texto"><form class="dlg" novalidate>
   <h2 id="conf-titulo"></h2><p id="conf-texto"></p>
