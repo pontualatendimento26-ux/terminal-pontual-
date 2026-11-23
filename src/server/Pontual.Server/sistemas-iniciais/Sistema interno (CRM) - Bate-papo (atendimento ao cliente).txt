@@ -1,0 +1,96 @@
+Sistema interno (CRM): Bate-papo, a tela de atendimento ao cliente
+
+Menu lateral › "Bate-papo". É a tela mais usada. Três colunas:
+- esquerda: lista de conversas;
+- meio: a conversa aberta;
+- direita: a ficha do cliente, "Dados do Cliente (CRM)" (começa fechada).
+
+LISTA DE CONVERSAS
+- Mostra só clientes em aberto. Quem foi marcado Ganho ou Perdido some da lista; se mandar mensagem de novo, volta sozinho.
+- "Buscar...": procura por nome, telefone, CPF, notas e texto das mensagens.
+- Botão de pessoa com "+" ("Adicionar Cliente"): cadastra cliente novo e já abre a conversa.
+- Controles deslizantes ("Filtros e Organização"): ordena e filtra por status (Não Lidos, Lidos, Recebida, Enviada), período, funil e etapa e, para quem tem permissão, por atendente. Os filtros só valem depois de clicar em "Aplicar".
+- "Todos os Bots": escolhe de quais chips aparecem conversas. Se desmarcar todos, a lista fica vazia (é comum acharem que "sumiu tudo" por isso).
+- Etiqueta ("Gerenciar Tags"): filtra por etiqueta.
+- O card de cada conversa mostra etiquetas, foto, nome, horário, prévia da última mensagem e a bolinha com o número de não lidas.
+- Selecionar várias: segurar o clique cerca de 1 segundo num card; os próximos marcam com um clique. A barra tem "Selecionar Todos", "Marcar como Lidos" e, com permissão, "Transferir Atendimento" em rodízio. ESC sai do modo seleção.
+
+ABRINDO UMA CONVERSA (topo)
+- Cronômetro de espera (há quanto tempo o cliente espera resposta): amarelo até 10 min; laranja de 10 a 30 min; vermelho mais de 30 min. Se a última mensagem foi nossa, aparece "Aguardando Retorno".
+- Abas de canal: se o cliente falou por mais de um chip (ou por WhatsApp e RCS), cada canal vira uma aba. Cadeado = você não participa daquele canal, só pode olhar.
+- "Pesquisar nesta conversa...": procura palavras na conversa.
+- Ícones à direita:
+  - "Dados do Cliente (CRM)": abre a ficha.
+  - "Consultar Saldo API": consulta SIAPE e gera a proposta.
+  - "Ligar para o cliente": liga pela linha fixa (se tiver telefonia).
+  - "Marcar como lido".
+  - Mão ("Assumir conversa"): aparece quando a IA do CRM está atendendo aquele funil. Clicar faz a IA parar e a pessoa assumir. Para devolver: "Devolver conversa para a IA".
+  - "Baixar Histórico": PDF da conversa (normalmente só Supervisor).
+
+TIQUES DAS MENSAGENS
+Relógio = enviando; ✓ = enviado; ✓✓ cinza = entregue; ✓✓ azul = lido; ! vermelho = falhou (passar o mouse mostra o motivo).
+
+PASSANDO O MOUSE NUMA MENSAGEM
+Responder (cita a mensagem), Reagir, Editar (só mensagem nossa, até 15 minutos depois), Apagar para todos. No RCS não dá para citar, reagir, editar nem apagar.
+
+MÍDIAS E ÁUDIOS
+- Áudios do cliente já chegam transcritos ("Ver transcrição").
+- Imagem, vídeo ou PDF: clicar abre em tela cheia, com zoom, girar, baixar e setas.
+- Dica: segurar Ctrl e arrastar sobre uma imagem copia o texto escrito nela (ótimo para print de contracheque).
+
+AVISOS
+- "Conexão Interrompida – Instância desconectada": o chip daquele cliente caiu. Não dá para responder até reconectarem o chip em Gerenciamento › Instâncias.
+- Faixa vermelha no topo ("Conexão perdida..."): é a internet da pessoa. Volta sozinho quando a conexão voltar.
+
+RESPONDENDO
+- Escrever em "Digite sua mensagem...". Enter envia; Shift+Enter pula linha.
+- Carinha: emojis e figurinhas. Para salvar figurinha que o cliente mandou, clicar na estrelinha dela.
+- Clipe ("Anexar"): Documentos, Fotos e vídeos ou Áudios. Também dá para arrastar o arquivo para a conversa ou colar imagem com Ctrl+V. Limite de 6 arquivos por vez. O lápis na miniatura abre o editor de imagem (recortar, desenhar, escrever, borrar dados sensíveis). O texto digitado vai como legenda do primeiro arquivo.
+- Microfone: grava áudio; dá para pausar e ouvir antes de mandar, ou descartar na lixeira.
+- "Sussurro" (lápis com nota): anotação interna; fica no histórico, o cliente não vê. Serve para recado à equipe.
+- Varinha "Assistente IA ✨": 1. escrever o texto; 2. clicar num assistente (ex.: "Tom Formal"); 3. a IA reescreve na própria caixa; 4. revisar antes de enviar.
+
+MENSAGENS PRONTAS COM "/"
+1. Na caixa de mensagem, digitar "/". Abre a lista com as abas "Geral" (da empresa) e "Minhas".
+2. Continuar digitando para filtrar (ex.: "/portab").
+3. ↑/↓ para escolher.
+4. 1º Enter coloca o texto na caixa; 2º Enter envia.
+5. Variáveis como (primeiro_nome), (cpf) e (nome_atendente) são trocadas sozinhas pelos dados do cliente.
+
+FICHA DO CLIENTE (painel da direita)
+- Nome, número e CPF (CPF com máscara).
+- Etiquetas: "+" adiciona, X remove. Salvam na hora.
+- "Não recebe disparo": aparece quando o cliente pediu para não receber ou disse que o número não é dele. Fica fora dos disparos.
+- Seletor de funil: escolhe funil e etapa; move o cartão no Kanban.
+- "Responsável": transfere para outra pessoa ou "Livre (Fila Geral)"; clicar no ✓ para confirmar. Depois de transferir, a conversa sai da lista de quem transferiu.
+- Mídias: tudo o que foi trocado com o cliente.
+- Campos do CRM (convênio, margem, banco etc.) e Notas.
+- Botão "Salvar Alterações": grava nome, CPF, notas e campos. Sem clicar, essas mudanças se perdem. Etiquetas e funil não precisam dele.
+- Barra de status no rodapé: Entrada · Aberto · Ganho · Perdido. Ganho = vendeu, o cliente sai da lista. Perdido obriga escolher o motivo; para corrigir o motivo, clicar em Perdido de novo.
+
+LEMBRETES
+1. Com a conversa aberta, clicar no despertador ao lado da caixa de mensagem, ou Ctrl+L.
+2. Escrever a mensagem e escolher quando (padrão: amanhã às 09:00).
+3. Clicar em "Criar lembrete".
+4. Na hora, aparece um cartão com bipe em qualquer tela do sistema, com "Abrir conversa", "Adiar" (só uma vez por rodada), "Concluir" e X "Já vi" (fecha o cartão, mas o lembrete continua no sino).
+5. O lembrete fica também como card amarelo dentro da conversa.
+O Supervisor pode criar lembrete para outra pessoa (campo "Avisar quem?").
+
+CONSULTAR SIAPE E GERAR A PROPOSTA
+1. Com a conversa aberta, clicar em "Consultar Saldo API" (lupa com cifrão).
+2. Escolher o "Convênio". Hoje o que funciona de fato é o SIAPE.
+3. O CPF vem da ficha; para outro, "Digitar CPF Manual".
+4. O "Fator de Cálculo" vem preenchido; só mudar sabendo o que faz (lápis "Editar Fator").
+5. Clicar em "Executar Consulta".
+6. Aparecem Nome, CPF, Idade, Órgão. Com mais de uma matrícula, escolher a matrícula e consultar de novo.
+7. Em "Oportunidades Disponíveis", clicar nos contratos que entram na proposta. "Liberado" fica verde quando positivo.
+8. "Copiar Imagem" gera a imagem (depois Ctrl+V na conversa e enviar) ou "Copiar Texto" copia a proposta formatada para WhatsApp.
+
+CADASTRAR CLIENTE NOVO NA MÃO
+1. Clicar em "Adicionar Cliente" (pessoa com "+").
+2. Preencher Nome, Telefone (obrigatório), CPF, "Bot (Canal)" (chip por onde a conversa sai, obrigatório), Etiqueta, Funil / Etapa.
+3. Clicar em "Adicionar e Iniciar Chat".
+O sistema avisa se o cliente já existe, se não tem WhatsApp ou se já é de outra atendente (nesse caso, pedir ao Supervisor para transferir).
+
+ATALHOS
+Enter envia · Shift+Enter pula linha · / mensagens prontas · Ctrl+L lembrete · Ctrl+V cola imagem como anexo · ESC fecha o que estiver aberto (visualizador, janelas, painel, conversa).

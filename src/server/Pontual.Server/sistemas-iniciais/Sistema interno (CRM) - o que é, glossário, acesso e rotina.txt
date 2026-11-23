@@ -1,0 +1,81 @@
+Sistema interno (CRM da PontualConsig): o que é, glossário, acesso e rotina
+
+ATENÇÃO AO NOME
+O guia oficial deste sistema chama ele de "Nexus (CRM Pontual Consig)", e a tela de login mostra o logo do Nexus. Na Pontual ele é chamado de "sistema interno" ou "CRM" (endereço 192.168.0.243:3000, item "Sistema interno" do Terminal). É o CRM de WhatsApp: chips, disparos, Bate-papo, Kanban. Não confundir com o Nexus das consultas SIAPE/INSS, da esteira e dos bancos: se a atendente falar "Nexus", confirme de qual dos dois ela está falando quando isso mudar a resposta.
+
+COMO RESPONDER SOBRE ESTE SISTEMA
+- Português simples, como um colega explicando. Nada de linguagem de programador.
+- "Como faço X": passo a passo numerado, com os nomes exatos dos botões e telas (os que aparecem entre aspas nestes textos).
+- Se a pessoa não acha um botão ou tela: o sistema só mostra o que o nível de acesso dela permite. Ela precisa pedir ao Supervisor.
+- Se não estiver coberto aqui, diga que não tem certeza e oriente falar com o Supervisor. Não invente botões nem funções.
+- Avise sempre das coisas que NÃO têm volta: excluir chip, excluir usuário, soltar disparo RCS ("Enviar agora"), desativar template RCS e torpedo de voz, lixeira dos Relatórios Detalhados.
+
+O QUE É, EM UMA FRASE
+É onde a empresa conecta os números de WhatsApp, manda mensagens em massa (WhatsApp e RCS), atende os clientes que respondem e acompanha cada cliente até virar venda (ou não). Tudo numa tela só, no navegador.
+
+O CAMINHO DO CLIENTE
+1. Chip conectado: os números de WhatsApp da empresa (chip, bot ou instância, é tudo a mesma coisa) ficam conectados por QR Code.
+2. Lista de clientes: montada pela equipe (às vezes gerada na tela "Listas da Base").
+3. Disparo: a lista é colada no "Novo Disparo" (WhatsApp) ou no "Disparo RCS". O sistema manda para cada cliente, um por vez.
+4. O cliente responde: a conversa aparece no Bate-papo, onde se atende.
+5. Funil (Kanban): cada cliente é um cartão num funil com etapas (colunas). O cartão anda conforme a negociação.
+6. Proposta: no Bate-papo dá para consultar o SIAPE e gerar a imagem da proposta.
+7. Fechamento: cliente marcado como Ganho (vendeu) ou Perdido (com motivo).
+8. Métricas: o Supervisor acompanha nos painéis e relatórios.
+
+GLOSSÁRIO
+- Chip / Bot / Instância: um número de WhatsApp conectado no sistema.
+- Correspondente: a vendedora/atendente. Nível de acesso básico.
+- Supervisor: o "admin" da empresa. Vê e configura tudo.
+- Dev: quem mantém o sistema. Acesso total.
+- Carteira: os clientes sob responsabilidade da pessoa.
+- Fila Geral: clientes "sem dono", sem responsável.
+- Funil / Canal: um quadro Kanban com etapas, por exemplo "Atendimento Portabilidade".
+- Etapa: uma coluna do funil.
+- Entrada / Ganho / Perdido: etapas fixas que todo funil tem.
+- Etiqueta / Tag: marcador colorido no cliente ou no chip.
+- RCS: mensagem "turbinada" no app de mensagens do Android (imagem, card, botões). É paga.
+- Janela de 24h (RCS): depois que uma conversa RCS abre, as mensagens nas próximas 24h não são cobradas de novo.
+- Sussurro: anotação interna na conversa. O cliente não vê.
+- Mensagem pronta: texto salvo, chamado digitando "/" no chat.
+- Aquecimento / Nota: nota de 0 a 100 da "saúde" de um chip.
+- Maturação: "esquentar" um chip novo para parecer usado por gente de verdade.
+
+ENTRANDO NO SISTEMA
+1. Abrir o endereço no navegador.
+2. Digitar "Usuário" e "Senha" e clicar em "ACESSAR SISTEMA".
+3. O botão mostra "Conectando..." e depois fica verde com "Sucesso!". Abre sozinho a primeira tela permitida; a Correspondente normalmente cai direto no Bate-papo.
+- Não existe "Esqueci minha senha": quem esquecer pede ao Supervisor para trocar.
+- Muitas senhas erradas: "Muitas tentativas erradas. Tente de novo em 15 minutos." É só esperar.
+- A sessão dura 24 horas; depois aparece "Sessão Expirada" e é só entrar de novo.
+- Se o Supervisor trocar a senha, a pessoa é deslogada em cerca de 30 segundos.
+- Existe entrada sem senha por link gerado pelo outro sistema da Pontual: vale 90 segundos e só pode ser usado uma vez.
+
+MENU LATERAL (esquerda)
+Seções: Métricas · Controle de Chips · Gerenciamento · Disparos · Maturação · Kanban · Bate-papo · Configurações.
+- Só aparecem as seções que a pessoa tem permissão de abrir. Faltar alguma não é erro.
+- Seta ao lado do logo: recolhe ou abre o menu. Se o mouse sair, ele se recolhe sozinho em 2 segundos.
+- Sino: notificações. Bolinha azul conta os avisos, âmbar conta os lembretes. Clicar num aviso abre a conversa do cliente.
+- Óculos/lua: tema claro ou escuro.
+- Porta: sai do sistema.
+
+NÍVEIS DE ACESSO: Dev, Supervisor e Correspondente.
+A Correspondente, por padrão, PODE: atender no Bate-papo (só a própria carteira); transferir uma conversa; transcrever áudio; consultar SIAPE/INSS e gerar proposta; ligar para o cliente; usar o Kanban (inclusive ações em massa); fazer Novo Disparo só pelos chips vinculados a ela; criar as próprias mensagens prontas.
+A Correspondente, por padrão, NÃO pode: ver conversas de outras pessoas; ver as colunas Entrada, Ganho e Perdido do Kanban; criar etiquetas ou campos do CRM; baixar o histórico da conversa; fazer transferência em massa; fazer disparo RCS; ver Métricas; mexer em chips, maturação, automações, integrações e Agente de IA.
+O Supervisor libera ou bloqueia permissões pessoa por pessoa. A mudança vale a partir da próxima tela aberta, sem sair e entrar de novo.
+
+ROTINA DO DIA
+Correspondente (atendimento):
+1. Entrar no sistema e abrir o Bate-papo.
+2. Olhar o sino: tem lembretes do dia?
+3. Usar o filtro "Não Lidos" e responder primeiro os cronômetros vermelhos.
+4. Usar "/" para mensagens prontas e Ctrl+L para marcar retornos.
+5. Cliente com interesse: "Consultar Saldo API", depois "Copiar Imagem", depois Ctrl+V na conversa e enviar.
+6. Atualizar a etapa do funil e os campos do CRM e clicar em "Salvar Alterações".
+7. Fechou: marcar Ganho. Não deu: marcar Perdido com o motivo certo.
+Supervisor (operação):
+1. Em Instâncias, conferir chips vermelhos ou com aviso amarelo e reconectar.
+2. Em Aquecimento, pausar os chips fracos e mandar os novos para a Maturação.
+3. Montar a lista (Listas da Base) e fazer o disparo (WhatsApp ou RCS).
+4. Acompanhar pelo Histórico / Histórico RCS.
+5. Olhar a Visão Geral e os Relatórios.

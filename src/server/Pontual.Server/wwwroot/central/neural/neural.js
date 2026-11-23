@@ -88,6 +88,7 @@ const VISTAS = {
   documentos: ['Documentos', 'PDF, DOCX, TXT e planilhas (XLSX, CSV): o texto é extraído e entra na base.'],
   aprendizado: ['Aprendizado das atendentes', 'O que as conversas ensinam. Nada vira fonte oficial sem a sua aprovação.'],
   horarios: ['Horários da IA', 'Os dias e os horários em que a IA pode atender os clientes no lugar de cada atendente.'],
+  crm: ['Clientes do CRM', 'A IA escreve a resposta para os clientes do sistema interno; nada vai ao cliente sem a sua aprovação.'],
   base: ['Base de Conhecimento', 'Tudo o que a IA possui, em um só lugar.'],
   visao: ['Visão Geral', 'Os números reais do cérebro da IA.'],
 };
@@ -203,6 +204,7 @@ function desenhar() {
   else if (E.vista === 'base') desenharLista('base');
   else if (E.vista === 'aprendizado') desenharAprendizado();
   else if (E.vista === 'horarios') desenharHorarios();
+  else if (E.vista === 'crm') desenharCrm();
   else if (E.vista === 'visao') desenharVisao();
 }
 
@@ -217,7 +219,7 @@ function grafo() {
     // Com muitos itens de bancos diferentes, cada banco vira um grupo que abre e fecha.
     const agrupar = itens.length > 12 && bancos.size > 1;
     if (agrupar) for (const [banco, lista] of [...bancos].sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))) {
-      nos.push({ id: `g:${tipo}:${banco}`, pai: ramo, tipo: 'grupo', ramo: tipo, rotulo: banco || 'Sem banco definido', n: lista.length });
+      nos.push({ id: `g:${tipo}:${banco}`, pai: ramo, tipo: 'grupo', ramo: tipo, rotulo: banco || (tipo === 'system' ? 'Sistema CRM' : 'Sem banco definido'), n: lista.length });
     }
     for (const i of itens) {
       nos.push({ id: i.id, pai: agrupar ? `g:${tipo}:${i.bank || ''}` : ramo, tipo, rotulo: i.title, sub: i.bank, estado: estadoDe(i), novo: recente(i.updatedAt) });
@@ -1188,5 +1190,121 @@ document.addEventListener('keydown', (e) => {
     if (!$('gaveta').hidden) fecharGaveta();
   }
 });
+
+// ========================================================= clientes do CRM
+// A IA escreve as respostas para os clientes do CRM (sistema interno). Cada uma espera aqui até alguém aprovar,
+// editar, recusar ou passar a conversa para uma atendente. A tela se atualiza sozinha, sem apagar o que está sendo editado.
+const SITUACAO_CRM = {
+  pending: ['Esperando aprovação', 'pending'], failed: ['Não enviada', 'error'], sent: ['Enviada', 'active'],
+  rejected: ['Recusada', 'disabled'], human: ['Passada para atendente', 'active'], skipped: ['Não pedia resposta', 'disabled'],
+  outdated: ['Substituída por outra', 'disabled'],
+};
+const DECISAO_CRM = { responder: 'A IA sugere responder', humano: 'A IA sugere passar para uma atendente', nada: 'Não precisa responder' };
+E.crm = null; E.crmTextos = new Map();
+
+async function carregarCrm() {
+  try { E.crm = await api('GET', '/neural/crm'); } catch (e) { if (E.vista === 'crm') recado(e.message, true); return; }
+  const n = E.crm.pending.length;
+  $('n-crm').textContent = mil(n); $('n-crm').hidden = !n;
+  // Não redesenha com alguém escrevendo: perderia o cursor.
+  const ativo = document.activeElement;
+  if (E.vista === 'crm' && !(ativo && $('v-crm').contains(ativo) && ['TEXTAREA', 'INPUT', 'SELECT'].includes(ativo.tagName))) desenharCrm();
+}
+setInterval(() => { if (!document.hidden && E.eu) carregarCrm(); }, 10000);
+
+async function agirCrm(alvo, fazer, ok) {
+  if (alvo) alvo.disabled = true;
+  try { const r = await fazer(); recado(ok); await carregarCrm(); return r ?? true; }
+  catch (e) { recado(e.message, true); await carregarCrm(); return null; }
+  finally { if (alvo && alvo.isConnected) alvo.disabled = false; }
+}
+
+function desenharCrm() {
+  const c = E.crm;
+  if (!c) { $('v-crm').replaceChildren(el('p', { className: 'nota', textContent: 'Carregando…' })); carregarCrm(); return; }
+  const pend = c.pending, recentes = c.recent;
+  $('v-crm').replaceChildren(...[
+    cartaoLigacaoCrm(c),
+    el('div', { className: 'cartao' },
+      el('div', { className: 'cartao-topo' }, el('div', {},
+        el('h2', { textContent: pend.length ? `Esperando aprovação (${pend.length})` : 'Nada esperando aprovação' }),
+        el('p', { textContent: c.enabled
+          ? 'Quando um cliente do funil do agente escreve, a IA espera ele terminar e escreve a resposta aqui. Confira, edite se quiser e aprove: só então ela vai para o WhatsApp do cliente, pelo CRM.'
+          : 'A IA está desligada para o CRM. Ligue no quadro acima para ela começar a escrever as respostas.' }))),
+      ...pend.map((r) => cartaoCrm(r, true))),
+    recentes.length ? el('div', { className: 'cartao' }, el('h2', { textContent: 'Últimas tratadas' }), ...recentes.map((r) => cartaoCrm(r, false))) : null,
+    el('details', { className: 'cartao' }, el('summary', { textContent: `Últimos avisos recebidos do CRM (${c.events.length})` }),
+      el('p', { className: 'nota', textContent: 'O que o CRM mandou, do jeito que chegou. Serve para conferir se a ligação está funcionando.' }),
+      ...(c.events.length ? c.events.map(cartaoAvisoCrm) : [el('p', { className: 'nota', textContent: 'Nenhum aviso recebido ainda.' })]))].filter(Boolean));
+}
+
+function cartaoAvisoCrm(e) {
+  const equipe = e.author === 'equipe';
+  return el('div', { className: 'sugestao' },
+    el('header', {}, selo(equipe ? 'disabled' : 'pending', equipe ? 'Pontual' : 'Cliente'),
+      el('b', { textContent: e.contact || e.phone || (e.conversationId ? `Conversa ${e.conversationId}` : 'Aviso sem conversa') }), el('small', { textContent: quando(e.at) })),
+    e.text ? el('div', { className: 'citacao', textContent: e.text }) : el('p', { className: 'nota aviso', textContent: 'Não deu para ler o texto deste aviso.' }),
+    el('details', {}, el('summary', { textContent: 'Ver o aviso completo' }),
+      el('pre', { className: 'citacao', style: 'white-space:pre-wrap;word-break:break-all;max-height:320px;overflow:auto', textContent: e.body })));
+}
+
+function cartaoLigacaoCrm(c) {
+  const url = el('input', { className: 'campo', value: c.url || 'http://192.168.0.243:3000', autocomplete: 'off', 'aria-label': 'Endereço do CRM' });
+  const usuario = el('input', { className: 'campo', value: c.user || '', autocomplete: 'off', 'aria-label': 'Usuário do agente no CRM' });
+  const senha = el('input', { className: 'campo', type: 'password', autocomplete: 'new-password', placeholder: c.hasPassword ? 'Guardada. Preencha só para trocar' : 'Senha do usuário do agente', 'aria-label': 'Senha do usuário do agente' });
+  const ligada = el('select', { className: 'campo', 'aria-label': 'IA nos clientes do CRM' },
+    el('option', { value: '1', textContent: 'Ligada: a IA escreve as respostas para aprovação', selected: c.enabled }),
+    el('option', { value: '0', textContent: 'Desligada: os avisos chegam, a IA não escreve', selected: !c.enabled }));
+  const salvar = botao('Salvar', null, 'btn mini'), testar = botao('Testar a ligação', null), copiar = botao('Copiar', null);
+  salvar.onclick = () => agirCrm(salvar, () => api('PUT', '/neural/crm/settings', { url: url.value, user: usuario.value, password: senha.value, enabled: ligada.value === '1' }), 'Ligação com o CRM salva.');
+  testar.onclick = async () => { testar.disabled = true; try { const r = await api('POST', '/neural/crm/test'); recado(r.message); } catch (e) { recado(e.message, true); } finally { testar.disabled = false; } };
+  copiar.onclick = async () => { try { await navigator.clipboard.writeText(c.webhookUrl); recado('Endereço copiado.'); } catch { recado('Não deu para copiar. Selecione o endereço e copie com Ctrl+C.', true); } };
+  const campo = (rotulo, controle) => el('label', { style: 'display:grid;gap:4px' }, rotulo, controle);
+  return el('div', { className: 'cartao' },
+    el('div', { className: 'cartao-topo' }, el('div', {},
+      el('h2', { textContent: 'Ligação com o CRM' }),
+      el('p', { textContent: 'O CRM manda as mensagens do funil para a IA pelo "Agente Externo". Aqui ficam o endereço do CRM e a conta do agente (a senha fica cifrada neste computador).' }))),
+    el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:12px 0' },
+      campo('Endereço do CRM', url), campo('Usuário do agente', usuario), campo('Senha do agente', senha), campo('IA nos clientes do CRM', ligada)),
+    el('div', { className: 'botoes' }, salvar, testar),
+    c.webhookUrl ? el('div', {},
+      el('h4', { textContent: 'Endereço para colar no CRM' }),
+      el('div', { className: 'botoes' }, el('code', { className: 'citacao', style: 'word-break:break-all', textContent: c.webhookUrl }), copiar),
+      el('p', { className: 'nota', textContent: 'No CRM: Kanban › escolha o funil › Opções do Quadro › Agente de IA › aba Agente Externo. Cole o endereço em "URL do webhook", escolha o usuário do agente e ative. Guarde este endereço só com quem configura o CRM.' }))
+      : el('p', { className: 'nota', textContent: 'Salve uma vez para gerar o endereço que vai no CRM.' }));
+}
+
+function cartaoCrm(r, editavel) {
+  const [rotulo, classe] = SITUACAO_CRM[r.status] || [r.status, 'liso'];
+  const nome = r.contact || r.phone || `Conversa ${r.conversationId}`;
+  const partes = [
+    el('header', {}, selo(classe, rotulo), el('b', { textContent: nome }), r.contact && r.phone ? el('small', { textContent: r.phone }) : null, el('small', { textContent: quando(r.sentAt || r.createdAt) })),
+    el('div', { className: 'citacao' }, el('b', { textContent: 'Cliente escreveu' }), r.incoming),
+  ];
+  if (editavel) {
+    const campo = el('textarea', { className: 'campo', value: E.crmTextos.get(r.id) ?? r.reply, 'aria-label': `Resposta para ${nome}`, placeholder: 'Escreva a resposta para o cliente' });
+    campo.oninput = () => E.crmTextos.set(r.id, campo.value);
+    const aprovar = botao('Aprovar e enviar', null, 'btn mini');
+    aprovar.onclick = async () => { if (await agirCrm(aprovar, () => api('POST', `/neural/crm/replies/${r.id}/approve`, { message: campo.value }), `Enviada para ${nome}.`)) E.crmTextos.delete(r.id); };
+    const sugerido = r.decision === 'humano';
+    const humano = botao(sugerido ? 'Passar para atendente (sugerido)' : 'Passar para atendente', null, sugerido ? 'btn mini' : 'btn claro mini');
+    humano.title = 'Manda o texto da caixa ao cliente (se houver) e passa a conversa para uma atendente no CRM.';
+    humano.onclick = async () => {
+      if (!confirm(`Passar a conversa de ${nome} para uma atendente no CRM?${campo.value.trim() ? '\n\nO texto da caixa vai para o cliente antes.' : ''}`)) return;
+      if (await agirCrm(humano, () => api('POST', `/neural/crm/replies/${r.id}/human`, { message: campo.value }), `Conversa de ${nome} passada para atendente.`)) E.crmTextos.delete(r.id);
+    };
+    const recusar = botao('Recusar', null);
+    recusar.onclick = async () => { if (await agirCrm(recusar, () => api('POST', `/neural/crm/replies/${r.id}/reject`), 'Resposta recusada. Nada foi enviado.')) E.crmTextos.delete(r.id); };
+    if (r.decision) partes.push(el('p', { className: 'nota', textContent: DECISAO_CRM[r.decision] || '' }));
+    partes.push(el('b', { textContent: 'Resposta para o cliente (você pode editar)' }), campo, el('div', { className: 'botoes' }, aprovar, humano, recusar));
+  } else if (r.reply) {
+    partes.push(el('div', { className: 'citacao' }, el('b', { textContent: r.status === 'sent' || r.status === 'human' ? 'Enviado' : 'Resposta escrita' }), r.reply));
+  }
+  if (r.reason) partes.push(el('p', { className: 'nota', textContent: `Motivo da IA: ${r.reason}${r.reviewedBy ? ` · ${r.reviewedBy}` : ''}` }));
+  if (r.error) partes.push(el('p', { className: r.status === 'human' ? 'nota' : 'erro', textContent: r.error }));
+  partes.push(el('details', {}, el('summary', { textContent: 'Ver a conversa' }), el('div', { className: 'citacao', style: 'white-space:pre-wrap', textContent: r.transcript })));
+  return el('div', { className: 'sugestao' }, ...partes);
+}
+
 
 iniciar();

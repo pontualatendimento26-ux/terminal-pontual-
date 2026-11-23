@@ -1,0 +1,26 @@
+Sistema interno (CRM): Kanban (funil de vendas) e cadastro de mensagens prontas
+
+KANBAN
+Menu lateral › "Kanban". Cada coluna é uma etapa e cada cartão é um cliente.
+1. Escolher o funil: clicar no nome do funil no topo (seta ▼). O sistema lembra o último usado.
+2. Mover um cliente: arrastar o cartão para outra coluna. Durante o arraste aparecem embaixo "MARCAR COMO GANHO" e "MARCAR COMO PERDIDO"; é só soltar ali. Perdido sempre pede o motivo; se cancelar, o cartão volta.
+3. Ir para a conversa: o aviãozinho no cartão ("Responder no Bate-papo").
+4. Buscar: "Filtro de busca" procura por nome, telefone, CPF e última mensagem. O ícone de filtro abre filtros avançados: etiquetas, atendente, com ou sem CPF, motivo de perda, datas e campos do CRM.
+5. "Opções do Quadro" (ícone à direita):
+   - "Selecionar Cartões": marca vários para Mover, pôr ou tirar Etiquetas ou Transferir de uma vez.
+   - "Ordenar Cartões": manual, última mensagem, data de criação ou nome.
+   - Só Supervisor: "Editar Colunas" (criar, renomear, cor, reordenar), "Personalizar Cartões", "Motivos de Perda" e "Agente de IA".
+Importante:
+- Kanban e Bate-papo são a mesma coisa vista de jeitos diferentes: mudou a etapa num, muda no outro.
+- A Correspondente só move os próprios clientes e não vê Entrada, Ganho e Perdido. Para fechar, usa as áreas de soltar.
+- Mover um cartão pode disparar uma automação (por exemplo, mandar uma mensagem sozinho).
+
+CADASTRO DE MENSAGENS PRONTAS
+Menu lateral › "Configurações" › aba "Mensagens Prontas".
+1. Clicar em "+ Nova".
+2. "Título / Identificação": é o que se digita depois da "/" para achar a mensagem.
+3. "Tipo de Mensagem": Texto / Mídia; Áudio Gravado (.mp3 ou .ogg); Localização (colar as coordenadas do Google Maps: botão direito no local e clicar nos números do topo, que eles são copiados).
+4. "Canal": Geral (WhatsApp e RCS), só WhatsApp ou só RCS.
+5. Escrever o texto. "Inserir Variável" põe nome do cliente, CPF etc. Dá para anexar imagem ou arquivo.
+6. Conferir a prévia no celular da direita e clicar em "Salvar".
+A Correspondente cria mensagens só para ela (aba "Minhas"). O Supervisor cria as "Geral", que valem para toda a equipe.

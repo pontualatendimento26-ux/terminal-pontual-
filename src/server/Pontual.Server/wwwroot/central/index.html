@@ -344,6 +344,21 @@
   <div class="acoes"><button type="button" class="btn" data-fechar>Fechar</button></div>
 </div></dialog>
 
+<dialog id="dlg-grav" aria-labelledby="t-grav"><div class="dlg">
+  <h2 id="t-grav">Gravações da tela</h2><p id="grav-sub"></p>
+  <div class="grav-topo"><label>Dia<select class="campo" id="grav-dia"></select></label><p id="grav-info" class="grav-info"></p></div>
+  <div class="tela-quadro"><video id="grav-video" playsinline preload="auto" hidden></video><p id="grav-estado" role="status"></p></div>
+  <div class="grav-controles">
+    <button type="button" class="btn claro" id="grav-tocar">▶ Reproduzir</button>
+    <div class="grav-linha"><div id="grav-faixa" class="grav-faixa"></div><input type="range" id="grav-barra" min="0" max="1" step="1" value="0" aria-label="Horário do dia" aria-describedby="grav-hora"></div>
+    <output id="grav-hora" class="grav-hora">--:--:--</output>
+    <label class="grav-veloc">Velocidade<select class="campo" id="grav-veloc"><option value="1">1x</option><option value="2">2x</option><option value="4" selected>4x</option><option value="8">8x</option><option value="16">16x</option></select></label>
+    <button type="button" class="btn claro" id="grav-cheia">Tela cheia</button>
+  </div>
+  <div id="grav-config"></div>
+  <div class="acoes"><button type="button" class="btn" data-fechar>Fechar</button></div>
+</div></dialog>
+
 <dialog id="dlg-admin" aria-labelledby="t-admin"><form class="dlg" novalidate>
   <h2 id="t-admin">Novo administrador</h2><p>A pessoa entra na Central com o e-mail e a senha definidos aqui.</p>
   <label>Nome<input class="campo" id="adm-nome" maxlength="80" autocomplete="off" aria-describedby="adm-erro"></label>

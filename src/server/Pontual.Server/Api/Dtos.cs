@@ -36,7 +36,8 @@ public sealed record DeviceDto(
     int OpenAlerts,
     MaintenanceDto? Maintenance,
     bool ObservationMode,
-    string TerminalVersion = "")
+    string TerminalVersion = "",
+    bool StoreApps = false)
 {
     /// <summary>Sem sinal há mais de 45 segundos = fora do ar.</summary>
     public static readonly TimeSpan OfflineAfter = TimeSpan.FromSeconds(45);
@@ -64,7 +65,8 @@ public sealed record DeviceDto(
             openAlerts,
             MaintenanceDto.From(device, now),
             device.ObservationMode,
-            device.TerminalVersion);
+            device.TerminalVersion,
+            device.StoreApps);
     }
 
     public static async Task<DeviceDto> LoadAsync(PontualDb db, Device device, DateTime now, CancellationToken ct)
@@ -109,9 +111,10 @@ public sealed record ConfigItemDto(Guid Id, string Name, string Kind, string Tar
 /// <param name="ChromeBlocked">Domínios que o TI bloqueou no Google Chrome (o Terminal grava na política do Chrome).</param>
 /// <param name="AppsAllowed">Aplicativos do computador (nome do .exe) que o TI liberou para esta máquina: abrem sem pedido.</param>
 /// <param name="AppsBlocked">Aplicativos do computador (nome do .exe) que o TI bloqueou para esta máquina: o Terminal não abre.</param>
+/// <param name="StoreApps">Aplicativos da Microsoft Store ligados: o Terminal mantém o Explorer escondido rodando (Terminal 2.13.0+).</param>
 public sealed record ConfigDto(long Version, string? AttendantName, bool ObservationMode, IReadOnlyList<ConfigItemDto> Items,
     IReadOnlyList<string> ChromeAllowed, IReadOnlyList<string> ChromeBlocked,
-    IReadOnlyList<string> AppsAllowed, IReadOnlyList<string> AppsBlocked);
+    IReadOnlyList<string> AppsAllowed, IReadOnlyList<string> AppsBlocked, bool StoreApps = false);
 
 /// <param name="Assistant">A assistente de IA está ligada para esta máquina (o terminal mostra o botão flutuante).</param>
 /// <param name="WhatsAppLearning">O terminal deve registrar as conversas do WhatsApp para a análise da assistente.</param>

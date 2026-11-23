@@ -113,6 +113,71 @@ public sealed class ServerApi : IDisposable
         return (await ReadAsync<ScreenRequest>(response, ct).ConfigureAwait(false)).Wanted;
     }
 
+    /// <summary>Pergunta à Central se esta máquina deve gravar a tela, e como.</summary>
+    public async Task<RecordingPolicy> GetRecordingPolicyAsync(CancellationToken ct = default)
+    {
+        using var response = await _http.GetAsync("device/recording", ct).ConfigureAwait(false);
+        return await ReadAsync<RecordingPolicy>(response, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Envia um trecho gravado (MP4). Devolve se a gravação continua ligada na Central.</summary>
+    public async Task<bool> SendRecordingAsync(byte[] video, DateTime startedAtUtc, double seconds, CancellationToken ct = default)
+    {
+        using var content = new ByteArrayContent(video);
+        content.Headers.ContentType = new MediaTypeHeaderValue("video/mp4");
+        var at = Uri.EscapeDataString(startedAtUtc.ToUniversalTime().ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+        var duration = seconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        using var response = await _http.PostAsync($"device/recording?startedAt={at}&seconds={duration}", content, ct).ConfigureAwait(false);
+        return (await ReadAsync<RecordingAnswer>(response, ct).ConfigureAwait(false)).Record;
+    }
+
+    private sealed record RecordingAnswer(bool Record);
+
+    /// <summary>
+    /// Manda uma parte do vídeo do dia. Devolve quanto a Central já tem: se a parte já tinha chegado
+    /// (a resposta anterior se perdeu), a Central diz de onde continuar.
+    /// </summary>
+    public async Task<long> SendRecordingDayChunkAsync(Guid upload, long offset, long total, byte[] data, int count, CancellationToken ct = default)
+    {
+        using var content = new ByteArrayContent(data, 0, count);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        using var response = await _http.PostAsync($"device/recording/day/{upload}?offset={offset}&total={total}", content, ct).ConfigureAwait(false);
+        return await ReceivedAsync(response, ct).ConfigureAwait(false) ?? total;
+    }
+
+    /// <summary>Fecha o envio do vídeo do dia. Null = guardado na Central; um número = faltam partes a partir dali.</summary>
+    public async Task<long?> FinishRecordingDayAsync(Guid upload, DateTime startedAtUtc, long total, double[][] parts, CancellationToken ct = default)
+    {
+        using var response = await _http.PostAsJsonAsync($"device/recording/day/{upload}/finish",
+            new { startedAt = startedAtUtc.ToUniversalTime(), total, parts }, Json, ct).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.Conflict)
+        {
+            return await ReceivedAsync(response, ct).ConfigureAwait(false) ?? 0;
+        }
+
+        await EnsureSuccessAsync(response, ct).ConfigureAwait(false);
+        return null;
+    }
+
+    private static async Task<long?> ReceivedAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        if (response.StatusCode != HttpStatusCode.Conflict)
+        {
+            await EnsureSuccessAsync(response, ct).ConfigureAwait(false);
+        }
+
+        try
+        {
+            return (await response.Content.ReadFromJsonAsync<RecordingReceived>(Json, ct).ConfigureAwait(false))?.Received;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private sealed record RecordingReceived(long Received);
+
     /// <summary>Tira itens incompletos e troca listas ausentes por listas vazias, para o resto do programa não lidar com nulos.</summary>
     public static TerminalConfig Sanitize(TerminalConfig config)
     {

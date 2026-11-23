@@ -51,7 +51,7 @@ public static class DbInitializer
         [
             "TextSettings", "AssistantScripts", "AssistantProfiles", "AssistantMessages",
             "KnowledgeLinks", "KnowledgeSuggestions", "AssistantFeedback", "AttendantInsights", "WhatsAppCaptures", "CoverageReplies",
-            "ChromeSites", "ChromeDeviceSites", "AppDecisions", "DeviceApps", "AssistantUsage",
+            "ChromeSites", "ChromeDeviceSites", "AppDecisions", "DeviceApps", "AssistantUsage", "ScreenRecordings", "CrmEvents", "CrmReplies",
         ];
 
         foreach (var statement in Statements(db))
@@ -306,6 +306,7 @@ public static class DbInitializer
         await AddMissingColumnsAsync(db, "AttendantInsights");
         await AddMissingColumnsAsync(db, "AssistantProfiles");
         await AddMissingColumnsAsync(db, "Devices");
+        await AddMissingColumnsAsync(db, "ScreenRecordings");
         await SeedScriptsAsync(db, scope.ServiceProvider);
         await SeedSystemsAsync(db, scope.ServiceProvider);
 

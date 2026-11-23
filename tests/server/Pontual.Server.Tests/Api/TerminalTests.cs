@@ -206,6 +206,27 @@ public sealed class TerminalTests
     }
 
     [Fact]
+    public async Task Aplicativos_da_Loja_comecam_desligados_e_o_TI_liga_por_computador()
+    {
+        using var app = new TestApp();
+        var owner = await app.OwnerAsync();
+        var (deviceId, terminal) = await app.ApprovedDeviceAsync(owner, "KAMILINHA", "Kamila");
+        var (_, other) = await app.ApprovedDeviceAsync(owner, "PC-02", "Ana");
+
+        Assert.False((await terminal.GetAsync("/api/v1/device/config").Json()).GetProperty("storeApps").GetBoolean());
+        var device = await owner.PatchAsJsonAsync($"/api/v1/devices/{deviceId}", new { storeApps = true }).Json();
+        Assert.True(device.GetProperty("storeApps").GetBoolean());
+        Assert.True((await terminal.GetAsync("/api/v1/device/config").Json()).GetProperty("storeApps").GetBoolean());
+        Assert.False((await other.GetAsync("/api/v1/device/config").Json()).GetProperty("storeApps").GetBoolean());
+
+        Assert.Contains("ligou os aplicativos da Microsoft Store em Kamila (KAMILINHA)", (await owner.GetAsync("/api/v1/audit").Json()).GetRawText());
+
+        await terminal.SendEventsAsync(new { type = "store_shell", item = "Microsoft Store", detail = "o Explorer está rodando escondido", at = DateTime.UtcNow });
+        var history = (await owner.GetAsync($"/api/v1/devices/{deviceId}/history").Json()).EnumerateArray();
+        Assert.Contains(history, h => h.GetProperty("text").GetString() == "Aplicativos da Microsoft Store: o Explorer está rodando escondido");
+    }
+
+    [Fact]
     public async Task Evento_app_failed_vai_para_o_historico_com_o_motivo_e_cria_um_alerta()
     {
         using var app = new TestApp();

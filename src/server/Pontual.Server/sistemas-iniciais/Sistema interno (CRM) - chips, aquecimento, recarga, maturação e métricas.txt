@@ -1,0 +1,55 @@
+Sistema interno (CRM): chips, aquecimento, recarga, maturação e métricas
+
+CONECTAR UM NÚMERO (Gerenciamento › Instâncias)
+1. Clicar no cartão "Adicionar Novo Bot".
+2. Escolher "Padrão (QR Code)" e dar um "Nome de Exibição". Padrão: "Atendente | identificação", ex.: "Sarah | IB 23 - 0775". A tela agrupa os chips por esse nome.
+3. Clicar em "Criar". Abre o QR Code.
+4. No celular do chip: WhatsApp › Dispositivos Vinculados › Conectar dispositivo, e apontar a câmera para o QR.
+5. O cartão fica verde, "Conectado". Se o QR vencer, "Atualizar QR".
+Cartão do chip:
+- ▶ = ativo para disparos; ⏸ = pausado, os disparos não usam esse chip.
+- Anel colorido com número: nota do aquecimento.
+- Tags, renomear (lápis) e foto de perfil. Cuidado: trocar a foto muda para todos os clientes daquele número e derruba a conexão por alguns segundos.
+- Botão de funil: para qual funil vão os clientes que chegam por esse chip.
+- Lixeira: EXCLUI o chip e desloga o número. Não existe "só desconectar". Sem volta.
+Bolinha: verde = conectado; amarela = esperando leitura do QR; vermelha = desconectado (clicar em "Conectar Bot"); cinza = iniciando.
+Avisos amarelos:
+- "Sessão encerrada": o chip saiu. Reconectar pelo QR.
+- "Conflito: número ativo em outro aparelho": alguém abriu esse WhatsApp em outro WhatsApp Web ou computador. Fechar lá primeiro; ler o QR de novo não resolve.
+- "Sincronização pendente": o celular do chip não responde. Conferir se está ligado e com internet.
+Regras de ouro: não ler o QR de novo sem necessidade (zera os "Dias Conectado" e derruba a nota); não abrir o número em outro WhatsApp Web; pausar (⏸) chips com nota baixa.
+
+PAINEL DOS CHIPS (Controle de Chips › "Painel dos Chips")
+Planilha única com todos os chips: junta a planilha Google da empresa com o que o CRM sabe (conectado, quedas, quanto enviou, nota, recargas). Só leitura; o cadastro continua na planilha. Cartões do topo filtram: conectados, desconectados, caíram nos últimos 7 dias, sem saldo. "Colunas" escolhe o que aparece; "Excel" baixa. Clicar numa linha abre a ficha do chip (gráfico de mensagens, histórico de quedas e recargas).
+
+AQUECIMENTO DE CHIPS (nota de 0 a 100)
+0 = Coletando Dados (chip novo); 1–19 Muito Fraco (vermelho); 20–39 Fraco (laranja); 40–59 Médio (amarelo); 60–79 Forte (verde); 80–100 Muito Forte (verde escuro).
+Critérios:
+- Volume (40%): para quantas pessoas diferentes o chip manda por dia. Mandar demais não ajuda.
+- Estabilidade (35%): dias seguidos conectado. Ler o QR de novo zera a contagem.
+- Engajamento (25%): se respondem, se o volume é parecido todo dia e se o pico é em horário comercial. Pico de madrugada zera essa parte.
+A setinha ▼ de cada chip abre detalhes e gráficos.
+
+RECARGA DE CHIPS
+Recarrega sozinha os chips pré-pagos sem saldo. O dinheiro sai do saldo Asaas da empresa, a data vai para a planilha e sai um aviso no WhatsApp. A tela mostra saldo, quanto saiu, a fila de chips sem saldo e o histórico (Confirmada, Aguardando, Devolvida ou Erro). "Configurar" (só Supervisor): horário, chips por dia, dias da semana, valor máximo, quem recebe o aviso e cobrança semanal via Pix. O mesmo número não é recarregado de novo em 10 dias. Sem saldo, a recarga para e manda "Saldo insuficiente".
+
+MATURAÇÃO (esquentar chip novo)
+Menu lateral › "Maturação". Só aparecem chips online. Três abas:
+1. "Entrar em Grupos": marcar os chips; colar os links dos grupos, um por linha; definir o Delay (padrão 60 a 120 s); "Iniciar"; acompanhar o log. A lixeira zera o log e para a fila.
+2. "Status Automático": posta status (foto ou vídeo com legenda) em vários chips de uma vez.
+3. "Maturação em Grupo": os chips conversam entre si num grupo, com falas criadas por IA. Marcar pelo menos 2 chips; criar um grupo (descrevendo o tema, ex.: "amigos combinando churrasco") ou usar um existente; opcional imagens ou figurinhas; definir Delay e Limite de ações; "Criar Grupo e Iniciar"; acompanhar em "Sessões" (⏹ para).
+Boas práticas: delays longos, não colocar chips demais de uma vez, acompanhar se a nota do Aquecimento sobe.
+
+MÉTRICAS (Supervisor)
+Visão Geral (Métricas › "Visão Geral"): painel com blocos (total de clientes, fila de atendimento, disparos, taxa de sucesso, chips conectados, funil, ranking de atendimento, horário de pico, motivos de perda, campanhas e outros).
+- Período no topo: Hoje, Últimos 7 dias, Este mês, Personalizado etc. Bloco com alfinete tem período próprio; bloco com relógio mostra a situação de agora.
+- Atualiza sozinho a cada 2 minutos.
+- "Editar painel": adiciona, move e redimensiona blocos. "+ Adicionar bloco" traz blocos prontos ("Sugestões") ou monta do zero.
+- "⋯" de cada bloco: ver como tabela, baixar CSV, atualizar.
+- Dá para ter vários painéis, duplicar e compartilhar com os admins. Os números são da empresa toda.
+Relatórios Detalhados: tabela com todos os leads.
+- Filtros: nome, telefone ou CPF; período; atendente; funil e etapa; tags; status; instância; motivo de perda; e "Mais filtros".
+- A tela mostra só as 200 primeiras linhas, mas a exportação leva todas as filtradas.
+- Balão na linha: abre a conversa numa janela flutuante.
+- Exportar: CSV ou Excel.
+- Lixeira: apaga o histórico do cliente naquele chip. Sem volta; pedir permissão antes.

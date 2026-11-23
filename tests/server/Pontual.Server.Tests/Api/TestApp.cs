@@ -16,12 +16,17 @@ public sealed class TestApp : WebApplicationFactory<Program>
     public const string OwnerEmail = "paulo@pontual.test";
     public const string Password = "senha-de-teste-123";
 
+    /// <summary>Pasta das gravações de tela deste teste (nunca a pasta de verdade).</summary>
+    public string RecordingsPath { get; } = Path.Combine(Path.GetTempPath(), $"pontual-gravacoes-{Guid.NewGuid():N}");
+
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"pontual-test-{Guid.NewGuid():N}.db");
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
         builder.UseSetting("Database:Path", _databasePath);
+        builder.UseSetting("Recordings:Path", RecordingsPath);
+        builder.UseSetting("Recordings:MinFreeGB", "0");
         if (AssistantModel is { } model)
         {
             builder.ConfigureTestServices(services => services.AddSingleton(model));
@@ -31,10 +36,18 @@ public sealed class TestApp : WebApplicationFactory<Program>
         {
             builder.ConfigureTestServices(services => services.AddSingleton(clock));
         }
+
+        if (ExtraServices is { } extra)
+        {
+            builder.ConfigureTestServices(extra);
+        }
     }
 
     /// <summary>IA de mentira para os testes da assistente; definir antes de criar o primeiro cliente.</summary>
     public Pontual.Server.Assistant.IAssistantModel? AssistantModel { get; init; }
+
+    /// <summary>Troca de serviços só deste teste (ex.: o cliente do CRM falando com um CRM de mentira).</summary>
+    public Action<IServiceCollection>? ExtraServices { get; init; }
 
     /// <summary>Relógio do servidor nos testes que dependem de hora (a cobertura só responde em horário comercial).</summary>
     public TimeProvider? Clock { get; init; }
@@ -43,6 +56,15 @@ public sealed class TestApp : WebApplicationFactory<Program>
     {
         base.Dispose(disposing);
         SqliteConnection.ClearAllPools();
+        try
+        {
+            Directory.Delete(RecordingsPath, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Pasta temporária; se ficar presa, o sistema limpa depois.
+        }
+
         foreach (var suffix in new[] { "", "-wal", "-shm" })
         {
             try

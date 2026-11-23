@@ -42,6 +42,11 @@ public sealed class Device
     public string? AttendantName { get; set; }
     public bool Approved { get; set; }
     public bool ObservationMode { get; set; } = true;
+    /// <summary>
+    /// Aplicativos da Microsoft Store neste computador: o Terminal mantém o Explorer rodando escondido, que o Windows exige
+    /// para abri-los. Começa desligado; o TI liga computador por computador.
+    /// </summary>
+    public bool StoreApps { get; set; }
     public DateTime? LastSeenAt { get; set; }
     public DateTime? SessionStartedAt { get; set; }
     public string AppsInUseJson { get; set; } = "[]";
@@ -297,6 +302,22 @@ public sealed class TextSetting
     public const string AssistantWhatsAppLearning = "assistant.whatsappLearning";
     /// <summary>Perfis montados a partir de históricos de conversas importados: objeto JSON nome da atendente → perfil.</summary>
     public const string AssistantImportedProfiles = "assistant.importedProfiles";
+
+    /// <summary>"0" desliga a gravação da tela das atendentes; o padrão é ligada.</summary>
+    public const string RecordingEnabled = "recording.enabled";
+    /// <summary>Chave AES-256 dos vídeos gravados, protegida pelo Windows (DPAPI da máquina).</summary>
+    public const string RecordingKey = "recording.key";
+
+    /// <summary>Endereço do CRM da Pontual (sistema interno), ex.: http://192.168.0.243:3000.</summary>
+    public const string CrmUrl = "crm.url";
+    /// <summary>Login da conta do CRM escolhida como Agente Externo do funil.</summary>
+    public const string CrmUser = "crm.user";
+    /// <summary>Senha dessa conta, cifrada como a chave da IA (ver <c>AssistantSecrets</c>).</summary>
+    public const string CrmPassword = "crm.password";
+    /// <summary>Segredo que vai no endereço do webhook; aviso sem ele é recusado.</summary>
+    public const string CrmWebhookKey = "crm.webhookKey";
+    /// <summary>"1" liga a IA nos clientes do CRM (ela escreve as respostas para aprovação); o padrão é desligada.</summary>
+    public const string CrmEnabled = "crm.enabled";
 
     public required string Key { get; set; }
     public string Value { get; set; } = "";
@@ -592,6 +613,7 @@ public static class UsageKind
     public const string Question = "pergunta";
     public const string Test = "teste";
     public const string Coverage = "cobertura";
+    public const string Crm = "crm";
     public const string Analysis = "analise";
     public const string Other = "outro";
 }
@@ -664,6 +686,30 @@ public sealed class AuditRecord
         [.. Hash]);
 }
 
+/// <summary>
+/// Um trecho (cerca de 1 minuto) da gravação da tela de um computador. O vídeo fica cifrado num arquivo fora do banco
+/// (<c>RecordingStore</c>); aqui só o índice. Apagado com o arquivo depois de 3 meses.
+/// </summary>
+public sealed class ScreenRecording
+{
+    public Guid Id { get; set; }
+    public Guid DeviceId { get; set; }
+    /// <summary>Nome da atendente na hora da gravação (a máquina pode trocar de atendente depois).</summary>
+    public string AttendantName { get; set; } = "";
+    /// <summary>Início do trecho, em UTC, pelo relógio do computador.</summary>
+    public DateTime StartedAt { get; set; }
+    public double Seconds { get; set; }
+    public long Bytes { get; set; }
+    /// <summary>Caminho relativo à pasta das gravações.</summary>
+    public string File { get; set; } = "";
+    public DateTime ReceivedAt { get; set; }
+    /// <summary>
+    /// Vídeo do dia: JSON com os trechos gravados, [[início em segundos desde o começo do vídeo, duração], ...].
+    /// Entre um trecho e outro o computador estava desligado. Nulo = trecho único de 1 minuto (Terminal 2.14.0 e 2.14.1).
+    /// </summary>
+    public string? Parts { get; set; }
+}
+
 internal static class JsonList
 {
     public static List<T> Read<T>(string json)
@@ -679,4 +725,67 @@ internal static class JsonList
     }
 
     public static string Write<T>(IEnumerable<T> values) => JsonSerializer.Serialize(values);
+}
+
+/// <summary>Um aviso do CRM recebido pelo webhook do Agente Externo, com o que foi possível ler dele e o corpo como veio.</summary>
+public sealed class CrmEvent
+{
+    public long Id { get; set; }
+    public DateTime At { get; set; }
+    /// <summary>ID da conversa no CRM (conversa.id); vazio se o aviso não trouxe.</summary>
+    public string ConversationId { get; set; } = "";
+    public string Contact { get; set; } = "";
+    public string Phone { get; set; } = "";
+    /// <summary>Quem escreveu: <see cref="CrmAuthor"/>.</summary>
+    public string Author { get; set; } = "";
+    public string Text { get; set; } = "";
+    /// <summary>O corpo como chegou (cortado), para conferir o formato do CRM.</summary>
+    public string Body { get; set; } = "";
+}
+
+public static class CrmAuthor
+{
+    public const string Client = "cliente";
+    public const string Team = "equipe";
+}
+
+/// <summary>Resposta que a IA escreveu para um cliente do CRM. Só vai ao cliente depois que alguém aprova na Central Neural.</summary>
+public sealed class CrmReply
+{
+    public Guid Id { get; set; }
+    public required string ConversationId { get; set; }
+    public string Contact { get; set; } = "";
+    public string Phone { get; set; } = "";
+    /// <summary>As mensagens do cliente que pediram resposta.</summary>
+    public string Incoming { get; set; } = "";
+    /// <summary>A conversa como a IA leu.</summary>
+    public string Transcript { get; set; } = "";
+    public string Reply { get; set; } = "";
+    /// <summary>"responder", "humano" ou "nada": o que a IA sugeriu.</summary>
+    public string Decision { get; set; } = "";
+    public string Reason { get; set; } = "";
+    public required string Status { get; set; }
+    /// <summary>Último aviso do cliente que esta resposta leva em conta: um aviso mais novo deixa a resposta velha.</summary>
+    public long LastEventId { get; set; }
+    public string Error { get; set; } = "";
+    public string ReviewedByName { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public DateTime? SentAt { get; set; }
+}
+
+public static class CrmReplyStatus
+{
+    /// <summary>Esperando alguém aprovar, editar, recusar ou passar para uma atendente.</summary>
+    public const string Pending = "pending";
+    public const string Sent = "sent";
+    public const string Rejected = "rejected";
+    /// <summary>A conversa foi passada para uma atendente.</summary>
+    public const string Human = "human";
+    /// <summary>O envio ao CRM falhou; dá para tentar de novo.</summary>
+    public const string Failed = "failed";
+    /// <summary>Não pedia resposta (um "ok", uma figurinha).</summary>
+    public const string Skipped = "skipped";
+    /// <summary>O cliente escreveu de novo antes da aprovação; outra resposta tomou o lugar desta.</summary>
+    public const string Outdated = "outdated";
 }

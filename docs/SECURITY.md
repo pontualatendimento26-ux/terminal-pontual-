@@ -214,10 +214,11 @@ Se a opção B for escolhida, o login só funciona com servidor disponível, par
 | Eventos técnicos | Manutenção |
 | Sessões de suporte remoto | Auditoria |
 | Logons locais da conta do TI | Auditoria |
+| Vídeo da tela das atendentes (1 quadro/s), cifrado com AES-256-GCM, guardado por 3 meses fora da pasta da Central (padrão `F:\Pontual-Gravacoes`) | Qualidade, auditoria e segurança do atendimento |
 
 ### O que não é registrado
 
-Teclas digitadas; imagens da tela (exceto a transmissão ao vivo em suporte autorizado, que não é gravada); conteúdo de aplicativos, mensagens, documentos ou páginas; títulos de janela e endereços completos de sites; áudio, câmera ou localização.
+Teclas digitadas; imagens da tela fora da gravação descrita acima (a gravação pode ser desligada na Central, em "Gravações"); conteúdo de aplicativos, mensagens, documentos ou páginas; títulos de janela e endereços completos de sites; áudio, câmera ou localização.
 
 ### Medidas
 

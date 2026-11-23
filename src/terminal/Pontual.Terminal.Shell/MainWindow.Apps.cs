@@ -167,8 +167,12 @@ public partial class MainWindow
 
         if (process is null)
         {
-            ShowToast($"Não foi possível abrir {app.Name}. O TI foi avisado.");
-            Record(DeviceEvent.AppFailed, app.Name, failure ?? "o programa não abriu");
+            var storeOff = (app.Aumid ?? StoreApps.AumidFor(app.Exe)) is not null && _locked && !_storeShellOn;
+            ShowToast(storeOff
+                ? $"{app.Name} é um aplicativo da Microsoft Store: só abre depois que o TI ligar os aplicativos da Loja para este computador. O TI foi avisado."
+                : $"Não foi possível abrir {app.Name}. O TI foi avisado.");
+            Record(DeviceEvent.AppFailed, app.Name, (storeOff ? "a chave \"Aplicativos da Microsoft Store\" está desligada para este computador na Central; " : "")
+                + (failure ?? "o programa não abriu"));
             return;
         }
 

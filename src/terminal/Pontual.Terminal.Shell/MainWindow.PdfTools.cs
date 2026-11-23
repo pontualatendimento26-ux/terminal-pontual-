@@ -17,11 +17,13 @@ public partial class MainWindow
     private static readonly HttpClient PdfToolsHttp = new() { Timeout = TimeSpan.FromSeconds(2) };
 
     private CalculatorWindow? _pdfTools;
+    private bool _pdfToolsOpening;
 
     private async Task ShowPdfToolsAsync()
     {
         if (_environment is null)
         {
+            ShowToast("O Terminal ainda está carregando. Tente o PDF de novo em alguns segundos.");
             return;
         }
 
@@ -41,21 +43,37 @@ public partial class MainWindow
             return;
         }
 
+        if (_pdfToolsOpening)
+        {
+            return; // já está abrindo (clique repetido)
+        }
+
         if (!await PdfToolsRunningAsync())
         {
             // Pode ter parado: tenta ligar a tarefa instalada e espera alguns segundos.
-            StartPdfToolsTask();
-            var ok = false;
-            for (var i = 0; i < 15 && !ok; i++)
+            // Avisa na hora, senão a atendente acha que o botão não funciona (caso Kamila 2, 23/11/2026).
+            _pdfToolsOpening = true;
+            try
             {
-                await Task.Delay(1000);
-                ok = await PdfToolsRunningAsync();
-            }
+                ShowToast("Abrindo as ferramentas de PDF… aguarde alguns segundos.");
+                StartPdfToolsTask();
+                var ok = false;
+                for (var i = 0; i < 15 && !ok; i++)
+                {
+                    await Task.Delay(1000);
+                    ok = await PdfToolsRunningAsync();
+                }
 
-            if (!ok)
+                if (!ok)
+                {
+                    Log.Error("abrir as ferramentas de PDF", new InvalidOperationException("Pontual Tools não respondeu em 127.0.0.1:8787"));
+                    ShowToast("As ferramentas de PDF não estão instaladas neste computador. Chame o TI para instalar o Pontual Tools.");
+                    return;
+                }
+            }
+            finally
             {
-                ShowToast("As ferramentas de PDF não estão instaladas ou não abriram neste computador. Chame o TI.");
-                return;
+                _pdfToolsOpening = false;
             }
         }
 

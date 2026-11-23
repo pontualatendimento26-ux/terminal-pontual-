@@ -1,4 +1,4 @@
-<UserControl x:Class="Pontual.Terminal.Shell.TerminalBar"
+﻿<UserControl x:Class="Pontual.Terminal.Shell.TerminalBar"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              FontFamily="{StaticResource FonteMarca}" FontSize="15" Foreground="{StaticResource Texto}">
@@ -63,7 +63,7 @@
             </Grid>
 
             <!-- Aviso fixo e discreto, sempre visível, no canto da barra. -->
-            <TextBlock DockPanel.Dock="Left" Text="As atividades serão monitoradas" VerticalAlignment="Center" Margin="14,0,0,0"
+            <TextBlock x:Name="MonitorNotice" DockPanel.Dock="Left" Text="As atividades serão monitoradas" VerticalAlignment="Center" Margin="14,0,0,0"
                        FontSize="11" Foreground="{StaticResource Apagado}" />
 
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
@@ -115,7 +115,95 @@
                 </Border>
             </StackPanel>
 
-            <ScrollViewer Margin="12,0" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Focusable="False">
+            <!-- Todas as abas: com muitas páginas abertas, as que não cabem na faixa aparecem aqui, numa lista com busca. -->
+            <Grid DockPanel.Dock="Right" VerticalAlignment="Center" Margin="0,0,12,0">
+                <Button x:Name="AllTabsButton" Style="{StaticResource BotaoClaro}" MinHeight="38" Padding="14,0" FontSize="14"
+                        Click="OnAllTabs" Visibility="Collapsed" AutomationProperties.Name="Ver todas as abas abertas" ToolTip="Ver todas as abas e janelas abertas">
+                    <StackPanel Orientation="Horizontal">
+                        <Viewbox Width="18" Height="18" Margin="0,0,8,0">
+                            <Canvas Width="24" Height="24">
+                                <Rectangle Canvas.Left="3" Canvas.Top="4" Width="7" Height="7" RadiusX="1.5" RadiusY="1.5" Stroke="{StaticResource Tinta}" StrokeThickness="2" />
+                                <Rectangle Canvas.Left="14" Canvas.Top="4" Width="7" Height="7" RadiusX="1.5" RadiusY="1.5" Stroke="{StaticResource Tinta}" StrokeThickness="2" />
+                                <Rectangle Canvas.Left="3" Canvas.Top="14" Width="7" Height="7" RadiusX="1.5" RadiusY="1.5" Stroke="{StaticResource Tinta}" StrokeThickness="2" />
+                                <Rectangle Canvas.Left="14" Canvas.Top="14" Width="7" Height="7" RadiusX="1.5" RadiusY="1.5" Stroke="{StaticResource Tinta}" StrokeThickness="2" />
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock x:Name="AllTabsText" Text="Abas" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Popup x:Name="AllTabsPopup" PlacementTarget="{Binding ElementName=AllTabsButton}" Placement="Top" VerticalOffset="-8"
+                       StaysOpen="False" AllowsTransparency="True" Opened="OnAllTabsOpened">
+                    <Border Width="440" Background="White" BorderBrush="{StaticResource Linha}" BorderThickness="1" CornerRadius="12" Padding="12">
+                        <StackPanel>
+                            <TextBlock x:Name="AllTabsTitle" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource Tinta}" Margin="2,0,0,8" />
+                            <TextBox x:Name="AllTabsBox" FontSize="15" Padding="8,6" TextChanged="OnAllTabsText" PreviewKeyDown="OnAllTabsKey"
+                                     AutomationProperties.Name="Procurar entre as abas abertas" ToolTip="Digite para procurar uma aba" />
+                            <ListBox x:Name="AllTabsResults" Margin="0,8,0,0" MaxHeight="480" BorderThickness="0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch"
+                                     PreviewKeyDown="OnAllTabsResultsKey" AutomationProperties.Name="Abas e janelas abertas">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="2,3" AutomationProperties.Name="{Binding Name}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button Style="{StaticResource BotaoLimpo}" HorizontalContentAlignment="Left" Padding="4,2" Click="OnAllTabsPick">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Border Width="30" Height="30" CornerRadius="9" Background="{Binding Color}">
+                                                        <TextBlock Text="{Binding Initials}" Foreground="White" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                    </Border>
+                                                    <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Name}" MaxWidth="300" TextTrimming="CharacterEllipsis" FontWeight="{Binding Weight}" Foreground="{StaticResource Tinta}" />
+                                                        <TextBlock Text="{Binding Detail}" FontSize="12" Foreground="{StaticResource Suave}" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Grid.Column="1" Style="{StaticResource BotaoLimpo}" Width="36" Height="36" Click="OnAllTabsClose"
+                                                    Visibility="{Binding CloseVisibility}" AutomationProperties.Name="{Binding CloseLabel}" ToolTip="{Binding CloseLabel}">
+                                                <Viewbox Width="16" Height="16">
+                                                    <Canvas Width="24" Height="24">
+                                                        <Path Data="M6 6l12 12M18 6 6 18" Stroke="{StaticResource Apagado}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                    </Canvas>
+                                                </Viewbox>
+                                            </Button>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock x:Name="AllTabsEmpty" Margin="4,10,4,4" FontSize="13" Foreground="{StaticResource Suave}" TextWrapping="Wrap" Visibility="Collapsed" />
+                        </StackPanel>
+                    </Border>
+                </Popup>
+            </Grid>
+
+            <!-- Carrossel das abas: as setas só aparecem quando há abas escondidas e rolam a faixa para o lado. -->
+            <Grid Margin="12,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="StripLeft" Grid.Column="0" Style="{StaticResource BotaoClaro}" Width="38" Height="38" Padding="0" Margin="0,0,6,0"
+                        VerticalAlignment="Center" Click="OnStripLeft" Visibility="Collapsed"
+                        AutomationProperties.Name="Ver as abas anteriores" ToolTip="Ver as abas anteriores">
+                    <Viewbox Width="16" Height="16">
+                        <Canvas Width="24" Height="24">
+                            <Path Data="M15 5 8 12l7 7" Stroke="{StaticResource Tinta}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                        </Canvas>
+                    </Viewbox>
+                </Button>
+                <Button x:Name="StripRight" Grid.Column="2" Style="{StaticResource BotaoClaro}" Width="38" Height="38" Padding="0" Margin="6,0,0,0"
+                        VerticalAlignment="Center" Click="OnStripRight" Visibility="Collapsed"
+                        AutomationProperties.Name="Ver as próximas abas" ToolTip="Ver as próximas abas">
+                    <Viewbox Width="16" Height="16">
+                        <Canvas Width="24" Height="24">
+                            <Path Data="M9 5l7 7-7 7" Stroke="{StaticResource Tinta}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                        </Canvas>
+                    </Viewbox>
+                </Button>
+            <ScrollViewer x:Name="TabsStrip" Grid.Column="1" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" Focusable="False"
+                          PreviewMouseWheel="OnStripWheel" ScrollChanged="OnStripScrolled">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <!-- Páginas abertas no Terminal. Clicar mostra a página neste monitor. -->
                     <ItemsControl x:Name="TabsList" Focusable="False" AutomationProperties.Name="Páginas abertas">
@@ -183,6 +271,7 @@
                     </ItemsControl>
                 </StackPanel>
             </ScrollViewer>
+            </Grid>
         </DockPanel>
     </Border>
 </UserControl>

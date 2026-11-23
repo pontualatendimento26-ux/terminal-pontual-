@@ -39,10 +39,17 @@ builder.Services.AddSingleton<StepUp>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHostedService<Pontual.Server.Data.RetentionWorker>();
 builder.Services.AddSingleton<ScreenWatch>();
+// Gravação da tela das atendentes: vídeos cifrados fora da pasta da Central, apagados depois de 3 meses.
+builder.Services.AddSingleton<RecordingStore>();
+builder.Services.AddHostedService<RecordingCleanup>();
 builder.Services.AddSingleton<Pontual.Server.Assistant.AssistantUsageLog>();
 builder.Services.AddSingleton<Pontual.Server.Assistant.IAssistantModel, Pontual.Server.Assistant.ClaudeAssistantModel>();
 // Lê as conversas novas das atendentes de tempos em tempos (perfil de atendimento e sugestões para a base).
 builder.Services.AddHostedService<Pontual.Server.Assistant.AnalysisWorker>();
+// Clientes do CRM: o webhook recebe as mensagens, o worker pede a resposta à IA, a Central Neural aprova e envia.
+builder.Services.AddSingleton<CrmQueue>();
+builder.Services.AddSingleton(services => new Pontual.Server.Assistant.CrmClient(services.GetRequiredService<TimeProvider>()));
+builder.Services.AddHostedService<CrmWorker>();
 builder.Services.AddSingleton<IPasswordHasher<Admin>, PasswordHasher<Admin>>();
 
 builder.Services.AddRateLimiter(options =>
@@ -64,6 +71,10 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy(TerminalEndpoints.DeviceRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
         "device:" + Secrets.Sha256(context.Request.Headers.Authorization.ToString()),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 300, Window = TimeSpan.FromMinutes(1) }));
+
+    // O CRM avisa cada mensagem de cliente; o teto só segura um envio em laço.
+    options.AddPolicy(CrmEndpoints.WebhookRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
+        "crm:" + Client(context), _ => new FixedWindowRateLimiterOptions { PermitLimit = 600, Window = TimeSpan.FromMinutes(1) }));
 
     // Cada pergunta à assistente custa uma chamada paga à IA: o teto por máquina é bem mais baixo.
     options.AddPolicy(AssistantEndpoints.RateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
@@ -209,9 +220,11 @@ ItemEndpoints.Map(api);
 MonitorEndpoints.Map(api);
 TerminalEndpoints.Map(api);
 ScreenEndpoints.Map(api);
+RecordingEndpoints.Map(api);
 AssistantEndpoints.Map(api);
 NeuralEndpoints.Map(api);
 CoverageEndpoints.Map(api);
+CrmEndpoints.Map(api);
 ChromeEndpoints.Map(api);
 AppEndpoints.Map(api);
 

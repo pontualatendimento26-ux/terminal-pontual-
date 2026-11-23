@@ -306,7 +306,21 @@ dialog { max-height: calc(100vh - 32px); overflow-y: auto; }
    --branco passa a ser a cor das superfícies (cartões, campos); texto sobre cor usa --sobre. */
 dialog { background: var(--branco); }
 /* Visualização ao vivo da tela da atendente: diálogo largo, a imagem ocupa a largura toda. */
-#dlg-tela { width: min(1500px, calc(100vw - 32px)); }
+#dlg-tela, #dlg-grav { width: min(1500px, calc(100vw - 32px)); }
+#grav-video { display: block; width: 100%; height: auto; max-height: calc(100vh - 380px); background: #000; }
+.grav-topo { display: flex; flex-wrap: wrap; align-items: end; gap: 12px 20px; }
+.grav-topo label { min-width: 220px; }
+.grav-info { color: var(--suave); font-size: 13px; }
+.grav-controles { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.grav-linha { position: relative; flex: 1 1 320px; height: 28px; }
+.grav-faixa { position: absolute; left: 0; right: 0; top: 11px; height: 6px; border-radius: 3px; background: var(--linha); }
+.grav-linha input[type="range"] { position: absolute; inset: 0; width: 100%; margin: 0; background: transparent; appearance: none; -webkit-appearance: none; cursor: pointer; }
+.grav-linha input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--azul-700); border: 2px solid #fff; box-shadow: 0 0 0 1px var(--azul-700); }
+.grav-linha input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--azul-700); border: 2px solid #fff; }
+.grav-linha input[type="range"]:focus-visible { outline: 2px solid var(--azul-500); outline-offset: 2px; }
+.grav-hora { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 72px; }
+.grav-veloc { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.grav-veloc select { width: auto; }
 .tela-quadro { display: grid; place-items: center; min-height: 260px; border-radius: 14px; border: 1px solid var(--linha); background: var(--cinza-100); overflow: hidden; }
 .tela-quadro img { display: block; width: 100%; height: auto; }
 .tela-quadro p { padding: 24px; color: var(--suave); text-align: center; text-wrap: pretty; }

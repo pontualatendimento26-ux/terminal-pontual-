@@ -133,7 +133,8 @@ public static class TerminalEndpoints
             chromeAllowed,
             chromeBlocked,
             appsAllowed,
-            appsBlocked));
+            appsBlocked,
+            device.Approved && device.StoreApps));
     }
 
     private static async Task<IResult> EventsAsync(HttpContext context, PontualDb db, TimeProvider time, CancellationToken ct)
@@ -183,6 +184,11 @@ public static class TerminalEndpoints
 
                 case "closed" when item.Length > 0:
                     AddHistory(db, device, at, $"Fechou {item}");
+                    break;
+
+                // Explorer escondido para os aplicativos da Microsoft Store: se o Windows aceitou ou não (detail).
+                case "store_shell" when Input.Truncated(e.Detail, 300) is { Length: > 0 } storeShell:
+                    AddHistory(db, device, at, $"Aplicativos da Microsoft Store: {storeShell}");
                     break;
 
                 // Aplicativo da lista "Aplicativos" que não abriu ou não está instalado na conta (detail = motivo do Windows).

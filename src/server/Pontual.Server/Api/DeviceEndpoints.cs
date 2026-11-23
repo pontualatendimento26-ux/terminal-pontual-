@@ -10,7 +10,7 @@ public static class DeviceEndpoints
     private static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(30);
 
     private sealed record ApproveBody(string? AttendantName);
-    private sealed record PatchBody(string? AttendantName, bool? ObservationMode);
+    private sealed record PatchBody(string? AttendantName, bool? ObservationMode, bool? StoreApps = null);
     private sealed record MaintenanceBody(string? Reason, int? Minutes);
 
     public static void Map(RouteGroupBuilder api)
@@ -104,6 +104,12 @@ public static class DeviceEndpoints
         {
             device.ObservationMode = observation;
             changes.Add($"{(observation ? "ligou" : "desligou")} o modo de observação de {device.Label}");
+        }
+
+        if (body.StoreApps is { } store && store != device.StoreApps)
+        {
+            device.StoreApps = store;
+            changes.Add($"{(store ? "ligou" : "desligou")} os aplicativos da Microsoft Store em {device.Label}");
         }
 
         if (changes.Count > 0)

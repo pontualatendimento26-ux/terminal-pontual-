@@ -15,7 +15,9 @@ Legendas:
 
 Plataforma centralizada para administrar os computadores das atendentes da Pontual: cerca de 10 máquinas no início, preparada para dezenas ou centenas.
 
-Fora do escopo: captura de teclado, gravação de tela, acesso remoto oculto, leitura de conteúdo de aplicativos ou sites, e qualquer desbloqueio remoto da conta da atendente.
+Fora do escopo: captura de teclado, acesso remoto oculto, leitura de conteúdo de aplicativos ou sites, e qualquer desbloqueio remoto da conta da atendente.
+
+**Gravação de tela (decisão do dono, 23/11/2026):** a tela das atendentes é gravada em vídeo (1 quadro por segundo, trechos de 1 minuto), enviada à Central, guardada cifrada e apagada depois de 3 meses. A barra do Terminal avisa a atendente enquanto grava. O aviso de monitoramento entregue às atendentes precisa ser revisado pelo RH ou pelo jurídico antes de a gravação ficar ligada nos computadores.
 
 ## 2. Perfis
 

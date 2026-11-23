@@ -1,4 +1,6 @@
 using System.Collections;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -50,6 +52,24 @@ public partial class TerminalBar : UserControl
     {
         TabsList.ItemsSource = tabs;
         WindowsList.ItemsSource = windows;
+        _tabs = tabs;
+        _windows = windows;
+        foreach (var tab in tabs.OfType<SiteTab>())
+        {
+            tab.PropertyChanged += OnTabChanged;
+        }
+
+        if (tabs is INotifyCollectionChanged tabsChanged)
+        {
+            tabsChanged.CollectionChanged += OnListsChanged;
+        }
+
+        if (windows is INotifyCollectionChanged windowsChanged)
+        {
+            windowsChanged.CollectionChanged += OnListsChanged;
+        }
+
+        UpdateAllTabsButton();
     }
 
     /// <summary>A tela inicial só existe no monitor principal.</summary>
@@ -118,6 +138,233 @@ public partial class TerminalBar : UserControl
         {
             WindowClick?.Invoke(window);
         }
+    }
+
+    // ------------------------------------------------------------------ todas as abas
+
+    private IEnumerable _tabs = Array.Empty<SiteTab>();
+    private IEnumerable _windows = Array.Empty<OpenWindow>();
+
+    private void OnListsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        foreach (var tab in e.OldItems?.OfType<SiteTab>() ?? [])
+        {
+            tab.PropertyChanged -= OnTabChanged;
+        }
+
+        foreach (var tab in e.NewItems?.OfType<SiteTab>() ?? [])
+        {
+            tab.PropertyChanged += OnTabChanged;
+            if (tab.IsSelected)
+            {
+                ScrollToTab(tab);
+            }
+        }
+
+        UpdateAllTabsButton();
+        if (AllTabsPopup.IsOpen)
+        {
+            FilterAllTabs(AllTabsBox.Text);
+        }
+    }
+
+    /// <summary>A aba que passa a aparecer na tela rola para dentro da faixa, mesmo que estivesse escondida no fim.</summary>
+    private void OnTabChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(SiteTab.IsSelected) && sender is SiteTab { IsSelected: true } tab)
+        {
+            ScrollToTab(tab);
+        }
+    }
+
+    private void ScrollToTab(SiteTab tab) =>
+        Dispatcher.BeginInvoke(() => (TabsList.ItemContainerGenerator.ContainerFromItem(tab) as FrameworkElement)?.BringIntoView(),
+            System.Windows.Threading.DispatcherPriority.Loaded);
+
+    private int OpenCount => _tabs.OfType<SiteTab>().Count() + _windows.OfType<OpenWindow>().Count();
+
+    private void UpdateAllTabsButton()
+    {
+        var count = OpenCount;
+        AllTabsButton.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        AllTabsText.Text = $"Abas ({count})";
+        AllTabsButton.ToolTip = count == 1 ? "Ver a aba aberta" : $"Ver as {count} abas e janelas abertas";
+        if (count == 0)
+        {
+            AllTabsPopup.IsOpen = false;
+        }
+    }
+
+    /// <summary>A roda do mouse rola a faixa das abas para o lado.</summary>
+    private void OnStripWheel(object sender, MouseWheelEventArgs e)
+    {
+        TabsStrip.ScrollToHorizontalOffset(TabsStrip.HorizontalOffset - e.Delta);
+        e.Handled = true;
+    }
+
+    /// <summary>Setas do carrossel: cada clique anda quase uma faixa inteira (fica um pedaço da última aba, para não se perder).</summary>
+    private void OnStripLeft(object sender, RoutedEventArgs e) =>
+        TabsStrip.ScrollToHorizontalOffset(Math.Max(0, TabsStrip.HorizontalOffset - StripStep));
+
+    private void OnStripRight(object sender, RoutedEventArgs e) =>
+        TabsStrip.ScrollToHorizontalOffset(Math.Min(TabsStrip.ScrollableWidth, TabsStrip.HorizontalOffset + StripStep));
+
+    private double StripStep => Math.Max(120, TabsStrip.ViewportWidth * 0.8);
+
+    /// <summary>Mostra cada seta só quando há abas escondidas daquele lado.</summary>
+    private void OnStripScrolled(object sender, ScrollChangedEventArgs e)
+    {
+        var overflow = TabsStrip.ScrollableWidth > 1;
+        StripLeft.Visibility = overflow ? Visibility.Visible : Visibility.Collapsed;
+        StripRight.Visibility = overflow ? Visibility.Visible : Visibility.Collapsed;
+        StripLeft.IsEnabled = TabsStrip.HorizontalOffset > 1;
+        StripRight.IsEnabled = TabsStrip.HorizontalOffset < TabsStrip.ScrollableWidth - 1;
+    }
+
+    private void OnAllTabs(object sender, RoutedEventArgs e)
+    {
+        AllTabsBox.Text = string.Empty;
+        FilterAllTabs(string.Empty);
+        AllTabsPopup.IsOpen = true;
+    }
+
+    private void OnAllTabsOpened(object? sender, EventArgs e) =>
+        Dispatcher.BeginInvoke(() => Keyboard.Focus(AllTabsBox), System.Windows.Threading.DispatcherPriority.Input);
+
+    private void OnAllTabsText(object sender, TextChangedEventArgs e) => FilterAllTabs(AllTabsBox.Text);
+
+    private void OnAllTabsKey(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Enter:
+                PickEntry(AllTabsResults.SelectedItem as OpenEntry ?? AllTabsResults.Items.OfType<OpenEntry>().FirstOrDefault());
+                e.Handled = true;
+                break;
+            case Key.Down when AllTabsResults.Items.Count > 0:
+                AllTabsResults.SelectedIndex = Math.Max(AllTabsResults.SelectedIndex, 0);
+                (AllTabsResults.ItemContainerGenerator.ContainerFromIndex(AllTabsResults.SelectedIndex) as ListBoxItem)?.Focus();
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                AllTabsPopup.IsOpen = false;
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void OnAllTabsResultsKey(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Enter:
+                PickEntry(AllTabsResults.SelectedItem as OpenEntry);
+                e.Handled = true;
+                break;
+            case Key.Delete when AllTabsResults.SelectedItem is OpenEntry { Tab: { } tab }:
+                TabCloseClick?.Invoke(tab);
+                e.Handled = true;
+                break;
+            case Key.Up when AllTabsResults.SelectedIndex <= 0:
+                Keyboard.Focus(AllTabsBox);
+                e.Handled = true;
+                break;
+            case Key.Escape:
+                AllTabsPopup.IsOpen = false;
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void OnAllTabsPick(object sender, RoutedEventArgs e) => PickEntry((sender as FrameworkElement)?.DataContext as OpenEntry);
+
+    /// <summary>Fechar pela lista: a lista continua aberta, para fechar várias de uma vez.</summary>
+    private void OnAllTabsClose(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is OpenEntry { Tab: { } tab })
+        {
+            TabCloseClick?.Invoke(tab);
+        }
+    }
+
+    private void PickEntry(OpenEntry? entry)
+    {
+        if (entry is null)
+        {
+            return;
+        }
+
+        AllTabsPopup.IsOpen = false;
+        if (entry.Tab is { } tab)
+        {
+            TabClick?.Invoke(tab);
+        }
+        else if (entry.Window is { } window)
+        {
+            WindowClick?.Invoke(window);
+        }
+    }
+
+    /// <summary>Páginas do Terminal primeiro (na ordem em que foram abertas), depois as janelas dos outros programas.</summary>
+    private void FilterAllTabs(string text)
+    {
+        var query = text.Trim();
+        var all = _tabs.OfType<SiteTab>().Select(t => new OpenEntry(t))
+            .Concat(_windows.OfType<OpenWindow>().Select(w => new OpenEntry(w)))
+            .ToArray();
+        var hits = all.Where(x => query.Length == 0 || Compare.IndexOf(x.Name, query, Loose) >= 0).ToArray();
+
+        AllTabsTitle.Text = all.Length == 1 ? "1 aba aberta" : $"{all.Length} abas abertas";
+        AllTabsResults.ItemsSource = hits;
+        AllTabsResults.SelectedIndex = hits.Length > 0 ? 0 : -1;
+        AllTabsResults.Visibility = hits.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        AllTabsEmpty.Text = all.Length == 0 ? "Nenhuma aba aberta." : $"Nenhuma aba com \"{query}\".";
+        AllTabsEmpty.Visibility = hits.Length > 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>Uma linha da lista de todas as abas: uma página do Terminal ou a janela de outro programa.</summary>
+    private sealed class OpenEntry
+    {
+        public OpenEntry(SiteTab tab)
+        {
+            Tab = tab;
+            Name = tab.Name;
+            Color = tab.Color;
+            Initials = tab.Initials;
+            Detail = tab.IsSelected ? "Página do Terminal · na tela agora"
+                : tab.Monitor is not null ? "Página do Terminal · no outro monitor"
+                : "Página do Terminal";
+            Weight = tab.IsSelected ? FontWeights.SemiBold : FontWeights.Medium;
+        }
+
+        public OpenEntry(OpenWindow window)
+        {
+            Window = window;
+            Name = string.IsNullOrWhiteSpace(window.Title) ? "Janela sem título" : window.Title;
+            Color = Brand.ColorFor(Name);
+            Initials = Brand.Initials(Name);
+            Detail = "Programa";
+            Weight = FontWeights.Medium;
+        }
+
+        public SiteTab? Tab { get; }
+
+        public OpenWindow? Window { get; }
+
+        public string Name { get; }
+
+        public string Initials { get; }
+
+        public Brush Color { get; }
+
+        public string Detail { get; }
+
+        public FontWeight Weight { get; }
+
+        /// <summary>Só as páginas do Terminal fecham por aqui; os outros programas se fecham neles mesmos.</summary>
+        public Visibility CloseVisibility => Tab is null ? Visibility.Collapsed : Visibility.Visible;
+
+        public string CloseLabel => $"Fechar {Name}";
     }
 
     // ------------------------------------------------------------------ pesquisa
@@ -229,5 +476,12 @@ public partial class TerminalBar : UserControl
         public string Detail => string.IsNullOrWhiteSpace(Item.Group)
             ? (Item.IsProgram ? "Programa" : "Site")
             : $"{(Item.IsProgram ? "Programa" : "Site")} · {Item.Group}";
+    }
+
+    /// <summary>Aviso fixo da barra: com a gravação ligada, diz que a tela é gravada (em vermelho, para não passar despercebido).</summary>
+    public void SetRecording(bool recording, string hours = "")
+    {
+        MonitorNotice.Text = recording ? $"● A tela e as atividades são gravadas{hours}" : "As atividades serão monitoradas";
+        MonitorNotice.SetResourceReference(TextBlock.ForegroundProperty, recording ? "Rubi700" : "Apagado");
     }
 }

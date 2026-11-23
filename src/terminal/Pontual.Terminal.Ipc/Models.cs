@@ -16,7 +16,7 @@ public sealed record ConfigItem(string Id, string Name, string Kind, string Targ
 /// <param name="AppsBlocked">Aplicativos do computador (nome do .exe) que o TI bloqueou: o Terminal não abre e fecha se estiver aberto.</param>
 public sealed record TerminalConfig(int Version, string? AttendantName, bool ObservationMode, IReadOnlyList<ConfigItem> Items,
     IReadOnlyList<string>? ChromeAllowed = null, IReadOnlyList<string>? ChromeBlocked = null,
-    IReadOnlyList<string>? AppsAllowed = null, IReadOnlyList<string>? AppsBlocked = null)
+    IReadOnlyList<string>? AppsAllowed = null, IReadOnlyList<string>? AppsBlocked = null, bool StoreApps = false)
 {
     public ConfigItem? Find(string id) => Items.FirstOrDefault(i => string.Equals(i.Id, id, StringComparison.Ordinal));
 }
@@ -47,6 +47,21 @@ public sealed record EnrollResponse(string DeviceId, string Token);
 /// <summary>O TI está com a visualização ao vivo desta tela aberta? <c>Viewer</c> é o nome de quem está vendo.</summary>
 public sealed record ScreenRequest(bool Wanted, string? Viewer);
 
+/// <summary>Como gravar a tela (decidido na Central). <c>Record</c> falso = não grava.</summary>
+/// <remarks>StartMinute/EndMinute: janela do dia (hora local, em minutos desde 0h) em que se grava; fora dela, nada. Ausentes (Central antiga) = o dia todo.</remarks>
+public sealed record RecordingPolicy(bool Record, int Fps, int MaxWidth, int Quality, int SegmentSeconds, int StartMinute = 0, int EndMinute = 1440)
+{
+    public bool InWindow(DateTime local)
+    {
+        var minute = local.Hour * 60 + local.Minute;
+        return EndMinute <= StartMinute || (minute >= StartMinute && minute < EndMinute);
+    }
+
+    /// <summary>Segundos até a janela fechar (infinito se grava o dia todo).</summary>
+    public double SecondsLeft(DateTime local) =>
+        EndMinute <= StartMinute || EndMinute >= 1440 ? double.PositiveInfinity : (local.Date.AddMinutes(EndMinute) - local).TotalSeconds;
+}
+
 /// <summary>Um evento do terminal: enviado ao servidor ou, no modo local, gravado no registro.</summary>
 public sealed record DeviceEvent(string Type, string? Item, string? Detail, DateTimeOffset At)
 {
@@ -67,4 +82,6 @@ public sealed record DeviceEvent(string Type, string? Item, string? Detail, Date
     public const string AppOpened = "app_opened";
     /// <summary>Um aplicativo da lista "Aplicativos" não abriu, ou não está instalado na conta (item = nome, detail = motivo).</summary>
     public const string AppFailed = "app_failed";
+    /// <summary>Resultado do Explorer escondido para os aplicativos da Microsoft Store (item = "Microsoft Store", detail = o que aconteceu).</summary>
+    public const string StoreShell = "store_shell";
 }

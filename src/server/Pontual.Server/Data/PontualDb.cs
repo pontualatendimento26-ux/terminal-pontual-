@@ -30,6 +30,9 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
     public DbSet<AttendantInsight> AttendantInsights => Set<AttendantInsight>();
     public DbSet<WhatsAppCapture> WhatsAppCaptures => Set<WhatsAppCapture>();
     public DbSet<CoverageReply> CoverageReplies => Set<CoverageReply>();
+    public DbSet<ScreenRecording> ScreenRecordings => Set<ScreenRecording>();
+    public DbSet<CrmEvent> CrmEvents => Set<CrmEvent>();
+    public DbSet<CrmReply> CrmReplies => Set<CrmReply>();
     public DbSet<AssistantUsage> AssistantUsage => Set<AssistantUsage>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -92,6 +95,12 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
 
         modelBuilder.Entity<AssistantUsage>().HasIndex(u => u.At);
 
+        modelBuilder.Entity<ScreenRecording>(e =>
+        {
+            e.HasIndex(r => new { r.DeviceId, r.StartedAt });
+            e.HasIndex(r => r.StartedAt);
+        });
+
         modelBuilder.Entity<KnowledgeLink>().HasIndex(l => new { l.FromId, l.ToId }).IsUnique();
 
         modelBuilder.Entity<KnowledgeSuggestion>().HasIndex(s => s.Status);
@@ -99,6 +108,13 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
         modelBuilder.Entity<AssistantFeedback>().HasIndex(f => new { f.DeviceId, f.MessageId }).IsUnique();
 
         modelBuilder.Entity<WhatsAppCapture>().HasIndex(c => new { c.DeviceId, c.Contact }).IsUnique();
+        modelBuilder.Entity<CrmEvent>().HasIndex(e => new { e.ConversationId, e.Id });
+        modelBuilder.Entity<CrmReply>(e =>
+        {
+            e.HasIndex(r => r.ConversationId);
+            e.HasIndex(r => new { r.Status, r.CreatedAt });
+        });
+
         modelBuilder.Entity<CoverageReply>(e =>
         {
             e.HasIndex(r => new { r.DeviceId, r.Status });

@@ -213,6 +213,7 @@ public partial class MainWindow : Window
         }
 
         _windowsTimer.Stop();
+        StopStoreShell();
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
         ReleaseBarSpace();
         foreach (var monitor in _monitors)
@@ -470,6 +471,7 @@ public partial class MainWindow : Window
         if (!_local)
         {
             _ = ScreenLoopAsync(_cts.Token);
+            StartRecording(_cts.Token);
         }
     }
 
@@ -847,6 +849,7 @@ public partial class MainWindow : Window
         _policy = config is null ? HostPolicy.Empty : HostPolicy.FromConfig(config);
         ApplyChromeConfig(config);
         ApplyAppsConfig(config);
+        ApplyStoreShell(config);
         if (!_local && config is not null && !string.IsNullOrWhiteSpace(config.AttendantName))
         {
             _attendantName = config.AttendantName;

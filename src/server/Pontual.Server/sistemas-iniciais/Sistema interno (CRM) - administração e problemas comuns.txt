@@ -1,0 +1,46 @@
+Sistema interno (CRM): funções do Supervisor e problemas comuns
+
+USUÁRIOS (Gerenciamento › "Usuários")
+Criar ou editar:
+1. "+ Novo usuário", ou o lápis de uma pessoa.
+2. Aba "Perfil": Foto, Nome completo, Login (único no sistema todo), Senha e Nível (Correspondente ou Supervisor).
+3. "Salvar".
+Permissões só daquela pessoa: aba "Permissões" da gaveta; cada permissão tem "Nível" (segue o padrão), "Liberar" ou "Bloquear".
+"Permissões dos níveis": padrão de todas as Correspondentes; ligar ou desligar cada item e "Salvar alterações".
+Excluir: "⋯" › "Excluir usuário". Os clientes dela ficam sem dono até alguém transferir; lembretes e mensagens prontas dela são apagados. Sem volta.
+Status na lista: Online (sistema aberto e mexendo), Inativo (parado há 5 minutos ou mais), Offline (sem sinal).
+
+FLUXOS VISUAIS (automações)
+Menu lateral › "Configurações" › "Fluxos Visuais". Robôs do tipo "quando acontecer X, faça Y".
+1. "Nova Automação": nome e canal (WhatsApp, RCS ou Geral).
+2. "Gatilho Inicial": cliente criado ou movido, mandar mensagem, ficar sem responder por N minutos etc.; funil e etapa, dias e horários.
+3. Arrastar os blocos da esquerda e ligar um ao outro. Ações: Enviar Mensagem, Adicionar Tag, Mover no Kanban, Distribuir Cliente, Geração de Imagem. Lógica: Pausa de Tempo, Horário Comercial, Condição de Resposta.
+4. "Salvar Fluxo" (ou Ctrl+S) e ativar o fluxo na lista.
+Na lista: pausar, renomear, duplicar e exportar. Fluxo importado entra desligado, para conferir antes. F1 abre a ajuda com atalhos.
+Bloco "Geração de Imagem": monta a imagem da proposta com os dados de cada cliente. "Montar imagem" abre o editor visual (textos, dados entre parênteses como (crm.nome), tabela de contratos, logo e formas). "Ver com dados de exemplo" para conferir. "Salvar no bloco".
+
+AGENTE DE IA DO CRM (um vendedor robô por funil)
+Kanban › "Opções do Quadro" › "Agente de IA". A IA do CRM responde sozinha os clientes daquele funil.
+- Persona: papel, personalidade, tom de voz, tamanho das respostas e diretrizes.
+- Ações (regras): "quando o cliente quiser falar com humano → transferir", "fora do horário → mandar tal mensagem" etc. Regras que não dependem da IA (horário, palavra, formato) não gastam IA.
+- Fonte: arquivos .txt com informações do produto.
+- Configurações: quantas mensagens anteriores a IA lê, limite de respostas e o que fazer ao bater o limite (padrão: pausar e transferir para humano).
+- Chat de teste: conversar com a IA como se fosse o cliente, antes de ligar.
+No Bate-papo aparece "IA respondendo"; para assumir, a mão ("Assumir conversa").
+
+INTEGRAÇÕES
+Menu lateral › "Configurações" › "Integrações": IA (OpenAI, Gemini, Groq), RCS (Ótima), Voz (ElevenLabs e Torpedo de voz), Pagamento (Asaas), Telefonia, Webhooks, APIs, Bases de dados. Senhas e tokens nunca aparecem de volta na tela; na edição, deixar o campo vazio mantém o valor gravado. Só Supervisor mexe aqui.
+
+PROBLEMAS COMUNS
+- "Não acho tal tela/botão": é permissão. Pedir ao Supervisor.
+- "Minha lista de conversas está vazia": conferir o filtro "Todos os Bots" (pode estar tudo desmarcado) e o botão "Limpar" dos filtros.
+- "O cliente sumiu da lista": foi marcado Ganho/Perdido ou transferido. Procurar no Kanban ou nos Relatórios.
+- "Não consigo responder, apareceu Conexão Interrompida": o chip caiu. Reconectar em Instâncias (ou avisar o Supervisor).
+- "Mensagem com ! vermelho": falhou. Passar o mouse para ver o motivo.
+- "O disparo parou por uns minutos": normal, é a pausa de proteção (2 a 5 min a cada 15–20 mensagens).
+- "O botão Disparar não destrava": ver no cartão "Pronto pra disparar?" qual etapa está laranja ou faltando.
+- "O cliente recebeu (nome) escrito literalmente": a variável não estava ligada a nenhuma coluna. O sistema normalmente trava isso antes.
+- "Chip com aviso de conflito": o número está aberto em outro WhatsApp Web. Fechar lá.
+- "Mudei a ficha e não salvou": nome, CPF, notas e campos precisam de "Salvar Alterações".
+- "Sessão Expirada": fazer login de novo (a sessão dura 24h).
+- "Muitas tentativas erradas": esperar 15 minutos ou pedir ao Supervisor para trocar a senha.

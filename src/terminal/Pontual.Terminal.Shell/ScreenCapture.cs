@@ -62,6 +62,30 @@ internal static class ScreenCapture
         return result;
     }
 
+    /// <summary>
+    /// Um quadro da tela inteira para a gravação: BGRA de cima para baixo, com largura no máximo
+    /// <paramref name="maxWidth"/> e as duas medidas pares (o codificador de vídeo exige).
+    /// </summary>
+    public static (byte[] Bgra, int Width, int Height) Frame(int maxWidth)
+    {
+        var source = Capture();
+        var scale = Math.Min(1.0, (double)maxWidth / source.PixelWidth);
+        var width = Math.Max(2, (int)(source.PixelWidth * scale) & ~1);
+        var height = Math.Max(2, (int)(source.PixelHeight * scale) & ~1);
+        BitmapSource image = new TransformedBitmap(source, new ScaleTransform((double)width / source.PixelWidth, (double)height / source.PixelHeight));
+        if (image.Format != PixelFormats.Bgr32)
+        {
+            image = new FormatConvertedBitmap(image, PixelFormats.Bgr32, null, 0);
+        }
+
+        // O arredondamento da escala pode dar um pixel a mais ou a menos: o recorte garante o tamanho exato.
+        var w = Math.Min(width, image.PixelWidth);
+        var h = Math.Min(height, image.PixelHeight);
+        var pixels = new byte[width * height * 4];
+        image.CopyPixels(new Int32Rect(0, 0, w, h), pixels, width * 4, 0);
+        return (pixels, width, height);
+    }
+
     private static BitmapSource Capture()
     {
         var x = GetSystemMetrics(SmXVirtualScreen);

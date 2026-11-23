@@ -1,0 +1,50 @@
+Sistema interno (CRM): disparo de WhatsApp, disparo RCS e Listas da Base
+
+DISPARO DE WHATSAPP
+Menu lateral › "Disparos" › aba "Novo Disparo". Três partes: esquerda = resumo e botão final; meio = configuração; direita = celular mostrando como o cliente vai receber.
+O botão de disparar só destrava com todas as etapas feitas. O cartão "Pronto pra disparar?" mostra o que falta: verde = feita; laranja com "!" = ficou para trás; anel azul = próxima a fazer.
+1. Campanha: dar um nome (ex.: "Portabilidade - novembro"). Raio = "Enviar agora"; calendário = "Agendar" (aparece "Sai em" para data e hora).
+2. Bot: "Selecionar bots" e marcar os chips que enviam. Só aparecem chips conectados e ativos; a Correspondente só vê os vinculados a ela. Vários chips se revezam (rodízio).
+3. Lista de clientes: no Excel, copiar as linhas COM O CABEÇALHO e colar na caixa; o sistema lê em menos de 1 segundo. A coluna de telefone precisa se chamar algo como "Telefone", "Celular" ou "WhatsApp". O resumo mostra quantos têm WhatsApp, quantos não têm, incompletos e repetidos. Usar "Validar no WhatsApp", "Tirar repetidos" e "Tirar inválidos" antes de disparar. No título do cartão escolhe-se Funil, Etapa e Tag de destino no CRM (padrão: funil "Atendimento Portabilidade" com tag "Disparo").
+4. Colunas da planilha: dizer o que é cada coluna (Nome, CPF, campo do CRM ou "Não usar"). As colunas ligadas viram variáveis da mensagem e são gravadas na ficha do cliente; célula vazia nunca apaga o que já existe.
+5. Mensagem: tipo Texto, Só arquivo, Arquivo com texto ou Áudio com IA.
+   - "Variável" insere (nome), (cpf) etc. O (nome) usa só o primeiro nome.
+   - "Variação" insere algo como {Oi|Olá|E aí}; o sistema sorteia uma opção por cliente, para não parecer robô.
+   - Arquivo: imagem, vídeo, áudio ou PDF, até 50MB.
+   - Áudio com IA: escolher a voz; é obrigatório ouvir uma prévia (▶ no celular). Prévia e envio gastam créditos.
+   - Dica: escrever o "R$" no próprio texto, ex.: "R$ (liberado)". Senão o cliente recebe só o número.
+6. Ritmo e proteções (para não queimar o chip): "Intervalo entre clientes" (padrão 5 a 10 s); "Pausa por lote" (a cada N mensagens, para X segundos); "Simulação" (mostra "Digitando..." ou "Gravando áudio..."); "Pular quem conversou nos últimos N dias"; "Fixar no último número" (manda pelo chip que já falou com o cliente). Mexer em algum ajuste ou clicar em "Conferi" completa a etapa.
+7. Conferir no celular da direita; as setas passam de cliente em cliente. Aparecer [nome_da_variável] = falta dado.
+8. Clicar em "Disparar para N clientes" (ou "Agendar") e confirmar. A tela vai sozinha para o Histórico.
+O que o sistema faz sozinho: pula quem está em "não recebe disparo"; confere cada número no WhatsApp na hora do envio; se os chips caírem, os clientes voltam para a fila (ninguém se perde); a cada 15 a 20 mensagens faz uma pausa extra de 2 a 5 minutos para proteger o chip (se o disparo parecer parado uns minutos, é isso).
+Aba "Histórico": cada campanha num cartão com Andamento X / Y, Sucesso, Falhas e Pulados; atualiza a cada 5 segundos. Status: Pendente (esperando a hora ou para começar), Executando, Pausado (alguém pausou ou o sistema pausou por erro), Concluído, Erro. Botões: Excel (relatório por destinatário), "Ver Log", Pausar/Retomar, Lixeira (exclui, com permissão), ícone roxo (só com a campanha pausada: adiciona ou tira chips). Não existe "cancelar": para cancelar de vez, pausar e excluir.
+
+DISPARO RCS (Supervisor)
+O RCS chega no app de mensagens do Android como card com imagem e botões. Não usa chip: quem envia é a empresa Ótima, por um template aprovado. Cada cliente que recebe abre uma conversa paga de 24h.
+Menu lateral › "Disparos" › aba "Disparo RCS".
+1. Nome da campanha.
+2. Proteções: "Não disparar para quem já recebeu RCS nos últimos N dias" (padrão 30); "Regras de bloqueio" (ex.: 70 anos ou mais, quem já é cliente; desmarcar vale só para este disparo); "Quem pediu pra não receber" › "Ver lista".
+3. Template: escolher no menu. O "+" cria um novo: título, texto com -var1-, -var2-..., imagem ou vídeo e até 4 botões. ATENÇÃO: o ícone de "proibido" desativa o template para sempre, sem volta.
+4. Lista: colar do Excel com cabeçalho e escolher Funil / Etapa / Tag.
+5. Salvar no cadastro e Variáveis: ligar cada coluna a um campo do cliente, e cada -var1-, -var2-... a uma coluna. O celular da direita mostra a mensagem cliente a cliente.
+6. "Conferir lista": mostra quantos vão receber, quantos já foram contatados nos últimos N dias, repetidos, fixo ou incompleto, quem não recebe disparo, quem tem variável vazia, quem tem 70 anos ou mais. Mudou qualquer coisa depois de conferir, precisa conferir de novo.
+7. Disparar: se a qualidade do RCS da empresa estiver baixa, o sistema avisa antes. Confirmação com "Sim, disparar", "Só montar (não envia)" (fica pronta para soltar depois no Histórico RCS) ou "Cancelar".
+Histórico RCS (Disparos › aba "Histórico RCS"):
+- Tabela com Disparados, Entregues, Lidos, "Não possui RCS" e Resultado (positivos 👍, negativos e número errado).
+- "Parar": quem ainda não recebeu para de receber e não é cobrado. Quem já recebeu não tem volta.
+- "Enviar agora": solta uma campanha só montada. Sem volta.
+- Clicar na linha abre o painel: funil (Na planilha → Bloqueados → Disparados → Entregues → Leram → Responderam), o que os clientes responderam e "Resultado em vendas" (quantos foram digitados no iFlow em até 10 dias). Clicar numa barra abre esses clientes em Relatórios Detalhados.
+- "Torpedo de voz" (na barra "Entregue"): liga para quem recebeu tocando um MP3. Depois de enviado, não dá para cancelar.
+- Excel: por período ou por campanha, com abas "Clientes" e "Resumo".
+
+LISTAS DA BASE (Supervisor): preparar a lista antes do disparo
+Menu lateral › "Disparos" › aba "Listas da Base". Usa a base da diretoria (dados de SIAPE: clientes e contratos). Só lê, nunca altera. No topo aparece de quando é a base e quando foi atualizada.
+Modo "Tenho uma lista" (completar ou corrigir uma lista):
+1. Colar a lista ou "Escolher CSV" (até 300 mil linhas).
+2. Dizer qual coluna é o CPF (ou telefone): a chave da busca.
+3. Em "Trazer da base", escolher as colunas a acrescentar (margem, banco, parcela...). Com vários contratos: Somar, O maior, O menor ou Mostrar todos.
+4. Filtros, se quiser (ex.: margem maior que 100).
+5. Uma linha por cliente ou por contrato, e o que fazer com quem não está na base.
+6. "Buscar na base".
+Modo "Gerar lista" (do zero): 1. escolher colunas; 2. filtros, ordem e limite de clientes; 3. "Gerar lista".
+Resultado: aba "Lista pronta" (prévia) e "O que mudou" (antes × depois). "Copiar" copia a lista pronta para colar no Novo Disparo ou no Disparo RCS; "Excel" baixa a planilha.

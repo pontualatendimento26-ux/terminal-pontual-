@@ -27,6 +27,7 @@ const IC = {
   shield: '<path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z"/><path d="m9 12 2.2 2.2L15 10"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/>',
+  video: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/>',
   eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
   moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
@@ -799,7 +800,7 @@ async function abrirTela(d, nome) {
   const caminho = `/devices/${encodeURIComponent(d.id)}/screen`;
   const dizer = (mensagem) => { estado.textContent = mensagem; estado.hidden = false; img.hidden = true; };
   $('t-tela').textContent = `Tela de ${texto(nome) || 'atendente'}`;
-  $('tela-sub').textContent = 'Ao vivo, sem gravação. A atendente vê o aviso "O TI está vendo sua tela" enquanto esta janela estiver aberta, e a abertura fica na auditoria.';
+  $('tela-sub').textContent = 'Ao vivo. A atendente vê o aviso "O TI está vendo sua tela" enquanto esta janela estiver aberta, e a abertura fica na auditoria.';
   img.removeAttribute('src');
   dizer('Pedindo a imagem ao computador. Leva alguns segundos.');
   dlg.showModal();
@@ -862,6 +863,159 @@ async function abrirTela(d, nome) {
     }
     if (vivo) await new Promise((ok) => setTimeout(ok, atraso));
   }
+}
+
+// Gravações da tela: o Terminal manda um vídeo por minuto; aqui se escolhe o dia e os trechos tocam em sequência.
+// Abrir um dia fica na auditoria (no servidor). Os vídeos são apagados sozinhos depois de 3 meses.
+const emGB = (b) => (b < 1073741824
+  ? `${Math.round(Math.max(0, b) / 1048576).toLocaleString('pt-BR')} MB`
+  : `${(b / 1073741824).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} GB`);
+function rotuloDia(iso) {
+  const [a, m, d] = iso.split('-').map(Number);
+  const data = new Date(a, m - 1, d), hoje = new Date();
+  if (mesmoDia(data, hoje)) return 'Hoje';
+  if (mesmoDia(data, new Date(hoje.getTime() - 86400000))) return 'Ontem';
+  return data.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+async function desenharConfigGravacao() {
+  const area = $('grav-config');
+  area.replaceChildren();
+  let r;
+  try { r = await api('GET', '/recordings'); } catch { return; }
+  if (!r) return;
+  const ligado = r.enabled !== false;
+  const chave = el('button', { type: 'button', className: 'interruptor', role: 'switch', 'aria-checked': String(ligado), 'aria-labelledby': 'grav-cfg-titulo', 'aria-describedby': 'grav-cfg-texto', disabled: !pode('config.publish') });
+  chave.onclick = async () => {
+    const feito = await agir(chave, () => api('PUT', '/recordings/settings', { enabled: !ligado }),
+      { ok: ligado ? 'Gravação desligada. Os computadores param em até 2 minutos.' : 'Gravação ligada. Os computadores começam em até 2 minutos.' });
+    if (feito) desenharConfigGravacao();
+  };
+  const espaco = `Guardadas por ${r.retentionMonths || 3} meses em ${texto(r.folder)}: ${emGB(r.usedBytes || 0)} usados${r.freeBytes >= 0 ? `, ${emGB(r.freeBytes)} livres no disco` : ''}. Se o disco ficar com menos de 15 GB livres, as mais antigas saem antes do prazo.`;
+  area.replaceChildren(el('div', { className: 'obs' }, el('strong', { id: 'grav-cfg-titulo', textContent: 'Gravar a tela de todos os computadores' }), chave,
+    el('p', { id: 'grav-cfg-texto', textContent: `${ligado ? 'Ligada: a barra do Terminal avisa a atendente que a tela é gravada.' : 'Desligada: nenhum computador grava.'} ${espaco}` })));
+}
+async function abrirGravacoes(d, nome) {
+  // O Terminal manda UM vídeo do dia, com os intervalos de computador desligado dentro dele (a lista "parts" diz onde há gravação).
+  // A barra vai do primeiro ao último minuto gravado e pula os intervalos. Gravações antigas, de 1 minuto cada, tocam emendadas.
+  const dlg = $('dlg-grav'), video = $('grav-video'), estado = $('grav-estado'), dia = $('grav-dia');
+  const barra = $('grav-barra'), faixa = $('grav-faixa'), hora = $('grav-hora'), botao = $('grav-tocar'), veloc = $('grav-veloc');
+  const base = `/devices/${encodeURIComponent(d.id)}/recordings`;
+  let trechos = [], atual = -1, carregado = null, aberto = true, arrastando = false, inicio = 0, fim = 0;
+  const dizer = (m) => { estado.textContent = m; estado.hidden = false; video.hidden = true; };
+  const limparVideo = () => { video.pause(); video.removeAttribute('src'); video.load(); atual = -1; carregado = null; };
+  const relogio = (ms) => new Date(ms).toLocaleTimeString('pt-BR');
+  const controles = (ligar) => { [barra, botao, veloc].forEach((c) => { c.disabled = !ligar; }); };
+  $('t-grav').textContent = `Gravação da tela de ${texto(nome) || 'atendente'}`;
+  $('grav-sub').textContent = 'Um vídeo por dia, das 7h às 18h (ou desde que o computador ligou). Arraste a barra para ir a qualquer horário. Os trechos em cinza são de computador desligado. Abrir um dia fica registrado na auditoria.';
+  dia.replaceChildren(); $('grav-info').textContent = ''; hora.textContent = '--:--:--';
+  faixa.style.background = ''; controles(false);
+  limparVideo();
+  dizer('Carregando os dias gravados.');
+  dlg.showModal();
+  dlg.addEventListener('close', () => { aberto = false; limparVideo(); }, { once: true });
+  desenharConfigGravacao();
+
+  const mostrarPosicao = (ms) => {
+    hora.textContent = relogio(ms);
+    if (!arrastando) barra.value = String(Math.round((ms - inicio) / 1000));
+  };
+  // Vai para um horário do dia: acha o pedaço que cobre esse momento (ou o próximo, se o computador estava desligado).
+  const irPara = (ms, tocarDepois = true) => {
+    if (!aberto || !trechos.length) return;
+    let i = trechos.findIndex((t) => ms < t.fim);
+    if (i < 0) i = trechos.length - 1;
+    const t = trechos[i];
+    const seg = Math.max((t.ini - t.base) / 1000, Math.min((ms - t.base) / 1000, (t.fim - t.base) / 1000 - 0.05));
+    atual = i;
+    video.hidden = false; estado.hidden = true;
+    if (t.id !== carregado) {
+      carregado = t.id;
+      video.src = `/api/v1/recordings/${encodeURIComponent(t.id)}/video`;
+      video.addEventListener('loadedmetadata', () => {
+        video.currentTime = seg;
+        video.playbackRate = Number(veloc.value);
+        if (tocarDepois) video.play().catch(() => {});
+      }, { once: true });
+    } else {
+      video.currentTime = seg;
+      if (tocarDepois) video.play().catch(() => {});
+    }
+    mostrarPosicao(t.base + seg * 1000);
+  };
+
+  video.ontimeupdate = () => {
+    if (atual < 0 || video.seeking) return;
+    const t = trechos[atual], agora = t.base + video.currentTime * 1000;
+    // Chegou ao fim do trecho gravado: pula o intervalo (computador desligado) até o próximo.
+    if (agora >= t.fim - 50 && atual + 1 < trechos.length && !video.paused) { irPara(trechos[atual + 1].ini); return; }
+    mostrarPosicao(Math.min(agora, t.fim));
+  };
+  video.onended = () => { if (aberto && atual + 1 < trechos.length) irPara(trechos[atual + 1].ini); };
+  video.onplay = () => { botao.textContent = '❚❚ Pausar'; };
+  video.onpause = () => { botao.textContent = '▶ Reproduzir'; };
+  video.onerror = () => { if (aberto && video.getAttribute('src')) dizer('Não foi possível abrir este horário. Arraste a barra para outro ponto.'); };
+  botao.onclick = () => {
+    if (atual < 0) { irPara(inicio + Number(barra.value) * 1000); return; }
+    if (video.paused) video.play().catch(() => {}); else video.pause();
+  };
+  veloc.onchange = () => { video.playbackRate = Number(veloc.value); };
+  barra.oninput = () => { arrastando = true; hora.textContent = relogio(inicio + Number(barra.value) * 1000); };
+  barra.onchange = () => { arrastando = false; irPara(inicio + Number(barra.value) * 1000, !video.paused || atual < 0); };
+  $('grav-cheia').onclick = () => { video.requestFullscreen?.().catch(() => {}); };
+
+  const carregarDia = async () => {
+    trechos = []; limparVideo(); controles(false); faixa.style.background = '';
+    if (!dia.value) return;
+    dizer('Carregando o vídeo do dia.');
+    let lista;
+    try {
+      lista = (await api('GET', `${base}?date=${encodeURIComponent(dia.value)}`)) || [];
+    } catch (e) {
+      if (e.status !== 401) dizer(e.message);
+      return;
+    }
+    if (!aberto) return;
+    trechos = lista.flatMap((r) => {
+      const base = dataDe(r.startedAt).getTime();
+      const partes = Array.isArray(r.parts) && r.parts.length ? r.parts : [[0, r.seconds || 0]];
+      return partes.map(([inicioSeg, dur]) => ({ id: r.id, base, ini: base + inicioSeg * 1000, fim: base + (inicioSeg + dur) * 1000 }));
+    }).sort((a, b) => a.ini - b.ini);
+    if (!trechos.length) { dizer('Nada gravado neste dia.'); return; }
+    inicio = trechos[0].ini; fim = trechos[trechos.length - 1].fim;
+    const total = Math.max(1, (fim - inicio) / 1000);
+    barra.min = '0'; barra.max = String(Math.ceil(total)); barra.value = '0';
+    // Faixa sob a barra: azul onde há gravação, cinza onde o computador estava desligado.
+    const pct = (ms) => `${(((ms - inicio) / 1000 / total) * 100).toFixed(3)}%`;
+    const partes = [];
+    let ate = inicio;
+    for (const t of trechos) {
+      if (t.ini - ate > 5000) partes.push(`var(--linha) ${pct(ate)} ${pct(t.ini)}`);
+      partes.push(`var(--azul-500) ${pct(Math.max(ate, t.ini))} ${pct(t.fim)}`);
+      ate = Math.max(ate, t.fim);
+    }
+    faixa.style.background = `linear-gradient(to right, ${partes.join(', ')})`;
+    const gravados = Math.round(trechos.reduce((s, t) => s + (t.fim - t.ini), 0) / 60000);
+    const h = Math.floor(gravados / 60), m = gravados % 60;
+    $('grav-info').textContent = `Das ${hhmm(new Date(inicio))} às ${hhmm(new Date(fim))}: ${gravados ? `${h ? `${h} h ` : ''}${m} min` : 'menos de 1 min'} gravados.`;
+    controles(true);
+    irPara(inicio, false);
+  };
+  dia.onchange = carregarDia;
+
+  let dias;
+  try {
+    dias = (await api('GET', `${base}/days`)) || [];
+  } catch (e) {
+    if (e.status !== 401) dizer(e.message);
+    return;
+  }
+  if (!aberto) return;
+  if (!dias.length) {
+    dizer('Ainda não há gravações deste computador. A gravação começa depois que a atendente clica em Atualizar no Terminal (das 7h às 18h), e o vídeo do dia chega aqui depois das 18h.');
+    return;
+  }
+  dia.replaceChildren(...dias.map((x) => el('option', { value: x.date, textContent: rotuloDia(x.date) })));
+  await carregarDia();
 }
 
 function abrirGaveta(id, aba = 'resumo') {
@@ -967,7 +1121,9 @@ function desenharGaveta() {
       if (pode('usage.read.individual') && !ehCelular(d)) {
         const ver = el('button', { type: 'button', className: 'btn claro', 'data-k': 'ver-tela' }, ic('eye', 18), 'Ver a tela');
         ver.onclick = () => abrirTela(d, nome);
-        acoes.append(ver);
+        const grav = el('button', { type: 'button', className: 'btn claro', 'data-k': 'gravacoes' }, ic('video', 18), 'Gravações');
+        grav.onclick = () => abrirGravacoes(d, nome);
+        acoes.append(ver, grav);
       }
       if (acoes.children.length) corpo.push(acoes);
 
@@ -979,8 +1135,18 @@ function desenharGaveta() {
         el('p', { id: 'obs-texto', textContent: ligado
           ? 'Ligado: se a atendente entrar em um endereço fora da lista, a página abre e o domínio aparece em "Domínios observados" para você decidir. Use enquanto ainda está descobrindo os endereços que cada portal usa.'
           : 'Desligado: endereços fora da lista são bloqueados na hora, geram um alerta e um aviso urgente para o TI.' })));
+
+      // Aplicativos da Microsoft Store: o Windows só os abre com o Explorer rodando como área de trabalho (Terminal 2.13.0 ou mais novo).
+      const loja = d.storeApps === true;
+      const chaveLoja = el('button', { type: 'button', className: 'interruptor', role: 'switch', 'aria-checked': String(loja), 'aria-labelledby': 'loja-titulo', 'aria-describedby': 'loja-texto', disabled: !pode('devices.manage'), 'data-k': 'loja' });
+      chaveLoja.onclick = () => agir(chaveLoja, () => api('PATCH', `/devices/${encodeURIComponent(d.id)}`, { storeApps: !loja }),
+        { recarregar: ['devices'], ok: loja ? 'Aplicativos da Microsoft Store desligados neste computador. Vale a partir da próxima entrada da atendente.' : 'Aplicativos da Microsoft Store ligados neste computador. Vale em até 15 segundos.' });
+      corpo.push(el('div', { className: 'obs' }, el('strong', { id: 'loja-titulo', textContent: 'Aplicativos da Microsoft Store' }), chaveLoja,
+        el('p', { id: 'loja-texto', textContent: loja
+          ? 'Ligado: o Terminal mantém o Explorer do Windows rodando escondido (sem barra de tarefas e sem Iniciar), que é o que o Windows exige para abrir a Microsoft Store, as Notas Autoadesivas, a Calculadora e os outros aplicativos da Loja. O resultado de cada tentativa aparece no histórico do computador.'
+          : 'Desligado: os aplicativos da Microsoft Store não abrem neste computador, porque o bloqueio troca a área de trabalho do Windows pelo Terminal. Precisa do Terminal 2.13.0 ou mais novo.' })));
     }
-    corpo.push(el('p', { className: 'aviso-linha' }, ic('lock', 18), 'Você vê o status e os aplicativos em uso. A tela só é vista ao vivo, em "Ver a tela": a atendente recebe um aviso e a abertura fica na auditoria. Nada da tela é gravado, e o que ela digita não é registrado.'));
+    corpo.push(el('p', { className: 'aviso-linha' }, ic('lock', 18), 'Você vê o status e os aplicativos em uso. A tela pode ser vista ao vivo, em "Ver a tela", e fica gravada por 3 meses, em "Gravações". A barra do Terminal avisa a atendente, e cada abertura fica na auditoria. O que ela digita não é registrado.'));
     if (pode('devices.revoke')) {
       const rem = el('button', { type: 'button', className: 'btn perigo', 'data-k': 'remover' }, ic('trash', 18), 'Remover máquina');
       rem.onclick = async () => {
