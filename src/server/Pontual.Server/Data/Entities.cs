@@ -294,6 +294,9 @@ public sealed class TextSetting
     public const string AssistantScriptsSeeded = "assistant.scriptsSeeded";
     /// <summary>Nomes (um por linha) dos arquivos da pasta <c>sistemas-iniciais</c> já carregados na base.</summary>
     public const string AssistantSystemsSeeded = "assistant.systemsSeeded";
+
+    /// <summary>Marca da limpeza única que tirou o site "Teams" (fica só o aplicativo Microsoft Teams).</summary>
+    public const string TeamsSiteRemoved = "items.teamsSiteRemoved";
     /// <summary>"0" desliga a análise automática das conversas (perfil das atendentes e sugestões); o padrão é ligada.</summary>
     public const string AssistantAutoAnalysis = "assistant.autoAnalysis";
     /// <summary>"0" impede a assistente de receber a tela e o WhatsApp da atendente junto com a pergunta; o padrão é ligado.</summary>
@@ -318,6 +321,10 @@ public sealed class TextSetting
     public const string CrmWebhookKey = "crm.webhookKey";
     /// <summary>"1" liga a IA nos clientes do CRM (ela escreve as respostas para aprovação); o padrão é desligada.</summary>
     public const string CrmEnabled = "crm.enabled";
+    /// <summary>Endereço da API de integração do Nexus, ex.: http://192.168.0.171:3001/api/integracao/v1.</summary>
+    public const string NexusUrl = "nexus.url";
+    /// <summary>Token da Central no Nexus, cifrado como a chave da IA (ver <c>AssistantSecrets</c>).</summary>
+    public const string NexusToken = "nexus.token";
 
     public required string Key { get; set; }
     public string Value { get; set; } = "";
@@ -728,6 +735,49 @@ internal static class JsonList
 }
 
 /// <summary>Um aviso do CRM recebido pelo webhook do Agente Externo, com o que foi possível ler dele e o corpo como veio.</summary>
+/// <summary>Situação de uma consulta de CPF no Nexus.</summary>
+public static class NexusStatus
+{
+    public const string Running = "em_andamento";
+    public const string Done = "concluida";
+    public const string NotFound = "nao_encontrado";
+    public const string Failed = "erro";
+}
+
+/// <summary>
+/// Uma consulta de CPF que a atendente pediu no chat da IA. O resultado fica guardado 24 horas: o mesmo CPF no mesmo
+/// setor, nesse prazo, é respondido daqui, sem chamar o Nexus. Depois disso o resultado é apagado e fica só o registro
+/// (quem pediu, CPF, setor, se foi paga).
+/// </summary>
+public sealed class NexusConsulta
+{
+    public Guid Id { get; set; }
+    public Guid DeviceId { get; set; }
+    public string AttendantName { get; set; } = "";
+    public string Cpf { get; set; } = "";
+    /// <summary>siape, inss ou exercito.</summary>
+    public string Setor { get; set; } = "";
+    /// <summary>Ver <see cref="NexusStatus"/>.</summary>
+    public string Status { get; set; } = "";
+    /// <summary>O consulta_id do Nexus.</summary>
+    public string NexusId { get; set; } = "";
+    /// <summary>Esta consulta custou uma consulta paga no Nexus.</summary>
+    public bool Paga { get; set; }
+    /// <summary>O Nexus respondeu do cache dele (nada foi cobrado).</summary>
+    public bool FromCache { get; set; }
+    /// <summary>A resposta do Nexus como veio; apagada depois de 24 horas.</summary>
+    public string ResultJson { get; set; } = "";
+    /// <summary>O texto que apareceu no chat; apagado junto com o resultado.</summary>
+    public string Summary { get; set; } = "";
+    public string Error { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    /// <summary>A conversa do chat em que o resultado vai aparecer.</summary>
+    public Guid ConversationId { get; set; }
+    /// <summary>A fala do chat com o resultado, quando a consulta terminou.</summary>
+    public long? MessageId { get; set; }
+}
+
 public sealed class CrmEvent
 {
     public long Id { get; set; }

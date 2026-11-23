@@ -34,10 +34,6 @@
     botao.setAttribute('aria-checked', String(telaLigada));
     botao.textContent = telaLigada ? 'Vendo a sua tela e o WhatsApp' : 'Sem ver a sua tela';
     botao.title = telaLigada ? 'Clique para a assistente não ver a tela nas próximas perguntas.' : 'Clique para a assistente ver a tela e o WhatsApp quando você perguntar.';
-    $('as-nota').textContent = pode && telaLigada
-      ? 'Ao perguntar, a assistente vê a aba aberta e a conversa do WhatsApp. O que você escreve fica registrado; a tela não é guardada.'
-      : 'Não informe CPF nem dados de clientes. As conversas ficam registradas pela Pontual.';
-    if (aprendeComWhatsApp) $('as-nota').textContent += ' Suas conversas no WhatsApp são lidas pela assistente para aprender.';
   }
   $('as-tela').onclick = () => {
     telaLigada = !telaLigada;
@@ -107,10 +103,56 @@
     return n;
   }
   // Só **negrito** é interpretado; o resto aparece como veio (as quebras de linha valem pelo CSS).
+  // Linhas seguidas que começam com "|" viram uma tabela (o resultado da consulta no Nexus, ou uma tabela da IA).
+  // Depois de "[[detalhes]]" o texto fica fechado em "Ver detalhes" (a consulta no Nexus mostra só o essencial).
   function formatar(alvo, texto) {
+    const corte = String(texto).indexOf('[[detalhes]]');
+    if (corte >= 0) {
+      formatarParte(alvo, String(texto).slice(0, corte).trimEnd());
+      const caixa = el('details', 'as-detalhes'), resumo = el('summary', '', 'Ver detalhes'), dentro = el('div');
+      formatarParte(dentro, String(texto).slice(corte + '[[detalhes]]'.length).trim());
+      caixa.append(resumo, dentro);
+      alvo.append(caixa);
+      return;
+    }
+    formatarParte(alvo, texto);
+  }
+  function formatarParte(alvo, texto) {
     alvo.replaceChildren();
-    const partes = semAcao(texto).replace(/^#{1,6}\s+/gm, '').split(/\*\*([^*\n]+)\*\*/);
-    partes.forEach((parte, i) => { if (parte) alvo.append(i % 2 ? el('strong', '', parte) : parte); });
+    const linhas = semAcao(texto).replace(/^#{1,6}\s+/gm, '').split('\n');
+    let corrido = [], tabela = [];
+    const negrito = (destino, t) => t.split(/\*\*([^*\n]+)\*\*/).forEach((parte, i) => { if (parte) destino.append(i % 2 ? el('strong', '', parte) : parte); });
+    const soltarTexto = () => { if (corrido.length) { negrito(alvo, corrido.join('\n')); corrido = []; } };
+    const soltarTabela = () => {
+      if (!tabela.length) return;
+      const celulas = (l) => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+      const linhasT = tabela.filter((l) => !/^\s*\|[\s:|-]+\|\s*$/.test(l)).map(celulas);
+      tabela = [];
+      if (!linhasT.length) return;
+      const caixa = el('div', 'as-tabela'), t = el('table');
+      const cab = el('tr'); linhasT[0].forEach((c) => cab.append(el('th', '', c)));
+      const thead = el('thead'); thead.append(cab); t.append(thead);
+      const corpoT = el('tbody');
+      for (const linha of linhasT.slice(1)) {
+        const tr = el('tr');
+        linha.forEach((c) => {
+          const td = el('td');
+          negrito(td, c);
+          if (/^✅/.test(c)) td.className = 'ok'; else if (/^❌/.test(c)) td.className = 'nao'; else if (/^⚠/.test(c)) td.className = 'atencao'; else if (/^🔎/.test(c)) td.className = 'conferir';
+          tr.append(td);
+        });
+        if (/^❌/.test(linha.find((c) => /^[✅❌⚠🔎]/.test(c)) || '')) tr.className = 'apagada';
+        corpoT.append(tr);
+      }
+      t.append(corpoT); caixa.append(t);
+      if (alvo.lastChild && typeof alvo.lastChild.textContent === 'string' && alvo.lastChild.nodeType === 3) alvo.lastChild.textContent = alvo.lastChild.textContent.replace(/\n+$/, '');
+      alvo.append(caixa);
+      corrido.push('');
+    };
+    for (const l of linhas) {
+      if (/^\s*\|.*\|\s*$/.test(l)) { soltarTexto(); tabela.push(l); } else { soltarTabela(); corrido.push(l); }
+    }
+    soltarTabela(); soltarTexto();
   }
   function noFim() { return corpo.scrollHeight - corpo.scrollTop - corpo.clientHeight < 80; }
   function descer() { corpo.scrollTop = corpo.scrollHeight; }
@@ -184,11 +226,12 @@
   function erro(mensagem) { $('as-erro').textContent = mensagem || ''; $('as-erro').hidden = !mensagem; }
   function liberar() {
     campo.disabled = !ligada;
+    document.querySelectorAll('#as-setores button').forEach((b) => { b.disabled = !ligada || ocupada; });
     botao.disabled = !ligada || ocupada || !campo.value.trim();
   }
   function vazio() {
     const nome = atendente.trim().split(/\s+/)[0];
-    estado(nome ? `Olá, ${nome}` : 'Olá', 'Pergunte como fazer uma operação, as regras de um banco ou o que fazer quando algo dá errado. Eu respondo com base nos roteiros da Pontual.');
+    estado(nome ? `Olá, ${nome}` : 'Olá', 'Pergunte como fazer uma operação, as regras de um banco ou o que fazer quando algo dá errado. Eu respondo com base nos roteiros da Pontual. Para saber em qual banco um cliente passa, mande o CPF dele.');
   }
 
   // ------------------------------------------------------------------- API
@@ -290,7 +333,156 @@
     campo.focus();
   }
 
+  // ------------------------------------------------------ consulta de CPF no Nexus
+  // A atendente manda o CPF: em vez de ir para a IA, aparecem os botões SIAPE, INSS e Exército, um já sugerido.
+  // No clique, a Central consulta o Nexus; consulta paga só depois de confirmar. O resultado vira uma fala da
+  // assistente (texto montado pela Central a partir do roteiro do Nexus), e a IA o lê nas próximas perguntas.
+  const CPF = /(?<!\d)(\d{3}\.?\d{3}\.?\d{3}[-.\s]?\d{2})(?!\d)/;
+  function cpfValido(texto) {
+    const achado = CPF.exec(texto);
+    if (!achado) return null;
+    const d = achado[1].replace(/\D/g, '');
+    if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return null;
+    for (let t = 9; t <= 10; t++) {
+      let soma = 0;
+      for (let i = 0; i < t; i++) soma += Number(d[i]) * (t + 1 - i);
+      if ((soma * 10) % 11 % 10 !== Number(d[t])) return null;
+    }
+    return d;
+  }
+  const esperar = (ms) => new Promise((r) => { setTimeout(r, ms); });
+  let nexusDesligado = false; // a Central não tem o Nexus configurado: o CPF vai para a IA como antes
+
+  async function chamar(metodo, url, corpo) {
+    const r = await fetch(url, { method: metodo, headers: cabecalhos(Boolean(corpo)), cache: 'no-store', ...(corpo ? { body: JSON.stringify(corpo) } : {}) });
+    if (!r.ok) throw new Error(await mensagemDeErro(r));
+    return r.json();
+  }
+
+  async function consultarCpf(texto, cpf, setor) {
+    ocupada = true; erro(''); liberar();
+    let dados = null, falha = null;
+    try {
+      dados = await chamar('GET', `/api/v1/device/nexus/localizar?cpf=${cpf}&dica=${encodeURIComponent(texto.slice(0, 300))}`);
+    } catch (e) {
+      falha = e instanceof TypeError ? 'Sem conexão com o servidor. Tente de novo.' : e.message;
+    }
+    ocupada = false; liberar();
+    if (dados && dados.configured !== true) {
+      if (setor) { erro('A consulta no Nexus ainda não foi ligada na Central. Avise o TI.'); return; }
+      nexusDesligado = true; enviar(texto); return;
+    }
+
+    mostrarFalas();
+    if (novaConversa || ultimaConversa === null) divisa(dia(new Date().toISOString()));
+    fala('user', texto);
+    const painel = el('div', 'as-fala ia as-nexus');
+    falas.append(painel);
+    if (falha) { painel.classList.add('falha'); painel.textContent = falha; }
+    else desenharPainel(painel, dados, cpf, setor);
+    descer();
+    campo.focus();
+  }
+
+  function desenharPainel(painel, dados, cpf, setorPedido) {
+    const partes = [el('strong', '', `Consultar no Nexus: CPF ${dados.cpf}`)];
+    if (dados.nome) partes.push(el('div', 'as-nx-nome', dados.nome));
+    if (dados.naEsteira) partes.push(el('div', 'as-nx-aviso', 'Este CPF já tem contrato em andamento na esteira.'));
+    if (dados.aviso) partes.push(el('div', 'as-nx-aviso', dados.aviso));
+    partes.push(el('div', 'as-nx-pergunta', dados.sugestao ? 'Em qual setor consultar? Já deixei sugerido:' : 'Em qual setor consultar?'));
+    const botoes = el('div', 'as-nx-botoes');
+    const nota = el('div', 'as-nx-nota');
+    nota.hidden = true;
+    const lista = Array.isArray(dados.setores) ? dados.setores : [];
+    for (const s of lista) {
+      const b = el('button', `as-nx-setor${s.setor === dados.sugestao ? ' sugerido' : ''}${s.custo === 'paga' ? ' paga' : ''}`);
+      b.type = 'button';
+      b.dataset.setor = s.setor;
+      const detalhe = s.estado === 'fora' ? `fora do ar${s.motivo ? `: ${s.motivo}` : ''}` : `${s.nota}${s.estado === 'lento' ? ' · lento agora' : ''}`;
+      b.append(el('b', '', s.setor === dados.sugestao ? `${s.nome} (sugerido)` : s.nome), el('small', '', detalhe));
+      b.disabled = s.estado === 'fora';
+      b.onclick = () => (s.custo === 'paga' ? confirmar(s) : rodar(s, false));
+      botoes.append(b);
+    }
+    partes.push(botoes, nota);
+    painel.replaceChildren(...partes);
+    // A atendente já escolheu o setor no botão de baixo: a consulta sai direto (a paga ainda pede confirmação).
+    const pedido = setorPedido ? botoes.querySelector(`[data-setor="${setorPedido}"]`) : null;
+    if (pedido && !pedido.disabled) setTimeout(() => pedido.click(), 0);
+
+    const travar = (sim) => botoes.querySelectorAll('button').forEach((b) => {
+      const s = lista.find((x) => x.setor === b.dataset.setor);
+      b.disabled = sim || !s || s.estado === 'fora';
+    });
+    const botaoNota = (rotulo, classe) => { const b = el('button', classe || '', rotulo); b.type = 'button'; return b; };
+
+    function confirmar(s, aviso) {
+      nota.hidden = false; nota.className = 'as-nx-nota';
+      const sim = botaoNota('Confirmar consulta paga', 'forte'), nao = botaoNota('Voltar');
+      sim.onclick = () => rodar(s, true);
+      nao.onclick = () => { nota.hidden = true; };
+      const linha = el('div', 'as-avaliar-linha'); linha.append(sim, nao);
+      nota.replaceChildren(el('span', '', aviso || `A consulta no ${s.nome} é paga: ainda não há resultado guardado deste CPF. Confirmar?`), linha);
+      const colado = noFim(); if (colado) descer();
+    }
+
+    async function rodar(s, paga) {
+      travar(true);
+      nota.hidden = false; nota.className = 'as-nx-nota';
+      const pontos = el('span', 'as-pontos'); pontos.append(el('i'), el('i'), el('i'));
+      const texto = el('span', 'as-consulta', `Consultando ${s.nome} no Nexus…`);
+      nota.replaceChildren(pontos, texto);
+      descer();
+      try {
+        let r = await chamar('POST', '/api/v1/device/nexus/consultas', { cpf, setor: s.setor, allowPaid: paga, newConversation: novaConversa });
+        if (r.status === 'precisa_autorizar') { travar(false); confirmar(s, r.mensagem); return; }
+        novaConversa = false;
+        const limite = Date.now() + 4 * 60 * 1000;
+        while (r.status === 'em_andamento') {
+          if (Date.now() > limite) throw new Error('A consulta demorou demais no Nexus. Tente de novo em instantes.');
+          texto.textContent = `Consultando ${s.nome} no Nexus… previsão de uns ${r.previsaoSegundos || 30} s`;
+          await esperar(4000);
+          r = await chamar('GET', `/api/v1/device/nexus/consultas/${r.id}`);
+        }
+        if (r.status === 'erro') throw new Error(r.mensagem || 'A consulta no Nexus falhou.');
+        nota.hidden = true; travar(false);
+        botoes.querySelector(`[data-setor="${s.setor}"]`)?.classList.add('feito');
+        if (r.conversationId) ultimaConversa = r.conversationId;
+        if (r.resposta && typeof r.resposta.text === 'string') {
+          const n = fala('assistant', r.resposta.text, r.resposta.id);
+          n.classList.add('as-nx-resultado');
+          n.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        } else if (r.mensagem) {
+          nota.hidden = false; nota.textContent = r.mensagem;
+        }
+      } catch (e) {
+        travar(false);
+        nota.hidden = false; nota.className = 'as-nx-nota falha';
+        nota.textContent = e instanceof TypeError ? 'A conexão com o servidor caiu. Tente de novo.' : e.message;
+      }
+    }
+  }
+
   // --------------------------------------------------------------- eventos
+  // Botões fixos SIAPE / INSS / Exército acima do campo. Com um CPF já digitado, consulta na hora; sem CPF,
+  // o setor fica marcado e a próxima mensagem com CPF vai para ele.
+  const NOMES_SETOR = { siape: 'SIAPE', inss: 'INSS', exercito: 'Exército' };
+  const TEXTO_DO_CAMPO = campo.placeholder;
+  let setorEscolhido = null;
+  function escolherSetor(setor) {
+    setorEscolhido = setor;
+    document.querySelectorAll('#as-setores button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.setor === setor)));
+    campo.placeholder = setor ? `Digite o CPF do cliente para consultar no ${NOMES_SETOR[setor]}` : TEXTO_DO_CAMPO;
+  }
+  document.querySelectorAll('#as-setores button').forEach((b) => {
+    b.onclick = () => {
+      if (ocupada || !ligada) return;
+      const texto = campo.value.trim(), cpf = cpfValido(texto);
+      if (cpf) { campo.value = ''; ajustarAltura(); escolherSetor(null); erro(''); consultarCpf(texto, cpf, b.dataset.setor); return; }
+      escolherSetor(setorEscolhido === b.dataset.setor ? null : b.dataset.setor);
+      campo.focus();
+    };
+  });
   function ajustarAltura() { campo.style.height = 'auto'; campo.style.height = `${Math.min(campo.scrollHeight, 120)}px`; }
   campo.addEventListener('input', () => { ajustarAltura(); liberar(); });
   campo.addEventListener('keydown', (e) => {
@@ -301,7 +493,14 @@
     const texto = campo.value.trim();
     if (!texto || ocupada || !ligada) return;
     campo.value = ''; ajustarAltura();
-    enviar(texto);
+    const cpf = cpfValido(texto);
+    if (setorEscolhido) {
+      if (!cpf) { campo.value = texto; ajustarAltura(); erro(`Digite um CPF válido para consultar no ${NOMES_SETOR[setorEscolhido]}.`); return; }
+      const setor = setorEscolhido; escolherSetor(null);
+      consultarCpf(texto, cpf, setor);
+      return;
+    }
+    if (cpf && !nexusDesligado) consultarCpf(texto, cpf); else enviar(texto);
   });
   $('as-nova').onclick = () => {
     if (ocupada || !ligada) return;

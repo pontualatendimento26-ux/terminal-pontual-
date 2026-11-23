@@ -34,7 +34,6 @@ public static class DbInitializer
         new("Daycoval Consignado", "https://consignado.daycoval.com.br/Autorizador/", Banks),
         new("Daycoval Portal de Crédito", "https://portaldecredito.daycoval.com.br/login", Banks),
         new("WhatsApp Web", "https://web.whatsapp.com/", Communication),
-        new("Teams", "https://teams.microsoft.com/", Communication, "login.microsoftonline.com", "login.live.com"),
         new("Gmail", "https://mail.google.com/", Communication, "accounts.google.com"),
         new("Sistema interno", "http://192.168.0.243:3000/html/login.html", Tools),
         new("Site da Pontual", "https://www.pontualconsig.com.br/index.html", Tools),
@@ -52,6 +51,7 @@ public static class DbInitializer
             "TextSettings", "AssistantScripts", "AssistantProfiles", "AssistantMessages",
             "KnowledgeLinks", "KnowledgeSuggestions", "AssistantFeedback", "AttendantInsights", "WhatsAppCaptures", "CoverageReplies",
             "ChromeSites", "ChromeDeviceSites", "AppDecisions", "DeviceApps", "AssistantUsage", "ScreenRecordings", "CrmEvents", "CrmReplies",
+            "NexusConsultas",
         ];
 
         foreach (var statement in Statements(db))
@@ -287,6 +287,39 @@ public static class DbInitializer
                 $"Sistema cadastrou {added} aprendizado(s) sobre os sistemas da Pontual"));
     }
 
+    /// <summary>
+    /// Pedido do dono (23/11/2026): o site "Teams" (teams.microsoft.com) duplicava o aplicativo Microsoft Teams. Sai uma vez só;
+    /// se o TI cadastrar de novo depois, fica.
+    /// </summary>
+    private static async Task RemoveTeamsSiteOnceAsync(PontualDb db, IServiceProvider services)
+    {
+        if (await db.TextSettings.AnyAsync(s => s.Key == TextSetting.TeamsSiteRemoved))
+        {
+            return;
+        }
+
+        db.TextSettings.Add(new TextSetting { Key = TextSetting.TeamsSiteRemoved, Value = "1" });
+        var sites = await db.Items.Where(i => i.Kind == ItemKind.Site && i.Name == "Teams" && i.Target == "https://teams.microsoft.com/").ToListAsync();
+        if (sites.Count == 0)
+        {
+            await db.SaveChangesAsync();
+            return;
+        }
+
+        var ids = sites.Select(s => (Guid?)s.Id).ToList();
+        foreach (var observed in await db.ObservedHosts.Where(o => ids.Contains(o.ItemId)).ToListAsync())
+        {
+            observed.ItemId = null;
+        }
+
+        db.Items.RemoveRange(sites);
+        await services.GetRequiredService<AuditWriter>().SaveAsync(
+            db,
+            new AuditInfo(ActorType.System, null, "Sistema", "item.delete",
+                "Sistema excluiu o site Teams (https://teams.microsoft.com/): fica só o aplicativo Microsoft Teams"),
+            bumpConfig: true);
+    }
+
     public static async Task InitializeAsync(IServiceProvider services)
     {
         await using var scope = services.CreateAsyncScope();
@@ -319,6 +352,7 @@ public static class DbInitializer
         // A marca "seeded" impede recadastrar os sites se o TI apagar todos de propósito.
         if (await db.Settings.AnyAsync(s => s.Key == Setting.Seeded))
         {
+            await RemoveTeamsSiteOnceAsync(db, scope.ServiceProvider);
             return;
         }
 

@@ -414,7 +414,9 @@ public static class TerminalEndpoints
     private static async Task<List<Item>> VisibleItemsAsync(PontualDb db, Device device, CancellationToken ct)
     {
         var items = await ItemEndpoints.Ordered(db.Items.AsNoTracking().Where(i => i.Enabled && !i.Pending)).ToListAsync(ct);
-        return [.. items.Where(i => i.VisibleTo(device.Id))];
+        // No celular não aparece nenhum banco: o grupo "Bancos e promotoras" fica só nos computadores.
+        var phone = SharedPhoneEndpoints.IsPhone(device);
+        return [.. items.Where(i => i.VisibleTo(device.Id) && !(phone && i.Group == Input.Groups[0]))];
     }
 
     private static async Task<long> ConfigVersionAsync(PontualDb db, CancellationToken ct) =>

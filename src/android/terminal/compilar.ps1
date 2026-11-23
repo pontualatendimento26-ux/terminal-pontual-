@@ -1,10 +1,10 @@
-# Compila o Terminal Pontual para Android (versão de teste) e gera o .apk em dist\.
+﻿# Compila o Terminal Pontual para Android (versão de teste) e gera o .apk em dist\.
 # Não usa Gradle nem baixa nada: só o SDK do Android e o Java já instalados neste PC.
 # Uso:  powershell -ExecutionPolicy Bypass -File compilar.ps1
 
 $ErrorActionPreference = 'Stop'
-$versao = '1.0.0-teste'
-$codigoVersao = 1
+$versao = '1.1.0'
+$codigoVersao = 2
 $minSdk = 24
 $targetSdk = 34
 

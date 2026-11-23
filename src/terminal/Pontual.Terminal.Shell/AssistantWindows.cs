@@ -107,8 +107,13 @@ internal sealed class AssistantBubble : Window
 /// <summary>Janela da conversa: um WebView2 com a página <c>/terminal/assistente.html</c> do servidor.</summary>
 internal sealed class AssistantPanel : Window
 {
-    public const double PanelWidth = 400;
-    public const double PanelHeight = 620;
+    public const double MinPanelWidth = 340;
+    public const double MinPanelHeight = 420;
+
+    /// <summary>Tamanho que a atendente deixou (puxando as bordas); vale enquanto o Terminal estiver aberto.</summary>
+    public static double PanelWidth { get; private set; } = 400;
+
+    public static double PanelHeight { get; private set; } = 620;
 
     private bool _allowClose;
 
@@ -117,15 +122,36 @@ internal sealed class AssistantPanel : Window
         Title = "Assistente Pontual";
         Width = PanelWidth;
         Height = PanelHeight;
+        MinWidth = MinPanelWidth;
+        MinHeight = MinPanelHeight;
         WindowStyle = WindowStyle.None;
-        ResizeMode = ResizeMode.NoResize;
+        // A atendente aumenta ou diminui a conversa puxando qualquer borda ou canto.
+        ResizeMode = ResizeMode.CanResize;
+        System.Windows.Shell.WindowChrome.SetWindowChrome(this, new System.Windows.Shell.WindowChrome
+        {
+            CaptionHeight = 0,
+            ResizeBorderThickness = new Thickness(7),
+            GlassFrameThickness = new Thickness(0),
+            UseAeroCaptionButtons = false,
+        });
         ShowInTaskbar = false;
         Background = Brushes.White;
+        // A folga em volta do site deixa a borda para o WPF: sem ela, o site cobriria a borda e não daria para puxar.
         Content = new Border
         {
             BorderBrush = (Brush)Application.Current.FindResource("LinhaForte"),
             BorderThickness = new Thickness(1),
+            Padding = new Thickness(5),
+            Background = Brushes.White,
             Child = View,
+        };
+        SizeChanged += (_, _) =>
+        {
+            if (IsVisible && ActualWidth >= MinPanelWidth && ActualHeight >= MinPanelHeight)
+            {
+                PanelWidth = ActualWidth;
+                PanelHeight = ActualHeight;
+            }
         };
     }
 

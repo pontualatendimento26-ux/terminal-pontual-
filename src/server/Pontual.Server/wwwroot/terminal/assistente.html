@@ -34,13 +34,18 @@
 <form class="as-envio" id="as-form" novalidate>
   <p class="as-erro" id="as-erro" role="alert" hidden></p>
   <button type="button" class="as-tela" id="as-tela" role="switch" aria-checked="true" hidden></button>
+  <div class="as-setores" id="as-setores" role="group" aria-label="Consultar CPF no Nexus">
+    <span>Consultar CPF no Nexus:</span>
+    <button type="button" data-setor="siape" aria-pressed="false">SIAPE</button>
+    <button type="button" data-setor="inss" aria-pressed="false">INSS</button>
+    <button type="button" data-setor="exercito" aria-pressed="false">Exército</button>
+  </div>
   <div class="as-caixa">
-    <textarea id="as-texto" rows="1" maxlength="4000" placeholder="Pergunte sobre um banco ou um procedimento" aria-label="Sua pergunta" disabled></textarea>
+    <textarea id="as-texto" rows="1" maxlength="4000" placeholder="Pergunte sobre um banco ou mande o CPF do cliente" aria-label="Sua pergunta" disabled></textarea>
     <button type="submit" id="as-enviar" aria-label="Enviar a pergunta" disabled>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
     </button>
   </div>
-  <p class="as-nota" id="as-nota">Não informe CPF nem dados de clientes. As conversas ficam registradas pela Pontual.</p>
 </form>
 
 <script src="assistente.js"></script>

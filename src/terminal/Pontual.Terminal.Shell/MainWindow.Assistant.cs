@@ -90,15 +90,23 @@ public partial class MainWindow
         }
 
         var area = AssistantArea();
-        var left = _bubble.Left + AssistantBubble.Side - AssistantPanel.PanelWidth;
-        var top = _bubble.Top - AssistantPanel.PanelHeight;
+        // O tamanho que a atendente escolheu, sem passar da janela principal.
+        var width = Math.Min(AssistantPanel.PanelWidth, Math.Max(AssistantPanel.MinPanelWidth, area.Width));
+        var height = Math.Min(AssistantPanel.PanelHeight, Math.Max(AssistantPanel.MinPanelHeight, area.Height));
+        _panel.Width = width;
+        _panel.Height = height;
+        _panel.MaxWidth = Math.Max(AssistantPanel.MinPanelWidth, area.Width);
+        _panel.MaxHeight = Math.Max(AssistantPanel.MinPanelHeight, area.Height);
+
+        var left = _bubble.Left + AssistantBubble.Side - width;
+        var top = _bubble.Top - height;
         if (top < area.Top)
         {
             top = _bubble.Top + AssistantBubble.Side;
         }
 
-        _panel.Left = Math.Clamp(left, area.Left, Math.Max(area.Left, area.Right - AssistantPanel.PanelWidth));
-        _panel.Top = Math.Clamp(top, area.Top, Math.Max(area.Top, area.Bottom - AssistantPanel.PanelHeight));
+        _panel.Left = Math.Clamp(left, area.Left, Math.Max(area.Left, area.Right - width));
+        _panel.Top = Math.Clamp(top, area.Top, Math.Max(area.Top, area.Bottom - height));
     }
 
     private async void ToggleAssistant()

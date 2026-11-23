@@ -39,6 +39,9 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.WebStorage;
+import android.media.projection.MediaProjectionConfig;
+import android.media.projection.MediaProjectionManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -144,6 +147,17 @@ public class MainActivity extends Activity implements Core.Listener {
     private boolean resumed;
     private boolean askedNotifications;
     private int taps;
+    // Celular compartilhado, IA, gravação e atualização (2026-11-23).
+    private Assistant assistant;
+    private TextView bubble;
+    private LinearLayout footer;
+    private TextView footerWho;
+    private TextView footerRec;
+    private TextView footerUpdate;
+    private boolean picking;
+    private boolean askingRecording;
+    private long askedRecordingAt;
+    private static final int REQUEST_RECORDING = 41;
     private long firstTapAt;
 
     // ------------------------------------------------------------------ ciclo de vida
@@ -458,6 +472,12 @@ public class MainActivity extends Activity implements Core.Listener {
 
     @Override
     public void onBackPressed() {
+        if (assistant != null && assistant.isOpen()) {
+            assistant.hide();
+            updateLayout();
+            return;
+        }
+
         if (enrollView.getVisibility() == View.VISIBLE || !core.isEnrolled()) {
             if (!Lock.isLocked(this)) {
                 moveTaskToBack(true);
@@ -598,6 +618,61 @@ public class MainActivity extends Activity implements Core.Listener {
         content = new FrameLayout(this);
         mainLayout.addView(content, new LinearLayout.LayoutParams(match, 0, 1f));
 
+        // --- rodapé: quem está com o celular, aviso de gravação e o botão Atualizar
+        View footLine = new View(this);
+        footLine.setBackgroundColor(LINE);
+        mainLayout.addView(footLine, new LinearLayout.LayoutParams(match, dp(1)));
+        footer = new LinearLayout(this);
+        footer.setOrientation(LinearLayout.HORIZONTAL);
+        footer.setGravity(Gravity.CENTER_VERTICAL);
+        footer.setBackgroundColor(Color.WHITE);
+        footer.setPadding(dp(12), 0, dp(4), 0);
+        footerWho = label("", 13, INK, true);
+        footerWho.setSingleLine(true);
+        footerWho.setEllipsize(TextUtils.TruncateAt.END);
+        footerWho.setGravity(Gravity.CENTER_VERTICAL);
+        footerWho.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                switchAttendant();
+            }
+        });
+        footer.addView(footerWho, new LinearLayout.LayoutParams(0, match, 1f));
+        footerRec = label("● Tela gravada", 12, RUBY, true);
+        footerRec.setPadding(dp(8), 0, dp(8), 0);
+        footerRec.setGravity(Gravity.CENTER_VERTICAL);
+        footer.addView(footerRec, new LinearLayout.LayoutParams(wrap, match));
+        footerUpdate = label("Atualizar", 13, BLUE, true);
+        footerUpdate.setPadding(dp(10), 0, dp(10), 0);
+        footerUpdate.setGravity(Gravity.CENTER_VERTICAL);
+        footerUpdate.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startUpdate();
+            }
+        });
+        footer.addView(footerUpdate, new LinearLayout.LayoutParams(wrap, match));
+        mainLayout.addView(footer, new LinearLayout.LayoutParams(match, dp(40)));
+
+        bubble = label("IA", 18, Color.WHITE, true);
+        bubble.setGravity(Gravity.CENTER);
+        GradientDrawable round = new GradientDrawable();
+        round.setShape(GradientDrawable.OVAL);
+        round.setColor(BLUE);
+        bubble.setBackground(round);
+        bubble.setElevation(dp(6));
+        bubble.setContentDescription("Assistente de IA");
+        bubble.setVisibility(View.GONE);
+        bubble.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                openAssistant();
+            }
+        });
+        FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM | Gravity.END);
+        bp.setMargins(0, 0, dp(16), dp(56));
+        root.addView(bubble, bp);
+
         // --- aviso de site não permitido
         blockedPanel = new LinearLayout(this);
         blockedPanel.setOrientation(LinearLayout.VERTICAL);
@@ -694,8 +769,9 @@ public class MainActivity extends Activity implements Core.Listener {
 
         form.addView(label("O uso deste aparelho é registrado pela Pontual: horários em que está ligado e "
                 + "conectado, quais aplicativos e sites autorizados foram abertos, tentativas de abrir site ou "
-                + "aplicativo não permitido e chamados ao TI. Não são registrados o que você digita, imagens da tela, "
-                + "conteúdo de mensagens, áudio, câmera ou localização.", 13, SOFT, false), row(28));
+                + "aplicativo não permitido e chamados ao TI. Quando a Central liga, a tela também é gravada em vídeo "
+                + "(em horário comercial), guardada protegida e apagada depois de 3 meses; o Terminal avisa enquanto grava. "
+                + "Não são registrados o que você digita, áudio, câmera ou localização.", 13, SOFT, false), row(28));
         enrollView.addView(form, new ScrollView.LayoutParams(match, wrap));
         root.addView(enrollView, new FrameLayout.LayoutParams(match, match));
     }
@@ -703,6 +779,11 @@ public class MainActivity extends Activity implements Core.Listener {
     // ------------------------------------------------------------------ primeira configuração
 
     private void showEnroll() {
+        if (assistant != null) {
+            assistant.destroy();
+        }
+
+        bubble.setVisibility(View.GONE);
         for (Tab tab : new ArrayList<>(tabs)) {
             closeTab(tab);
         }
@@ -1142,6 +1223,8 @@ public class MainActivity extends Activity implements Core.Listener {
             showSetupIfNeeded();
         }
 
+        maybePickAttendant();
+        maybeAskRecording();
         updateLayout();
     }
 
@@ -1563,6 +1646,15 @@ public class MainActivity extends Activity implements Core.Listener {
         }
 
         blockedPanel.setVisibility(blocked ? View.VISIBLE : View.GONE);
+        String who = core.attendantName == null ? "" : core.attendantName.trim();
+        footerWho.setText(who.isEmpty() ? "Toque aqui e escolha seu nome" : "Com " + who + "  ·  Trocar");
+        footerRec.setVisibility(RecorderService.recording ? View.VISIBLE : View.GONE);
+        boolean showBubble = core.assistant && Core.STATE_ACTIVE.equals(core.state) && !homeFailed
+                && !who.isEmpty() && (assistant == null || !assistant.isOpen());
+        bubble.setVisibility(showBubble ? View.VISIBLE : View.GONE);
+        if (!core.assistant && assistant != null) {
+            assistant.destroy();
+        }
         if (home != null) {
             home.setVisibility(active == null ? View.VISIBLE : View.GONE);
         }
@@ -1670,5 +1762,388 @@ public class MainActivity extends Activity implements Core.Listener {
                 })
                 .setNegativeButton("Não", null)
                 .show();
+    }
+
+    // ------------------------------------------------------------------ celular compartilhado (solução 2)
+    // Quem pega o celular toca no próprio nome; ao devolver, em "Trocar". Sem senha (decisão do dono, 23/11/2026).
+
+    private void maybePickAttendant() {
+        if (picking || !resumed || !core.isEnrolled() || !Core.STATE_ACTIVE.equals(core.state)
+                || !Boolean.TRUE.equals(core.online) || !core.attendantName.trim().isEmpty()) {
+            return;
+        }
+
+        pickAttendant();
+    }
+
+    private void switchAttendant() {
+        if (picking) {
+            return;
+        }
+
+        String who = core.attendantName.trim();
+        if (who.isEmpty()) {
+            pickAttendant();
+            return;
+        }
+
+        confirm(who + " vai devolver o celular? Os sites abertos são fechados e as contas entradas neles saem.", new Runnable() {
+            @Override
+            public void run() {
+                setAttendant("", true);
+            }
+        });
+    }
+
+    private void pickAttendant() {
+        picking = true;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final List<String> names = new ArrayList<>();
+                try {
+                    JSONObject o = Api.call("GET", core.serverUrl, core.token, "/device/attendants", null);
+                    JSONArray a = o == null ? null : o.optJSONArray("names");
+                    for (int i = 0; a != null && i < a.length(); i++) {
+                        names.add(a.optString(i));
+                    }
+                } catch (Exception e) {
+                    Log.w(Core.TAG, "nomes das atendentes", e);
+                }
+
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        showNames(names);
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void showNames(final List<String> names) {
+        if (isDestroyed()) {
+            picking = false;
+            return;
+        }
+
+        final List<String> options = new ArrayList<>(names);
+        options.add("Meu nome não está aqui…");
+        new AlertDialog.Builder(this)
+                .setTitle("Quem está usando este celular?")
+                .setCancelable(false)
+                .setItems(options.toArray(new String[0]), new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (which < names.size()) {
+                            setAttendant(names.get(which), false);
+                        } else {
+                            typeName();
+                        }
+                    }
+                })
+                .show();
+    }
+
+    private void typeName() {
+        final EditText field = new EditText(this);
+        field.setSingleLine(true);
+        field.setHint("Seu nome");
+        field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
+        new AlertDialog.Builder(this)
+                .setTitle("Digite seu nome")
+                .setView(field)
+                .setCancelable(false)
+                .setPositiveButton("Entrar", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        String name = field.getText().toString().trim();
+                        if (name.length() < 2) {
+                            picking = false;
+                            pickAttendant();
+                        } else {
+                            setAttendant(name.length() > 80 ? name.substring(0, 80) : name, false);
+                        }
+                    }
+                })
+                .setNegativeButton("Voltar", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        picking = false;
+                        pickAttendant();
+                    }
+                })
+                .show();
+    }
+
+    /** Avisa a Central e limpa o que era da atendente anterior: sites, contas entradas e a conversa com a IA. */
+    private void setAttendant(final String name, final boolean thenPick) {
+        picking = true;
+        for (Tab tab : new ArrayList<>(tabs)) {
+            closeTab(tab);
+        }
+
+        activate(null);
+        CookieManager.getInstance().removeAllCookies(null);
+        WebStorage.getInstance().deleteAllData();
+        if (assistant != null) {
+            assistant.destroy();
+        }
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                boolean ok;
+                try {
+                    Api.call("POST", core.serverUrl, core.token, "/device/attendant", new JSONObject().put("name", name));
+                    ok = true;
+                } catch (Exception e) {
+                    Log.w(Core.TAG, "troca de atendente", e);
+                    ok = false;
+                }
+
+                final boolean done = ok;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        picking = false;
+                        if (!done) {
+                            toast("Sem conexão com a Central. Tente de novo.");
+                        } else {
+                            core.attendantName = name;
+                            toast(name.isEmpty() ? "Celular devolvido." : "Olá, " + name + "!");
+                            sendStatus();
+                        }
+
+                        updateLayout();
+                        if (thenPick || core.attendantName.trim().isEmpty()) {
+                            maybePickAttendant();
+                        }
+                    }
+                });
+            }
+        }).start();
+    }
+
+    // ------------------------------------------------------------------ assistente de IA
+
+    interface ScreenResult {
+        void done(Object screen);
+    }
+
+    String serverUrl() {
+        return core.serverUrl;
+    }
+
+    String token() {
+        return core.token;
+    }
+
+    String hostname() {
+        return core.hostname();
+    }
+
+    private void openAssistant() {
+        if (assistant == null) {
+            assistant = new Assistant(this, root);
+        }
+
+        assistant.show();
+        updateLayout();
+    }
+
+    JSONArray assistantApps() {
+        JSONArray apps = new JSONArray();
+        for (Core.Item item : core.items) {
+            try {
+                apps.put(new JSONObject().put("name", item.name).put("kind", item.isProgram() ? "program" : "site"));
+            } catch (JSONException ignored) {
+                // Nome inválido: fica de fora.
+            }
+        }
+
+        return apps;
+    }
+
+    private static final String SCREEN_SCRIPT = "(function(){try{var c=function(s,n){s=String(s||'').replace(/[ \\t]+/g,' ').trim();return s.length<=n?s:s.slice(0,n);};"
+            + "return {address:location.host+location.pathname,title:c(document.title,200),text:c(document.body?document.body.innerText:'',9000)};}catch(e){return null;}})()";
+
+    /** O que está na tela para a IA: o texto do site aberto. O WhatsApp (aplicativo) o Android não deixa ler. */
+    void assistantScreen(boolean wantsScreen, final ScreenResult result) {
+        final Tab tab = active != null && active.blockedHost == null ? active : null;
+        if (!wantsScreen || tab == null) {
+            JSONObject screen = null;
+            if (wantsScreen) {
+                try {
+                    String open = TextUtils.join(", ", core.tabsInUse);
+                    screen = new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("kind", "home").put("active", true)
+                            .put("name", "Tela inicial").put("address", "").put("title", "").put("contact", "")
+                            .put("text", open.isEmpty() ? "Tela inicial do Terminal no celular." : "Tela inicial do Terminal no celular. Abertos: " + open + ".")));
+                } catch (JSONException ignored) {
+                    screen = null;
+                }
+            }
+
+            result.done(screen);
+            return;
+        }
+
+        tab.view.evaluateJavascript(SCREEN_SCRIPT, new ValueCallback<String>() {
+            @Override
+            public void onReceiveValue(String json) {
+                JSONObject screen = null;
+                try {
+                    JSONObject o = json == null || json.equals("null") ? new JSONObject() : new JSONObject(json);
+                    screen = new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("kind", "page").put("active", true)
+                            .put("name", tab.item.name).put("address", Core.str(o, "address")).put("title", Core.str(o, "title"))
+                            .put("contact", "").put("text", Core.str(o, "text"))));
+                } catch (JSONException e) {
+                    Log.w(Core.TAG, "tela para a assistente", e);
+                }
+
+                result.done(screen);
+            }
+        });
+    }
+
+    private static String fold(String text) {
+        String d = java.text.Normalizer.normalize(text.trim().toLowerCase(Locale.ROOT), java.text.Normalizer.Form.NFD);
+        return d.replaceAll("\\p{M}", "");
+    }
+
+    /** A IA pediu para abrir um item liberado (pelo nome) ou pesquisar no Google. Devolve {"ok"|"erro", mensagem}. */
+    String[] assistantAction(String action, String value) {
+        if (action.equals("search")) {
+            String address = "https://www.google.com/search?q=" + Uri.encode(value.trim());
+            Core.Item google = null;
+            for (Core.Item i : core.items) {
+                String host = Uri.parse(i.target).getHost();
+                if (!i.isProgram() && host != null && host.matches("(www\\.)?google\\.com(\\.br)?")) {
+                    google = i;
+                    break;
+                }
+            }
+
+            if (google == null || core.policy.evaluate(address).verdict != HostPolicy.ALLOWED) {
+                return new String[]{"erro", "O Google não está liberado neste celular. O TI pode liberar na Central."};
+            }
+
+            assistant.hide();
+            for (Tab tab : tabs) {
+                if (tab.item.id.equals(google.id)) {
+                    activate(tab);
+                    tab.view.loadUrl(address);
+                    return new String[]{"ok", "Pesquisei no Google: " + value.trim()};
+                }
+            }
+
+            Core.Item copy = new Core.Item();
+            copy.id = google.id;
+            copy.name = google.name;
+            copy.kind = google.kind;
+            copy.group = google.group;
+            copy.hosts = google.hosts;
+            copy.target = address;
+            openSite(copy);
+            return new String[]{"ok", "Pesquisei no Google: " + value.trim()};
+        }
+
+        String wanted = fold(value);
+        Core.Item found = null;
+        int close = 0;
+        Core.Item closeItem = null;
+        for (Core.Item i : core.items) {
+            String n = fold(i.name);
+            if (n.equals(wanted)) {
+                found = i;
+                break;
+            }
+
+            if (!wanted.isEmpty() && (n.contains(wanted) || wanted.contains(n))) {
+                close++;
+                closeItem = i;
+            }
+        }
+
+        if (found == null && close == 1) {
+            found = closeItem;
+        }
+
+        if (found == null) {
+            return new String[]{"erro", "\"" + value + "\" não está liberado neste celular. O TI pode liberar na Central."};
+        }
+
+        if (found.isProgram() && !isWhatsApp(found)) {
+            return new String[]{"erro", found.name + " é um programa de computador e não abre no celular."};
+        }
+
+        assistant.hide();
+        openItem(found.id);
+        updateLayout();
+        return new String[]{"ok", "Abri " + found.name + "."};
+    }
+
+    // ------------------------------------------------------------------ gravação da tela
+
+    private void maybeAskRecording() {
+        if (!resumed || askingRecording || picking || RecorderService.running || !RecorderService.policyRecord
+                || !RecorderService.withinHours() || !Core.STATE_ACTIVE.equals(core.state)
+                || core.attendantName.trim().isEmpty() || Build.VERSION.SDK_INT < 26
+                || SystemClock.elapsedRealtime() - askedRecordingAt < 10 * 60 * 1000 && askedRecordingAt != 0) {
+            return;
+        }
+
+        askingRecording = true;
+        askedRecordingAt = SystemClock.elapsedRealtime();
+        try {
+            MediaProjectionManager mpm = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+            Intent ask = Build.VERSION.SDK_INT >= 34
+                    ? mpm.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay())
+                    : mpm.createScreenCaptureIntent();
+            toast("A Pontual grava a tela deste celular no horário de trabalho. Toque em \"Começar agora\".");
+            startActivityForResult(ask, REQUEST_RECORDING);
+        } catch (RuntimeException e) {
+            Log.w(Core.TAG, "pedido de gravação", e);
+            askingRecording = false;
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_RECORDING) {
+            return;
+        }
+
+        askingRecording = false;
+        if (resultCode != RESULT_OK || data == null) {
+            return;
+        }
+
+        try {
+            startForegroundService(new Intent(this, RecorderService.class)
+                    .putExtra(RecorderService.EXTRA_CODE, resultCode).putExtra(RecorderService.EXTRA_DATA, data));
+        } catch (RuntimeException e) {
+            Log.w(Core.TAG, "iniciar a gravação", e);
+        }
+
+        updateLayout();
+    }
+
+    // ------------------------------------------------------------------ atualização
+
+    private void startUpdate() {
+        confirm("Procurar e instalar a versão nova do Terminal agora?", new Runnable() {
+            @Override
+            public void run() {
+                toast("Procurando atualização…");
+                Updater.run(MainActivity.this, core.serverUrl, new Updater.Done() {
+                    @Override
+                    public void message(String text) {
+                        toast(text);
+                    }
+                });
+            }
+        });
     }
 }

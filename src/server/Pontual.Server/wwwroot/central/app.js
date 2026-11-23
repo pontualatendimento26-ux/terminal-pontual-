@@ -550,6 +550,7 @@ function desenharBotoesTema() {
 for (const b of [$('tema'), $('tema-entrada')]) b.onclick = () => { Tema.trocar(); desenharBotoesTema(); };
 desenharBotoesTema();
 for (const b of document.querySelectorAll('[data-visao]')) b.onclick = () => { S.visao = b.dataset.visao; desenharVisao(); };
+for (const b of document.querySelectorAll('[data-aparelho]')) b.onclick = () => { S.aparelho = b.dataset.aparelho; desenharVisao(); };
 
 function fecharMenuEu() { $('menu-eu').hidden = true; $('eu').setAttribute('aria-expanded', 'false'); }
 $('eu').onclick = () => {
@@ -641,12 +642,15 @@ function desenharVisao() {
   }));
 
   for (const b of document.querySelectorAll('[data-visao]')) b.setAttribute('aria-pressed', String(b.dataset.visao === S.visao));
+  const aparelho = S.aparelho || 'pc';
+  for (const b of document.querySelectorAll('[data-aparelho]')) b.setAttribute('aria-pressed', String(b.dataset.aparelho === aparelho));
+  $('seg-aparelho').hidden = S.visao !== 'lista';
   $('linhas').hidden = S.visao !== 'lista';
   $('sala-area').hidden = S.visao !== 'sala';
 
   if (S.visao === 'lista') {
     const vazio = espera || (!lista.length ? 'Nenhuma atendente por aqui ainda. Cadastre a primeira máquina para ela aparecer nesta lista.' : null);
-    trocar($('linhas'), vazio ? [el('li', { className: 'vazio', textContent: vazio })] : lista.map((d) => {
+    const linha = (d) => {
       const e = estadoDe(d), apps = d.appsInUse || [];
       const b = el('button', { type: 'button', className: 'pessoa', 'data-k': `maq:${d.id}` }, avatar(nomeDe(d), 'g'),
         el('span', {}, el('b', { textContent: nomeDe(d) }), el('small', { textContent: [d.hostname, d.windows, d.terminalVersion ? `Terminal ${d.terminalVersion}` : ''].filter(Boolean).join(', ') })),
@@ -656,7 +660,11 @@ function desenharVisao() {
       b.setAttribute('aria-label', `${nomeDe(d)}, ${e.rotulo}. Ver detalhes`);
       b.onclick = () => abrirGaveta(d.id);
       return el('li', {}, b);
-    }));
+    };
+    // O botão Computadores / Celulares escolhe qual tipo de aparelho aparece na lista.
+    const doTipo = lista.filter((d) => ehCelular(d) === (aparelho === 'celular'));
+    const vazioTipo = vazio || (!doTipo.length ? (aparelho === 'celular' ? 'Nenhum celular cadastrado.' : 'Nenhum computador cadastrado.') : null);
+    trocar($('linhas'), vazioTipo ? [el('li', { className: 'vazio', textContent: vazioTipo })] : doTipo.map(linha));
   } else {
     const mesas = mesasDaSala(), naSala = mesas.slice(0, Escritorio.MAXIMO), alvo = $('sala');
     // Botão de um aparelho: abre os detalhes dele. Na mesa com dois aparelhos, cada um ocupa metade.

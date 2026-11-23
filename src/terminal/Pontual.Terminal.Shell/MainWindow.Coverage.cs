@@ -132,6 +132,12 @@ public partial class MainWindow
 
             var chat = await ReadOpenChatAsync(core);
             var transcript = chat.Text;
+            // A leitura guarda só o fim da conversa (8 mil caracteres); com mensagens compridas o corte cai no meio
+            // de uma delas. Descarta esse pedaço e começa na primeira mensagem inteira ("[hora] Quem: ...").
+            if (!transcript.StartsWith('[') && transcript.IndexOf("\n[", StringComparison.Ordinal) is var cut and >= 0)
+            {
+                transcript = transcript[(cut + 1)..];
+            }
             if (chat.Open && chat.Is(contact) && chat.Group)
             {
                 // Grupo (parceiros, equipe): várias pessoas falando; não é um cliente da atendente.

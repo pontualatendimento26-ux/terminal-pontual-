@@ -216,37 +216,6 @@ public partial class MainWindow
         return NativeMethods.GetClassName(handle, buffer, buffer.Capacity) > 0 ? buffer.ToString() : "";
     }
 
-    /// <summary>As teclas Windows e Ctrl+Esc abririam o Iniciar do Explorer: o Terminal as segura antes do Windows.</summary>
-    private void BlockStartKeys()
-    {
-        if (_keyboardHook != IntPtr.Zero)
-        {
-            return;
-        }
-
-        _keyboardProc = KeyboardHook;
-        _keyboardHook = NativeMethods.SetWindowsHookEx(NativeMethods.WhKeyboardLl, _keyboardProc, NativeMethods.GetModuleHandle(null), 0);
-        if (_keyboardHook == IntPtr.Zero)
-        {
-            Log.Info($"Não deu para travar as teclas do Iniciar (erro {Marshal.GetLastWin32Error()}).");
-        }
-    }
-
-    private IntPtr KeyboardHook(int code, IntPtr message, IntPtr data)
-    {
-        if (code >= 0)
-        {
-            var key = Marshal.ReadInt32(data);
-            var ctrl = (NativeMethods.GetAsyncKeyState(NativeMethods.VkControl) & 0x8000) != 0;
-            if (key is NativeMethods.VkLWin or NativeMethods.VkRWin || (key == NativeMethods.VkEscape && ctrl))
-            {
-                return new IntPtr(1);
-            }
-        }
-
-        return NativeMethods.CallNextHookEx(_keyboardHook, code, message, data);
-    }
-
     private void StopStoreShell()
     {
         _storeShellTimer?.Stop();

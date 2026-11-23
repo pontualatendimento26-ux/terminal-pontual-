@@ -50,6 +50,8 @@ builder.Services.AddHostedService<Pontual.Server.Assistant.AnalysisWorker>();
 builder.Services.AddSingleton<CrmQueue>();
 builder.Services.AddSingleton(services => new Pontual.Server.Assistant.CrmClient(services.GetRequiredService<TimeProvider>()));
 builder.Services.AddHostedService<CrmWorker>();
+// Consulta de CPF no Nexus pelo chat da IA (a Central chama a API de integração do Nexus).
+builder.Services.AddSingleton(services => new Pontual.Server.Assistant.NexusClient(services.GetRequiredService<TimeProvider>()));
 builder.Services.AddSingleton<IPasswordHasher<Admin>, PasswordHasher<Admin>>();
 
 builder.Services.AddRateLimiter(options =>
@@ -211,6 +213,15 @@ app.Use(async (context, next) =>
 app.UseRateLimiter();
 
 app.MapGet("/", () => Results.Redirect("/central/"));
+// IPs de rede deste PC: o QR code da Central precisa do endereço que o celular alcança (não "localhost").
+app.MapGet("/baixar/endereco", () => Results.Json(
+    System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+        .Where(n => n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up
+                 && n.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback
+                 && n.GetIPProperties().GatewayAddresses.Count > 0)
+        .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+        .Where(u => u.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        .Select(u => u.Address.ToString()).Distinct().ToArray()));
 
 var api = app.MapGroup("/api/v1");
 api.MapGet("/health", () => Results.Ok(new { ok = true, version = "1.0.0" }));
@@ -221,10 +232,12 @@ MonitorEndpoints.Map(api);
 TerminalEndpoints.Map(api);
 ScreenEndpoints.Map(api);
 RecordingEndpoints.Map(api);
+SharedPhoneEndpoints.Map(api);
 AssistantEndpoints.Map(api);
 NeuralEndpoints.Map(api);
 CoverageEndpoints.Map(api);
 CrmEndpoints.Map(api);
+NexusEndpoints.Map(api);
 ChromeEndpoints.Map(api);
 AppEndpoints.Map(api);
 

@@ -101,6 +101,7 @@
       <button type="button" data-secao="auditoria">Auditoria</button>
     </nav>
     <div class="fim">
+      <button type="button" class="redondo" id="btn-qr" aria-label="QR code para instalar no celular" title="QR code: instalar no celular"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg></button>
       <button type="button" class="redondo" id="tema" aria-label="Ativar o modo escuro" title="Modo escuro"></button>
       <button type="button" class="redondo" id="sino" aria-label="Ver notificações"><span data-ic="bell" data-tam="20"></span><i class="pingo" id="sino-ponto" hidden></i></button>
       <div class="eu-caixa">
@@ -132,6 +133,10 @@
         <div class="quadro-topo">
           <div><h2>Atendentes</h2><p>Clique em uma atendente para ver os detalhes e a lista dela.</p></div>
           <div class="fim">
+            <div class="segmento" id="seg-aparelho" role="group" aria-label="Tipo de aparelho">
+              <button type="button" data-aparelho="pc" aria-pressed="true">Computadores</button>
+              <button type="button" data-aparelho="celular" aria-pressed="false">Celulares</button>
+            </div>
             <div class="segmento" role="group" aria-label="Modo de exibição">
               <button type="button" data-visao="lista" aria-pressed="true">Lista</button>
               <button type="button" data-visao="sala" aria-pressed="false">Escritório</button>
@@ -270,6 +275,14 @@
 </div>
 
 <!-- ============================================================== diálogos -->
+<dialog id="dlg-qr" aria-labelledby="t-qr"><div class="dlg" style="text-align:center">
+  <h2 id="t-qr">Instalar no celular</h2>
+  <p>Aponte a câmera do celular para o código. Ele abre a página de download.</p>
+  <div id="qr-imagem" style="display:inline-block;background:#fff;padding:12px;border-radius:12px;margin:8px 0"></div>
+  <p><b id="qr-link"></b></p>
+  <p class="dica">O celular precisa estar no Wi-Fi da empresa.</p>
+  <div class="acoes"><button type="button" class="btn" data-fechar>Fechar</button></div>
+</div></dialog>
 <dialog id="dlg-manut" aria-labelledby="t-man"><form class="dlg" novalidate>
   <h2 id="t-man">Colocar em manutenção</h2><p id="man-texto"></p>
   <label>Motivo<input class="campo" id="man-motivo" maxlength="300" placeholder="Ex.: troca do teclado" aria-describedby="man-erro"></label>
@@ -425,7 +438,9 @@
 <div class="avisos" id="avisos" aria-live="assertive"></div>
 
 <script src="/central/escritorio.js"></script>
+<script src="/central/qrcode.min.js"></script>
 <script src="/central/app.js"></script>
+<script src="/central/qr-celular.js"></script>
 <script src="/central/assistente.js"></script>
 </body>
 </html>

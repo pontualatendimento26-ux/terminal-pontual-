@@ -33,6 +33,7 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
     public DbSet<ScreenRecording> ScreenRecordings => Set<ScreenRecording>();
     public DbSet<CrmEvent> CrmEvents => Set<CrmEvent>();
     public DbSet<CrmReply> CrmReplies => Set<CrmReply>();
+    public DbSet<NexusConsulta> NexusConsultas => Set<NexusConsulta>();
     public DbSet<AssistantUsage> AssistantUsage => Set<AssistantUsage>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -109,6 +110,12 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
 
         modelBuilder.Entity<WhatsAppCapture>().HasIndex(c => new { c.DeviceId, c.Contact }).IsUnique();
         modelBuilder.Entity<CrmEvent>().HasIndex(e => new { e.ConversationId, e.Id });
+        modelBuilder.Entity<NexusConsulta>(e =>
+        {
+            e.HasIndex(c => new { c.Cpf, c.Setor, c.CreatedAt });
+            e.HasIndex(c => c.CreatedAt);
+        });
+
         modelBuilder.Entity<CrmReply>(e =>
         {
             e.HasIndex(r => r.ConversationId);

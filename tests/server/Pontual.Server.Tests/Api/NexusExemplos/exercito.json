@@ -1,0 +1,98 @@
+{
+  "consulta_id": "a4c6e8f0-2b4d-4f6a-9c8e-1a3b5c7d9e73",
+  "setor": "exercito",
+  "status": "concluida",
+  "fonte": {
+    "origem": "nova",
+    "consultado_em": "2026-11-23T13:50:19-03:00",
+    "valido_ate": "2026-11-24T13:50:19-03:00",
+    "paga": true
+  },
+  "cliente": {
+    "cpf": "33366699957",
+    "nome": "CLIENTE EXEMPLO",
+    "data_nascimento": "1960-01-01",
+    "idade": 66,
+    "uf": "DF",
+    "representante_legal": false
+  },
+  "dados_setor": {
+    "matricula": "1000001",
+    "posto": "SEGUNDO SARGENTO",
+    "margens": {
+      "consignavel": 800,
+      "liberando": 100
+    },
+    "coeficiente": 0.0213,
+    "outras_matriculas": [
+      {
+        "convenio": "MARINHA",
+        "matricula": "1000002"
+      }
+    ]
+  },
+  "contratos": [
+    {
+      "id": "CT-0001",
+      "beneficio_ou_matricula": "1000001",
+      "numero_contrato": "CT-0001",
+      "banco_origem": {
+        "codigo": "077",
+        "nome": "Banco Ficticio E"
+      },
+      "parcela": 500,
+      "parcelas_pagas": 24,
+      "prazo": 96,
+      "prazo_restante": 72,
+      "saldo_devedor": 18000,
+      "taxa": 1.85,
+      "intencionado": false
+    },
+    {
+      "id": "CT-0002",
+      "beneficio_ou_matricula": "1000001",
+      "numero_contrato": "CT-0002",
+      "banco_origem": {
+        "codigo": "121",
+        "nome": "Banco Ficticio F"
+      },
+      "parcela": 200,
+      "parcelas_pagas": 10,
+      "prazo": 96,
+      "prazo_restante": 86,
+      "saldo_devedor": 9000,
+      "taxa": null,
+      "intencionado": false
+    }
+  ],
+  "roteiro": [
+    {
+      "contrato_id": "CT-0001",
+      "banco": "INTER",
+      "produto": "refin_portabilidade",
+      "parcela": 500,
+      "valor_liberado": 6473.81,
+      "troco": 6473.81,
+      "situacao": "passa",
+      "motivo": "Passa no roteiro do Inter"
+    },
+    {
+      "contrato_id": "CT-0002",
+      "banco": "INTER",
+      "produto": "refin_portabilidade",
+      "parcela": 200,
+      "valor_liberado": 789.53,
+      "troco": 789.53,
+      "situacao": "passa",
+      "motivo": "Passa no roteiro do Inter"
+    }
+  ],
+  "melhor_opcao": {
+    "contrato_id": "CT-0001",
+    "banco": "INTER",
+    "valor_liberado": 6473.81,
+    "motivo": "maior liberado entre os que passam"
+  },
+  "oportunidades": [],
+  "avisos": []
+}

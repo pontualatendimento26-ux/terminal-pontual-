@@ -86,12 +86,25 @@ internal static class ScreenCapture
         return (pixels, width, height);
     }
 
-    private static BitmapSource Capture()
+    /// <summary>A tela inteira (PrtSc) ou só a janela indicada (Alt+PrtSc), para a área de transferência.</summary>
+    public static BitmapSource Image(IntPtr window)
     {
-        var x = GetSystemMetrics(SmXVirtualScreen);
-        var y = GetSystemMetrics(SmYVirtualScreen);
-        var width = GetSystemMetrics(SmCxVirtualScreen);
-        var height = GetSystemMetrics(SmCyVirtualScreen);
+        if (window != IntPtr.Zero && GetWindowRect(window, out var r) && r.Right > r.Left && r.Bottom > r.Top)
+        {
+            return Capture(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top);
+        }
+
+        return Capture();
+    }
+
+    private static BitmapSource Capture() => Capture(
+        GetSystemMetrics(SmXVirtualScreen),
+        GetSystemMetrics(SmYVirtualScreen),
+        GetSystemMetrics(SmCxVirtualScreen),
+        GetSystemMetrics(SmCyVirtualScreen));
+
+    private static BitmapSource Capture(int x, int y, int width, int height)
+    {
         if (width <= 0 || height <= 0)
         {
             throw new InvalidOperationException("O Windows não informou o tamanho da tela.");
@@ -129,6 +142,19 @@ internal static class ScreenCapture
 
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WindowRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out WindowRect rect);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetDC(IntPtr hWnd);

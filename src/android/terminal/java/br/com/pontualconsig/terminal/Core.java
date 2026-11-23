@@ -85,6 +85,9 @@ final class Core {
     int version;
     HostPolicy policy = HostPolicy.EMPTY;
     boolean observationMode;
+    /** A assistente de IA está ligada para este aparelho (heartbeat). */
+    boolean assistant;
+    private int policyTicks;
     String state = STATE_ACTIVE;
     String maintenanceReason = "";
     String maintenanceUntil = "";
@@ -321,6 +324,7 @@ final class Core {
 
             body.put("appsInUse", apps);
             body.put("sessionStartedAt", sessionStartedAt);
+            body.put("version", "android-" + Updater.installedName(app));
         } catch (JSONException e) {
             Log.w(TAG, "heartbeat", e);
         }
@@ -336,6 +340,20 @@ final class Core {
                     boolean pending = STATE_PENDING.equals(str(r.heartbeat, "state"));
                     if (!pending && (!had || r.heartbeat.optInt("configVersion", known) != known)) {
                         r.config = Api.call("GET", url, tk, "/device/config", null);
+                    }
+
+                    // A regra da gravação (ligada? horário?) muda pouco: lida a cada 5 minutos.
+                    if (!pending && policyTicks++ % 20 == 0) {
+                        try {
+                            JSONObject rec = Api.call("GET", url, tk, "/device/recording", null);
+                            if (rec != null) {
+                                RecorderService.policyRecord = rec.optBoolean("record", false);
+                                RecorderService.startMinute = rec.optInt("startMinute", 7 * 60);
+                                RecorderService.endMinute = rec.optInt("endMinute", 18 * 60);
+                            }
+                        } catch (Api.HttpError e) {
+                            RecorderService.policyRecord = false;
+                        }
                     }
                 } catch (Api.HttpError e) {
                     // O servidor respondeu, mas com erro: há conexão.
@@ -391,10 +409,10 @@ final class Core {
             }
 
             observationMode = r.heartbeat.optBoolean("observationMode", false);
+            assistant = r.heartbeat.optBoolean("assistant", false);
             String name = str(r.heartbeat, "attendantName");
-            if (!name.trim().isEmpty()) {
-                attendantName = name;
-            }
+            // Celular compartilhado: sem nome quer dizer que ninguém pegou o aparelho.
+            attendantName = name.trim();
 
             JSONObject m = r.heartbeat.optJSONObject("maintenance");
             maintenanceReason = m == null ? "" : str(m, "reason");

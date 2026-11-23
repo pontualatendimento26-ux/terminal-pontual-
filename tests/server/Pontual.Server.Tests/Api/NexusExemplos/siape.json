@@ -1,0 +1,229 @@
+{
+  "consulta_id": "3f2a8c1e-5b7d-4e19-9a60-0c1d2e3f4a51",
+  "setor": "siape",
+  "status": "concluida",
+  "fonte": {
+    "origem": "nova",
+    "consultado_em": "2026-11-23T13:44:22-03:00",
+    "valido_ate": null,
+    "paga": false
+  },
+  "cliente": {
+    "cpf": "11144477735",
+    "nome": "CLIENTE EXEMPLO",
+    "data_nascimento": "1960-01-01",
+    "idade": 66,
+    "uf": null,
+    "representante_legal": false
+  },
+  "dados_setor": {
+    "matriculas": [
+      {
+        "matricula": "1000001",
+        "orgao": {
+          "codigo": "99999",
+          "nome": "ÓRGÃO EXEMPLO"
+        },
+        "upag": {
+          "codigo": "99999",
+          "nome": "PAGADORA EXEMPLO"
+        },
+        "situacao_funcional": null,
+        "margens": {
+          "consignavel": 0,
+          "cartao": 0,
+          "cartao_beneficio": 0,
+          "bruta_35": 0,
+          "salario_base": 0
+        }
+      }
+    ]
+  },
+  "contratos": [
+    {
+      "id": "1000001-Daycoval-304.5-1",
+      "beneficio_ou_matricula": "1000001",
+      "numero_contrato": "CT-0001",
+      "banco_origem": {
+        "codigo": null,
+        "nome": "Daycoval"
+      },
+      "parcela": 304.5,
+      "parcelas_pagas": 79,
+      "prazo": 96,
+      "prazo_restante": 17,
+      "saldo_devedor": 4520.11,
+      "taxa": 1.55,
+      "intencionado": false
+    },
+    {
+      "id": "1000001-Banco do Brasil-436.69-1",
+      "beneficio_ou_matricula": "1000001",
+      "numero_contrato": "CT-0002",
+      "banco_origem": {
+        "codigo": null,
+        "nome": "Banco do Brasil"
+      },
+      "parcela": 436.69,
+      "parcelas_pagas": 60,
+      "prazo": 96,
+      "prazo_restante": 36,
+      "saldo_devedor": 11880.33,
+      "taxa": 1.6,
+      "intencionado": false
+    }
+  ],
+  "roteiro": [
+    {
+      "contrato_id": "1000001-Daycoval-304.5-1",
+      "banco": "FACTA",
+      "produto": "refin_portabilidade",
+      "parcela": 304.5,
+      "valor_liberado": 11339.27,
+      "troco": 11339.27,
+      "situacao": "passa",
+      "motivo": "Passa no roteiro do Facta"
+    },
+    {
+      "contrato_id": "1000001-Banco do Brasil-436.69-1",
+      "banco": "FACTA",
+      "produto": "refin_portabilidade",
+      "parcela": 436.69,
+      "valor_liberado": 10863.83,
+      "troco": 10863.83,
+      "situacao": "passa",
+      "motivo": "Passa no roteiro do Facta"
+    },
+    {
+      "contrato_id": "1000001-Daycoval-304.5-1",
+      "banco": "BRB",
+      "produto": "refin_portabilidade",
+      "parcela": 304.5,
+      "valor_liberado": null,
+      "troco": null,
+      "situacao": "nao_passa",
+      "motivo": "Daycoval: prazo restante 17x abaixo do mínimo de 30x"
+    },
+    {
+      "contrato_id": "1000001-Banco do Brasil-436.69-1",
+      "banco": "BRB",
+      "produto": "refin_portabilidade",
+      "parcela": 436.69,
+      "valor_liberado": 10863.83,
+      "troco": 10863.83,
+      "situacao": "passa",
+      "motivo": "Passa no roteiro do BRB"
+    },
+    {
+      "contrato_id": "1000001-Daycoval-304.5-1",
+      "banco": "INTER",
+      "produto": "refin_portabilidade",
+      "parcela": 304.5,
+      "valor_liberado": 10119.31,
+      "troco": 10119.31,
+      "situacao": "atencao",
+      "motivo": "INTER faz a UPAG PAGADORA EXEMPLO (99999) com critério: PRECISA DE MARGEM DE SEGURA DE R$ 50"
+    },
+    {
+      "contrato_id": "1000001-Banco do Brasil-436.69-1",
+      "banco": "INTER",
+      "produto": "refin_portabilidade",
+      "parcela": 436.69,
+      "valor_liberado": 9114.28,
+      "troco": 9114.28,
+      "situacao": "atencao",
+      "motivo": "INTER faz a UPAG PAGADORA EXEMPLO (99999) com critério: PRECISA DE MARGEM DE SEGURA DE R$ 50"
+    },
+    {
+      "contrato_id": "1000001-Daycoval-304.5-1",
+      "banco": "PARANA",
+      "produto": "refin_portabilidade",
+      "parcela": 304.5,
+      "valor_liberado": null,
+      "troco": null,
+      "situacao": "nao_passa",
+      "motivo": "Daycoval: prazo restante 17x abaixo do mínimo de 35x"
+    },
+    {
+      "contrato_id": "1000001-Banco do Brasil-436.69-1",
+      "banco": "PARANA",
+      "produto": "refin_portabilidade",
+      "parcela": 436.69,
+      "valor_liberado": 10745.98,
+      "troco": 10745.98,
+      "situacao": "passa",
+      "motivo": "Passa no roteiro do Paraná"
+    },
+    {
+      "contrato_id": "1000001-Daycoval-304.5-1",
+      "banco": "DAYCOVAL",
+      "produto": "refin_portabilidade",
+      "parcela": 304.5,
+      "valor_liberado": null,
+      "troco": null,
+      "situacao": "nao_passa",
+      "motivo": "não porta contrato do Daycoval (banco excluído no roteiro)"
+    },
+    {
+      "contrato_id": "1000001-Banco do Brasil-436.69-1",
+      "banco": "DAYCOVAL",
+      "produto": "refin_portabilidade",
+      "parcela": 436.69,
+      "valor_liberado": 11788.39,
+      "troco": 11788.39,
+      "situacao": "atencao",
+      "motivo": "situação funcional não informada — não conferida"
+    },
+    {
+      "contrato_id": "1000001-Daycoval-304.5-1",
+      "banco": "DIGIO",
+      "produto": "refin_portabilidade",
+      "parcela": 304.5,
+      "valor_liberado": null,
+      "troco": null,
+      "situacao": "conferir",
+      "motivo": "Daycoval: conferir saldo devedor mínimo pela situação funcional: ATIVO PERMANENTE R$ 12000"
+    },
+    {
+      "contrato_id": "1000001-Banco do Brasil-436.69-1",
+      "banco": "DIGIO",
+      "produto": "refin_portabilidade",
+      "parcela": 436.69,
+      "valor_liberado": 10745.98,
+      "troco": 10745.98,
+      "situacao": "atencao",
+      "motivo": "situação funcional não informada — não conferida"
+    },
+    {
+      "contrato_id": "1000001-Daycoval-304.5-1",
+      "banco": "PAN",
+      "produto": "refin_portabilidade",
+      "parcela": 304.5,
+      "valor_liberado": 11095.28,
+      "troco": 11095.28,
+      "situacao": "atencao",
+      "motivo": "situação funcional não informada — não conferida"
+    },
+    {
+      "contrato_id": "1000001-Banco do Brasil-436.69-1",
+      "banco": "PAN",
+      "produto": "refin_portabilidade",
+      "parcela": 436.69,
+      "valor_liberado": 10513.92,
+      "troco": 10513.92,
+      "situacao": "atencao",
+      "motivo": "situação funcional não informada — não conferida"
+    }
+  ],
+  "melhor_opcao": {
+    "contrato_id": "1000001-Daycoval-304.5-1",
+    "banco": "FACTA",
+    "valor_liberado": 11339.27,
+    "motivo": "maior liberado entre os que passam"
+  },
+  "oportunidades": [],
+  "avisos": [
+    "Saldo devedor estimado pelo valor presente (exceto Inter com saldo da CIP); confirmar no extrato antes de digitar.",
+    "Valor do Inter estimado pelo fator; a simulação Agilus na tela pode dar diferente"
+  ]
+}

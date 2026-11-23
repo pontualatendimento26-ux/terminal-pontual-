@@ -68,6 +68,8 @@ svg { flex: none; display: block; }
 .interruptor::after { content: ''; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--sobre); box-shadow: var(--s-1); transition: transform var(--t); }
 .interruptor[aria-checked="true"] { background: var(--verde-400); } .interruptor[aria-checked="true"]::after { transform: translateX(18px); }
 .interruptor:disabled { opacity: 0.4; cursor: not-allowed; }
+.segmento[hidden] { display: none; }
+.grupo-linhas { padding: 14px 16px 6px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--suave); }
 .vazio { padding: 40px 16px; text-align: center; color: var(--suave); }
 .aviso-linha { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r-sm); background: var(--fundo); color: var(--suave); font-size: 13px; }
 

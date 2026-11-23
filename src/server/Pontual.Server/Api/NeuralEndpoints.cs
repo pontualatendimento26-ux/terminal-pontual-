@@ -140,6 +140,7 @@ public static class NeuralEndpoints
                     deviceId = d.Id,
                     name = string.IsNullOrWhiteSpace(d.AttendantName) ? d.Hostname : d.AttendantName,
                     hostname = d.Hostname,
+                    phone = (d.Windows ?? "").TrimStart().StartsWith("android", StringComparison.OrdinalIgnoreCase),
                     questions = used?.Questions ?? 0,
                     lastAt = used?.LastAt,
                     hasProfile = (insight?.HasProfile ?? false) || AssistantPrompt.ImportedProfile(settings, d.AttendantName).Length > 0,

@@ -167,6 +167,12 @@ final class AppGuard {
             return true;
         }
 
+        // Logo depois do toque em Atualizar: o instalador do Android e a tela "permitir instalar deste app".
+        if (System.currentTimeMillis() < Updater.installerAllowedUntil
+                && (pkg.contains("packageinstaller") || pkg.equals("com.android.settings"))) {
+            return true;
+        }
+
         try {
             TelecomManager telecom = (TelecomManager) app.getSystemService(Context.TELECOM_SERVICE);
             if (telecom != null && pkg.equals(telecom.getDefaultDialerPackage())) {

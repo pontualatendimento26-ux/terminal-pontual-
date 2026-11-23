@@ -20,6 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Respostas de exemplo da API do Nexus (dados anonimizados, mandados pelo dev do Nexus). -->
+    <None Include="Api\NexusExemplos\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\src\server\Pontual.Domain\Pontual.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\server\Pontual.Server\Pontual.Server.csproj" />
   </ItemGroup>

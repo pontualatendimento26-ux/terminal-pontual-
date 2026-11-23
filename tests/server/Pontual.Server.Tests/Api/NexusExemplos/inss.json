@@ -1,0 +1,169 @@
+{
+  "consulta_id": "7b9d4f20-1c3e-4a85-8d17-5e6f7a8b9c62",
+  "setor": "inss",
+  "status": "concluida",
+  "fonte": {
+    "origem": "cache",
+    "consultado_em": "2026-11-11T12:09:01-03:00",
+    "valido_ate": "2026-11-18T12:09:01-03:00",
+    "paga": false
+  },
+  "cliente": {
+    "cpf": "22255588846",
+    "nome": "CLIENTE EXEMPLO",
+    "data_nascimento": "1960-01-01",
+    "idade": 66,
+    "uf": "DF",
+    "representante_legal": false
+  },
+  "dados_setor": {
+    "beneficios": [
+      {
+        "beneficio": "9900001",
+        "especie": {
+          "codigo": "87",
+          "nome": null
+        },
+        "situacao": "Ativo",
+        "bloqueado": false,
+        "valor_beneficio": 1831.73,
+        "margens": {
+          "emprestimo": 0,
+          "rmc": 91.59,
+          "rcc": 91.59
+        }
+      }
+    ]
+  },
+  "contratos": [
+    {
+      "id": "CT-0001",
+      "beneficio_ou_matricula": "9900001",
+      "numero_contrato": "CT-0001",
+      "banco_origem": {
+        "codigo": "104",
+        "nome": "Caixa Econômica Federal"
+      },
+      "parcela": 549.52,
+      "parcelas_pagas": 1,
+      "prazo": 108,
+      "prazo_restante": 107,
+      "saldo_devedor": 24970.91,
+      "taxa": 1.91,
+      "intencionado": false
+    }
+  ],
+  "roteiro": [
+    {
+      "contrato_id": null,
+      "banco": "FINANTO",
+      "produto": "refin_portabilidade",
+      "situacao": "nao_passa",
+      "motivo": "Banco desligado no roteiro do Nexus",
+      "valor_liberado": null,
+      "troco": null,
+      "parcela": null
+    },
+    {
+      "contrato_id": "CT-0001",
+      "banco": "ICRED",
+      "produto": "refin_portabilidade",
+      "parcela": 549.52,
+      "valor_liberado": -837.44,
+      "troco": -837.44,
+      "situacao": "passa",
+      "motivo": "Passa no roteiro do iCred; parcela não cobre o saldo devedor (liberado negativo)"
+    },
+    {
+      "contrato_id": "CT-0001",
+      "banco": "C6",
+      "produto": "refin_portabilidade",
+      "parcela": 549.52,
+      "valor_liberado": 2395.58,
+      "troco": 2395.58,
+      "situacao": "passa",
+      "motivo": "Passa no roteiro do C6"
+    },
+    {
+      "contrato_id": "CT-0001",
+      "banco": "PARANA",
+      "produto": "refin_portabilidade",
+      "parcela": 549.52,
+      "valor_liberado": 1900.43,
+      "troco": 1900.43,
+      "situacao": "passa",
+      "motivo": "Passa no roteiro do Paraná"
+    },
+    {
+      "contrato_id": "CT-0001",
+      "banco": "DIGIO",
+      "produto": "refin_portabilidade",
+      "parcela": 549.52,
+      "valor_liberado": 3501.58,
+      "troco": 3501.58,
+      "situacao": "passa",
+      "motivo": "Passa no roteiro do Digio"
+    },
+    {
+      "contrato_id": "CT-0001",
+      "banco": "INTER",
+      "produto": "refin_portabilidade",
+      "parcela": 549.52,
+      "valor_liberado": 1926.74,
+      "troco": 1926.74,
+      "situacao": "passa",
+      "motivo": "Passa no roteiro do Inter"
+    },
+    {
+      "contrato_id": "CT-0001",
+      "banco": "FINTECH",
+      "produto": "refin_portabilidade",
+      "parcela": 549.52,
+      "valor_liberado": null,
+      "troco": null,
+      "situacao": "nao_passa",
+      "motivo": "Caixa Econômica Federal: 1 parcela(s) paga(s), o banco exige 12"
+    },
+    {
+      "contrato_id": "CT-0001",
+      "banco": "QUALI",
+      "produto": "refin_portabilidade",
+      "parcela": 549.52,
+      "valor_liberado": -83.27,
+      "troco": -83.27,
+      "situacao": "passa",
+      "motivo": "Passa no roteiro do Quali; parcela não cobre o saldo devedor (liberado negativo)"
+    }
+  ],
+  "melhor_opcao": {
+    "contrato_id": "CT-0001",
+    "banco": "DIGIO",
+    "valor_liberado": 3501.58,
+    "motivo": "maior liberado entre os que passam"
+  },
+  "oportunidades": [
+    {
+      "tipo": "portabilidade",
+      "passou": [],
+      "nao_passou": []
+    },
+    {
+      "tipo": "cartaoRmc",
+      "passou": [],
+      "nao_passou": []
+    },
+    {
+      "tipo": "cartaoRcc",
+      "passou": [],
+      "nao_passou": []
+    },
+    {
+      "tipo": "cartaoRccPlus",
+      "passou": [],
+      "nao_passou": []
+    }
+  ],
+  "avisos": [
+    "Resultado reaproveitado de 11/11 12:09; nada foi cobrado"
+  ]
+}

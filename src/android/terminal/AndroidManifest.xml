@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Botão Atualizar: entrega o .apk novo ao instalador do Android (a atendente confirma). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Gravação da tela, quando a Central liga (a atendente autoriza no "Começar agora"). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <!--
       Vigia de aplicativos (AppGuard). Os dois primeiros são acessos especiais: o Android não os dá sozinho;
       o instalar.ps1 libera pelo cabo (appops). Sem eles o vigia fica parado e o resto funciona.
@@ -88,5 +92,14 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Mantem a ligacao do aparelho com a Central do TI da empresa" />
         </service>
+
+        <service
+            android:name=".RecorderService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <receiver
+            android:name=".Updater$Receiver"
+            android:exported="false" />
     </application>
 </manifest>

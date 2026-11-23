@@ -89,6 +89,7 @@ const VISTAS = {
   aprendizado: ['Aprendizado das atendentes', 'O que as conversas ensinam. Nada vira fonte oficial sem a sua aprovação.'],
   horarios: ['Horários da IA', 'Os dias e os horários em que a IA pode atender os clientes no lugar de cada atendente.'],
   crm: ['Clientes do CRM', 'A IA escreve a resposta para os clientes do sistema interno; nada vai ao cliente sem a sua aprovação.'],
+  nexus: ['Consulta no Nexus', 'A atendente manda o CPF no chat da IA e vê em qual banco o cliente passa, pelo roteiro do Nexus.'],
   base: ['Base de Conhecimento', 'Tudo o que a IA possui, em um só lugar.'],
   visao: ['Visão Geral', 'Os números reais do cérebro da IA.'],
 };
@@ -205,6 +206,7 @@ function desenhar() {
   else if (E.vista === 'aprendizado') desenharAprendizado();
   else if (E.vista === 'horarios') desenharHorarios();
   else if (E.vista === 'crm') desenharCrm();
+  else if (E.vista === 'nexus') desenharNexus();
   else if (E.vista === 'visao') desenharVisao();
 }
 
@@ -226,8 +228,13 @@ function grafo() {
     }
   }
   nos.push({ id: 'r:attendant', pai: 'ia', tipo: 'ramo', ramo: 'attendant', rotulo: 'Atendentes', n: d.attendants.length });
+  // Computadores e celulares em grupos separados dentro do ramo Atendentes.
+  for (const [g, rotulo, cel] of [['g:att:pc', 'Atendentes PC', false], ['g:att:cel', 'Atendentes celular', true]]) {
+    const n = d.attendants.filter((a) => !!a.phone === cel).length;
+    if (n) nos.push({ id: g, pai: 'r:attendant', tipo: 'grupo', ramo: 'attendant', rotulo, n });
+  }
   for (const a of d.attendants) {
-    nos.push({ id: `a:${a.deviceId}`, pai: 'r:attendant', tipo: 'attendant', rotulo: a.name, estado: a.hasProfile ? 'active' : a.questions || a.whatsappPending ? 'pending' : 'disabled', novo: (a.newMessages > 0 || a.whatsappPending > 0) && a.hasProfile });
+    nos.push({ id: `a:${a.deviceId}`, pai: a.phone ? 'g:att:cel' : 'g:att:pc', tipo: 'attendant', rotulo: a.name, estado: a.hasProfile ? 'active' : a.questions || a.whatsappPending ? 'pending' : 'disabled', novo: (a.newMessages > 0 || a.whatsappPending > 0) && a.hasProfile });
   }
   nos.push({ id: 'r:suggestion', pai: 'ia', tipo: 'ramo', ramo: 'suggestion', rotulo: 'Aprendizado', n: d.suggestions.pending });
   const agruparSug = d.pendingSuggestions.length > 10;
@@ -1308,3 +1315,61 @@ function cartaoCrm(r, editavel) {
 
 
 iniciar();
+
+// ======================================================= consulta no Nexus
+// O chat da IA consulta o CPF na API de integração do Nexus. Aqui ficam o endereço e o token (cifrado neste
+// computador) e o registro de quem consultou o quê. O resultado fica guardado 24 horas e depois é apagado.
+const SITUACAO_NEXUS = {
+  concluida: ['Concluída', 'active'], nao_encontrado: ['CPF não encontrado', 'disabled'],
+  em_andamento: ['Em andamento', 'pending'], erro: ['Falhou', 'error'],
+};
+const SETOR_NEXUS = { siape: 'SIAPE', inss: 'INSS', exercito: 'Exército' };
+E.nexus = null;
+
+async function carregarNexus() {
+  try { E.nexus = await api('GET', '/neural/nexus'); } catch (e) { if (E.vista === 'nexus') recado(e.message, true); return; }
+  if (E.vista === 'nexus') desenharNexus();
+}
+
+function desenharNexus() {
+  const n = E.nexus;
+  if (!n) { $('v-nexus').replaceChildren(el('p', { className: 'nota', textContent: 'Carregando…' })); carregarNexus(); return; }
+  const url = el('input', { className: 'campo', value: n.url || n.defaultUrl, autocomplete: 'off', 'aria-label': 'Endereço da API do Nexus' });
+  const token = el('input', { className: 'campo', type: 'password', autocomplete: 'new-password', placeholder: n.hasToken ? 'Guardado. Preencha só para trocar' : 'Cole aqui o token que o Nexus mandou', 'aria-label': 'Token da Central no Nexus' });
+  const salvar = botao('Salvar', null, 'btn mini'), testar = botao('Testar a ligação', null), atualizar = botao('Atualizar a lista', null);
+  salvar.onclick = async () => {
+    salvar.disabled = true;
+    try { E.nexus = await api('PUT', '/neural/nexus/settings', { url: url.value, token: token.value }); recado('Ligação com o Nexus salva.'); desenharNexus(); }
+    catch (e) { recado(e.message, true); } finally { salvar.disabled = false; }
+  };
+  testar.onclick = async () => { testar.disabled = true; try { const r = await api('POST', '/neural/nexus/test'); recado(r.message); } catch (e) { recado(e.message, true); } finally { testar.disabled = false; } };
+  atualizar.onclick = () => carregarNexus();
+  const campo = (rotulo, controle) => el('label', { style: 'display:grid;gap:4px' }, rotulo, controle);
+  const u = n.last24h;
+  const linhas = n.recent.map((c) => {
+    const [rotulo, classe] = SITUACAO_NEXUS[c.status] || [c.status, 'liso'];
+    const custo = c.status === 'erro' ? '' : c.fromCache ? 'sem custo (guardada)' : c.paga ? 'paga' : 'sem custo';
+    return el('div', { className: 'cartao', style: 'padding:10px 14px;margin:0 0 8px' },
+      el('header', { style: 'display:flex;flex-wrap:wrap;gap:8px;align-items:center' },
+        selo(classe, rotulo), el('b', { textContent: `${SETOR_NEXUS[c.setor] || c.setor} · CPF ${c.cpf}` }),
+        el('small', { textContent: c.attendant }), el('small', { textContent: quando(c.at) }), custo ? el('small', { textContent: custo }) : null),
+      c.error ? el('p', { className: 'nota', textContent: c.error }) : null);
+  });
+  $('v-nexus').replaceChildren(
+    el('div', { className: 'cartao' },
+      el('div', { className: 'cartao-topo' }, el('div', {},
+        el('h2', { textContent: 'Ligação com o Nexus' }),
+        el('p', { textContent: 'A Central chama a API de integração do Nexus com este token. O Nexus só aceita o IP liberado desta Central. O token fica cifrado neste computador e nunca vai para o Terminal.' }))),
+      el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin:12px 0' },
+        campo('Endereço da API', url), campo('Token da Central', token)),
+      el('div', { className: 'botoes' }, salvar, testar),
+      el('p', { className: 'nota', textContent: 'No chat da IA, a atendente manda o CPF e escolhe SIAPE, INSS ou Exército (um já vem sugerido). INSS e Exército sem resultado guardado custam: o chat pede confirmação antes. O mesmo CPF no mesmo setor, nas últimas 24 horas, sai do resultado guardado, sem chamar o Nexus.' })),
+    el('div', { className: 'cartao' },
+      el('div', { className: 'cartao-topo' }, el('div', {},
+        el('h2', { textContent: 'Consultas das últimas 24 horas' }),
+        el('p', { textContent: `${mil(u.total)} consulta(s): ${mil(u.pagas)} paga(s), ${mil(u.guardadas)} sem custo por resultado guardado, ${mil(u.erros)} com falha.` }))),
+      el('div', { className: 'botoes' }, atualizar)),
+    el('div', { className: 'cartao' },
+      el('h2', { textContent: 'Últimas consultas' }),
+      ...(linhas.length ? linhas : [el('p', { className: 'nota', textContent: 'Nenhuma consulta ainda.' })])));
+}

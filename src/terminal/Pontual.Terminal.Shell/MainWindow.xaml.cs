@@ -166,6 +166,8 @@ public partial class MainWindow : Window
                 Log.Info("Não foi possível registrar o atalho Ctrl+Alt+Espaço+P.");
             }
         }
+
+        StartShortcuts();
     }
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
@@ -199,6 +201,7 @@ public partial class MainWindow : Window
         CloseAssistant();
         CloseCalculator();
         ClosePdfTools();
+        StopShortcuts();
         if (_hwndSource is not null)
         {
             NativeMethods.UnregisterHotKey(_hwndSource.Handle, ExitHotkeyId);

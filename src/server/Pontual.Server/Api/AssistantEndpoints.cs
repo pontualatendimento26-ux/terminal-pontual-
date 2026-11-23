@@ -40,7 +40,7 @@ public static class AssistantEndpoints
     private const int ConversationsShown = 300;
 
     /// <summary>Depois deste tempo parada, a próxima pergunta abre uma conversa nova (um novo expediente).</summary>
-    private static readonly TimeSpan ConversationIdle = TimeSpan.FromHours(8);
+    internal static readonly TimeSpan ConversationIdle = TimeSpan.FromHours(8);
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
