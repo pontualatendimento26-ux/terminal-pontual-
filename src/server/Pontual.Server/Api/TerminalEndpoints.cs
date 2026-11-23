@@ -185,6 +185,17 @@ public static class TerminalEndpoints
                     AddHistory(db, device, at, $"Fechou {item}");
                     break;
 
+                // Aplicativo da lista "Aplicativos" que não abriu ou não está instalado na conta (detail = motivo do Windows).
+                case "app_failed" when item.Length > 0:
+                    var reason = Input.Truncated(e.Detail, 300);
+                    AddHistory(db, device, at, reason.Length > 0 ? $"Não conseguiu abrir {item}: {reason}" : $"Não conseguiu abrir {item}");
+                    if (RaiseAlert(db, device, openAlerts, now, $"Não conseguiu abrir {item}"))
+                    {
+                        AddNotification(db, now, $"{label} não conseguiu abrir {item}", urgent: false);
+                    }
+
+                    break;
+
                 case "blocked" when Input.TryHost(e.Detail, out var host):
                     AddHistory(db, device, at, $"Tentou acessar {host}, que não está liberado");
                     // Um alerta aberto igual não se repete: a mesma tentativa em sequência não inunda o painel.

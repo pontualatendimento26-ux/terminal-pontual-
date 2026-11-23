@@ -6,8 +6,10 @@ using Pontual.Terminal.Ipc;
 namespace Pontual.Terminal.Shell;
 
 /// <summary>Um aplicativo do computador que a atendente pode pedir para abrir.</summary>
-/// <param name="Source"><c>windows</c> (vem com o Windows), <c>installed</c> (atalho do menu Iniciar) ou <c>downloaded</c> (pasta Downloads).</param>
-internal sealed record AppEntry(string Path, string Name, string Exe, string Source);
+/// <param name="Source"><c>windows</c> (vem com o Windows), <c>store</c> (aplicativo da Microsoft Store), <c>installed</c> (atalho do menu Iniciar) ou <c>downloaded</c> (pasta Downloads).</param>
+/// <param name="Aumid">Identificador do aplicativo da Loja, que o Terminal abre pelo gerenciador de ativação do Windows.</param>
+/// <param name="Microsoft">Aplicativo da Microsoft (da Loja ou do Office em Arquivos de Programas): abre liberado.</param>
+internal sealed record AppEntry(string Path, string Name, string Exe, string Source, string? Aumid = null, bool Microsoft = false);
 
 /// <summary>
 /// Lista os aplicativos do computador para a tela "Aplicativos" do Terminal: os do Windows (Calculadora, Bloco de Notas…),
@@ -74,6 +76,16 @@ internal static class AppCatalog
             Add(found, path, name, "windows");
         }
 
+        // Aplicativos da Microsoft Store registrados para a conta (a própria Loja entre eles). Os da Microsoft abrem liberados;
+        // os de outras empresas abrem e viram pedido ao TI, como qualquer aplicativo instalado.
+        foreach (var store in StoreApps.InstalledPackagedApps())
+        {
+            Add(found, store.Path, store.Name, "store", store.Aumid, store.Microsoft);
+        }
+
+        var programFiles = new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 }
+            .Select(f => Environment.GetFolderPath(f)).Where(f => !string.IsNullOrEmpty(f)).Select(f => f.TrimEnd('\\') + "\\").ToArray();
+
         foreach (var root in new[] { Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), Environment.GetFolderPath(Environment.SpecialFolder.Programs) })
         {
             foreach (var shortcut in Enumerate(root, "*.lnk", recurse: true))
@@ -87,7 +99,10 @@ internal static class AppCatalog
                     continue;
                 }
 
-                Add(found, target, name, "installed");
+                // Office, Teams e OneDrive em Arquivos de Programas (a atendente não grava lá) são da Microsoft: abrem liberados.
+                var microsoft = AppPolicy.MicrosoftExes.Contains(Path.GetFileName(target))
+                    && programFiles.Any(p => target.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+                Add(found, target, name, "installed", microsoft: microsoft);
             }
         }
 
@@ -99,7 +114,7 @@ internal static class AppCatalog
         return [.. found.Values.OrderBy(a => a.Name, StringComparer.Create(System.Globalization.CultureInfo.GetCultureInfo("pt-BR"), ignoreCase: true)).Take(MaxApps)];
     }
 
-    private static void Add(Dictionary<string, AppEntry> found, string path, string name, string source)
+    private static void Add(Dictionary<string, AppEntry> found, string path, string name, string source, string? aumid = null, bool microsoft = false)
     {
         string full;
         try
@@ -117,7 +132,7 @@ internal static class AppCatalog
         }
 
         var clean = name.Trim();
-        found[full] = new AppEntry(full, clean.Length == 0 ? exe : clean[..Math.Min(clean.Length, 60)], exe, source);
+        found[full] = new AppEntry(full, clean.Length == 0 ? exe : clean[..Math.Min(clean.Length, 60)], exe, source, aumid, microsoft);
     }
 
     private static bool IsUninstaller(string shortcutName, string target)

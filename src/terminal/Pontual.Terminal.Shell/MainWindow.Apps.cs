@@ -57,6 +57,12 @@ public partial class MainWindow
     {
         var list = await AppCatalog.ScanAsync(DownloadsFolder());
         _appCatalog = list.ToDictionary(a => a.Path, StringComparer.OrdinalIgnoreCase);
+
+        // Aplicativo do Windows que não está instalado na conta e que o Terminal não conseguiu instalar: o TI fica sabendo.
+        foreach (var (name, problem) in StoreApps.TakeProblems())
+        {
+            Record(DeviceEvent.AppFailed, name, problem);
+        }
     }
 
     private void PostAppsToHome()
@@ -68,7 +74,7 @@ public partial class MainWindow
         PostToHome(new { type = "apps", apps });
     }
 
-    private string StatusOf(AppEntry app) => AppPolicy.Decide(app.Path, _config) switch
+    private string StatusOf(AppEntry app) => AppPolicy.Decide(app.Path, _config, app.Microsoft) switch
     {
         AppVerdict.Allowed => "allowed",
         AppVerdict.Blocked => "blocked",
@@ -89,7 +95,7 @@ public partial class MainWindow
             return;
         }
 
-        var verdict = AppPolicy.Decide(app.Path, _config);
+        var verdict = AppPolicy.Decide(app.Path, _config, app.Microsoft);
         switch (verdict)
         {
             case AppVerdict.Refused:
@@ -118,11 +124,12 @@ public partial class MainWindow
         }
 
         Process? process = null;
-        if (StoreApps.IsStoreLauncher(app.Exe))
+        string? failure = null;
+        if ((app.Aumid ?? StoreApps.AumidFor(app.Exe)) is { } aumid)
         {
-            // Calculadora e companhia: o .exe da System32 é só um lançador, que na conta bloqueada não abre nada.
-            // O Terminal pede a abertura direto ao Windows; se não der (aplicativo da Loja ausente), usa o lançador.
-            if (StoreApps.Activate(app.Exe, out var error) is { } storePid)
+            // Aplicativos da Loja (e o lançador da Calculadora e companhia, que na conta bloqueada não abre nada):
+            // o Terminal pede a abertura direto ao Windows; se não der (aplicativo da Loja ausente), tenta o .exe.
+            if (StoreApps.ActivateAumid(aumid, out var error) is { } storePid)
             {
                 try
                 {
@@ -136,6 +143,7 @@ public partial class MainWindow
             else
             {
                 Log.Info($"{app.Exe}: o aplicativo da Loja não abriu pelo gerenciador do Windows ({error}); tentando o lançador {app.Path}.");
+                failure = $"o Windows recusou abrir o aplicativo da Loja ({error})";
             }
         }
 
@@ -153,12 +161,14 @@ public partial class MainWindow
             {
                 Log.Error($"abrir {app.Name}", ex);
                 process = null;
+                failure = failure is null ? ex.Message : $"{failure}; {ex.Message}";
             }
         }
 
         if (process is null)
         {
-            ShowToast($"Não foi possível abrir {app.Name}. Chame o TI.");
+            ShowToast($"Não foi possível abrir {app.Name}. O TI foi avisado.");
+            Record(DeviceEvent.AppFailed, app.Name, failure ?? "o programa não abriu");
             return;
         }
 
@@ -222,7 +232,7 @@ public partial class MainWindow
     /// <summary>Chamado a cada configuração nova: o que o TI bloqueou é fechado, e a lista na tela inicial muda de situação.</summary>
     private void ApplyAppsConfig(TerminalConfig? config)
     {
-        foreach (var run in _apps.Values.Where(r => AppPolicy.Decide(r.App.Path, config) == AppVerdict.Blocked).ToArray())
+        foreach (var run in _apps.Values.Where(r => AppPolicy.Decide(r.App.Path, config, r.App.Microsoft) == AppVerdict.Blocked).ToArray())
         {
             Log.Info($"O TI bloqueou {run.App.Exe}; fechando {run.App.Path}.");
             ShowToast($"O TI bloqueou {run.App.Name}. O aplicativo foi fechado.");

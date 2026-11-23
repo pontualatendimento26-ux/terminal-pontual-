@@ -457,7 +457,7 @@
   function fecharAviso() { S.avisoAberto = false; desenhar(); }
 
   // Folha "Aplicativos do computador": a lista vem do programa (mensagem "apps"); abrir é pedido ao programa ("open-app").
-  const ORIGENS_APP = [['windows', 'Do Windows'], ['installed', 'Instalados neste computador'], ['downloaded', 'Baixados (pasta Downloads)']];
+  const ORIGENS_APP = [['windows', 'Do Windows'], ['store', 'Microsoft Store'], ['installed', 'Instalados neste computador'], ['downloaded', 'Baixados (pasta Downloads)']];
   const SITUACAO_APP = { blocked: 'Bloqueado pelo TI', allowed: 'Liberado pelo TI', request: 'Na primeira vez, o TI recebe um pedido para liberar' };
   let appsAssinatura = '';
   function desenharAplicativos(folha, primeira) {
@@ -652,7 +652,7 @@
       } else if (m.type === 'apps' && Array.isArray(m.apps)) {
         S.apps = m.apps.filter((a) => a && typeof a.id === 'string' && typeof a.name === 'string').slice(0, 500).map((a) => ({
           id: a.id, name: texto(a.name, 120), exe: texto(a.exe, 120).toLowerCase(),
-          source: ['windows', 'installed', 'downloaded'].includes(a.source) ? a.source : 'installed',
+          source: ['windows', 'store', 'installed', 'downloaded'].includes(a.source) ? a.source : 'installed',
           status: ['blocked', 'allowed', 'request'].includes(a.status) ? a.status : 'request', open: a.open === true,
         }));
         desenhar();

@@ -200,6 +200,24 @@ internal static class Monitors
         result.Sort((a, b) => a.Left != b.Left ? a.Left.CompareTo(b.Left) : a.Top.CompareTo(b.Top));
         return result;
     }
+
+    /// <summary>Retângulo do monitor principal (onde fica a janela principal do Terminal).</summary>
+    public static NativeMethods.Rect Primary()
+    {
+        var result = new NativeMethods.Rect();
+        NativeMethods.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr monitor, IntPtr _, ref NativeMethods.Rect _, IntPtr _) =>
+        {
+            var info = new NativeMethods.MonitorInfo { Size = Marshal.SizeOf<NativeMethods.MonitorInfo>() };
+            if (NativeMethods.GetMonitorInfo(monitor, ref info) && (info.Flags & NativeMethods.MonitorInfoPrimary) != 0)
+            {
+                result = info.Monitor;
+                return false;
+            }
+
+            return true;
+        }, IntPtr.Zero);
+        return result;
+    }
 }
 
 internal static class WindowsInfo

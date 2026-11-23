@@ -65,4 +65,6 @@ public sealed record DeviceEvent(string Type, string? Item, string? Detail, Date
     /// (item = nome do aplicativo, detail = caminho do .exe). Na primeira vez vira um pedido de liberação na Central.
     /// </summary>
     public const string AppOpened = "app_opened";
+    /// <summary>Um aplicativo da lista "Aplicativos" não abriu, ou não está instalado na conta (item = nome, detail = motivo).</summary>
+    public const string AppFailed = "app_failed";
 }

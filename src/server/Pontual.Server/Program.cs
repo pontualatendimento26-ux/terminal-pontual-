@@ -35,6 +35,8 @@ builder.Services.AddDbContext<PontualDb>((services, options) =>
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AuditWriter>();
 builder.Services.AddSingleton<LoginLockout>();
+builder.Services.AddSingleton<StepUp>();
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddHostedService<Pontual.Server.Data.RetentionWorker>();
 builder.Services.AddSingleton<ScreenWatch>();
 builder.Services.AddSingleton<Pontual.Server.Assistant.AssistantUsageLog>();
@@ -82,6 +84,7 @@ app.Use(async (context, next) =>
     }
     catch (Exception exception) when (!context.Response.HasStarted && exception is not OperationCanceledException)
     {
+        var need = (exception as ApiError)?.Need;
         var (status, message) = exception switch
         {
             ApiError api => (api.Status, api.Message),
@@ -97,7 +100,7 @@ app.Use(async (context, next) =>
 
         context.Response.Clear();
         context.Response.StatusCode = status;
-        await context.Response.WriteAsJsonAsync(new ErrorBody(message));
+        await context.Response.WriteAsJsonAsync(new ErrorBody(message, need));
     }
 });
 
@@ -143,9 +146,10 @@ app.Use(async (context, next) =>
 
         var db = context.RequestServices.GetRequiredService<PontualDb>();
         Admin? admin = null;
+        var hash = "";
         if (context.Request.Cookies.TryGetValue(AccountEndpoints.CookieName, out var cookie) && cookie is { Length: > 0 and <= 128 })
         {
-            var hash = Secrets.Sha256(cookie);
+            hash = Secrets.Sha256(cookie);
             var now = context.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime;
             var session = await db.Sessions.AsNoTracking().FirstOrDefaultAsync(s => s.TokenHash == hash && s.ExpiresAt > now);
             if (session is not null)
@@ -163,9 +167,15 @@ app.Use(async (context, next) =>
             throw new ApiError(StatusCodes.Status401Unauthorized, "Entre no painel para continuar.");
         }
 
-        if (panel.Permission is { } permission && !PermissionMatrix.IsAllowed(admin!.Role, permission))
+        if (panel.Permission is { } permission)
         {
-            throw ApiError.Forbidden();
+            if (!PermissionMatrix.IsAllowed(admin!.Role, permission))
+            {
+                throw ApiError.Forbidden();
+            }
+
+            // Reautenticação e justificativa, como manda a matriz.
+            context.RequestServices.GetRequiredService<StepUp>().Enforce(context, admin, hash, permission);
         }
     }
     else if (endpoint?.Metadata.GetMetadata<TerminalRoute>() is not null)

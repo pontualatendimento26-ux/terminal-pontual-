@@ -376,10 +376,10 @@ public static class ScannedOcr
     }
 }
 
-/// <summary>Tira o texto de um arquivo enviado (PDF com texto, DOCX ou TXT).</summary>
+/// <summary>Tira o texto de um arquivo enviado (PDF com texto, DOCX, TXT ou planilha XLSX/CSV).</summary>
 public static class DocumentText
 {
-    public static readonly string[] Extensions = [".pdf", ".docx", ".txt"];
+    public static readonly string[] Extensions = [".pdf", ".docx", ".txt", ".xlsx", ".csv"];
 
     public const string ScannedPdf =
         "O PDF não tem texto para ler: parece escaneado (imagem) e o leitor de PDF escaneado (Pontual Tools) não respondeu neste computador. " +
@@ -398,6 +398,12 @@ public static class DocumentText
                 case ".docx":
                     text = Docx(bytes);
                     break;
+                case ".xlsx":
+                    text = Xlsx(bytes);
+                    break;
+                case ".csv":
+                    text = Rows(Csv(Plain(bytes)));
+                    break;
                 case ".pdf":
                     text = Pdf(bytes, out var pages);
                     if (text.Count(char.IsLetterOrDigit) < 40 * Math.Max(pages, 1))
@@ -414,7 +420,7 @@ public static class DocumentText
 
                     break;
                 default:
-                    return new ExtractedText("", FileStatus.Error, "Formato não aceito. Envie PDF, DOCX ou TXT.");
+                    return new ExtractedText("", FileStatus.Error, "Formato não aceito. Envie PDF, DOCX, TXT, XLSX ou CSV.");
             }
         }
         // Leitores de arquivo de terceiros falham de muitos jeitos com arquivo corrompido; todos viram o mesmo aviso.
@@ -518,6 +524,226 @@ public static class DocumentText
             }
 
             text.Append('\n');
+        }
+
+        return text.ToString();
+    }
+
+    private static readonly XNamespace Sheet = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+
+    private static XDocument LoadXml(ZipArchiveEntry entry)
+    {
+        if (entry.Length > 64 * 1024 * 1024)
+        {
+            throw new InvalidDataException("planilha grande demais");
+        }
+
+        using var stream = entry.Open();
+        using var reader = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
+        return XDocument.Load(reader);
+    }
+
+    /// <summary>Planilha do Excel: cada aba sai com o próprio nome, e cada linha com os nomes das colunas.</summary>
+    private static string Xlsx(byte[] bytes)
+    {
+        using var zip = new ZipArchive(new MemoryStream(bytes), ZipArchiveMode.Read);
+        XNamespace rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        XNamespace pkg = "http://schemas.openxmlformats.org/package/2006/relationships";
+
+        var shared = new List<string>();
+        if (zip.GetEntry("xl/sharedStrings.xml") is { } sharedEntry)
+        {
+            foreach (var si in LoadXml(sharedEntry).Root!.Elements(Sheet + "si"))
+            {
+                // rPh é a leitura fonética (japonês); não faz parte do texto da célula.
+                shared.Add(string.Concat(si.Descendants(Sheet + "t").Where(t => t.Parent?.Name != Sheet + "rPh").Select(t => t.Value)));
+            }
+        }
+
+        var workbook = LoadXml(zip.GetEntry("xl/workbook.xml") ?? throw new InvalidDataException("xl/workbook.xml ausente"));
+        var targets = new Dictionary<string, string>();
+        if (zip.GetEntry("xl/_rels/workbook.xml.rels") is { } relsEntry)
+        {
+            foreach (var r in LoadXml(relsEntry).Root!.Elements(pkg + "Relationship"))
+            {
+                targets[(string?)r.Attribute("Id") ?? ""] = (string?)r.Attribute("Target") ?? "";
+            }
+        }
+
+        var text = new StringBuilder();
+        foreach (var sheet in workbook.Descendants(Sheet + "sheet"))
+        {
+            if ((string?)sheet.Attribute(rel + "id") is not { } id || !targets.TryGetValue(id, out var target))
+            {
+                continue;
+            }
+
+            target = target.StartsWith('/') ? target.TrimStart('/') : "xl/" + target;
+            if (zip.GetEntry(target) is not { } entry)
+            {
+                continue;
+            }
+
+            var rows = SheetRows(LoadXml(entry), shared);
+            if (rows.Count > 0)
+            {
+                text.Append("Aba: ").Append((string?)sheet.Attribute("name")).Append("\n\n").Append(Rows(rows)).Append("\n\n");
+            }
+        }
+
+        return text.ToString();
+    }
+
+    private static List<List<string>> SheetRows(XDocument sheet, List<string> shared)
+    {
+        var rows = new List<List<string>>();
+        foreach (var row in sheet.Descendants(Sheet + "row"))
+        {
+            var cells = new List<string>();
+            foreach (var c in row.Elements(Sheet + "c"))
+            {
+                var column = Column((string?)c.Attribute("r")) ?? cells.Count;
+                if (column > 16_384)
+                {
+                    continue;
+                }
+
+                var raw = (string?)c.Element(Sheet + "v") ?? "";
+                var value = (string?)c.Attribute("t") switch
+                {
+                    "s" => int.TryParse(raw, out var n) && n >= 0 && n < shared.Count ? shared[n] : "",
+                    "inlineStr" => string.Concat(c.Descendants(Sheet + "t").Select(t => t.Value)),
+                    "b" => raw == "1" ? "Sim" : "Não",
+                    _ => raw,
+                };
+                while (cells.Count <= column)
+                {
+                    cells.Add("");
+                }
+
+                cells[column] = value.Trim();
+            }
+
+            if (cells.Any(v => v.Length > 0))
+            {
+                rows.Add(cells);
+            }
+        }
+
+        return rows;
+    }
+
+    /// <summary>"C12" vira a coluna 2 (contando do zero).</summary>
+    private static int? Column(string? reference)
+    {
+        var letters = (reference ?? "").TakeWhile(char.IsAsciiLetter).ToArray();
+        if (letters.Length == 0)
+        {
+            return null;
+        }
+
+        var column = 0;
+        foreach (var letter in letters)
+        {
+            column = column * 26 + (char.ToUpperInvariant(letter) - 'A' + 1);
+        }
+
+        return column - 1;
+    }
+
+    /// <summary>CSV do Excel brasileiro (ponto e vírgula), com vírgula ou tabulação; aspas seguem o padrão do CSV.</summary>
+    private static List<List<string>> Csv(string content)
+    {
+        var firstLine = content.Split('\n', 2)[0];
+        var separator = new[] { ';', ',', '\t' }.MaxBy(c => firstLine.Count(x => x == c));
+        var rows = new List<List<string>>();
+        var row = new List<string>();
+        var cell = new StringBuilder();
+        var quoted = false;
+        for (var i = 0; i < content.Length; i++)
+        {
+            var ch = content[i];
+            if (quoted)
+            {
+                if (ch == '"' && i + 1 < content.Length && content[i + 1] == '"')
+                {
+                    cell.Append('"');
+                    i++;
+                }
+                else if (ch == '"')
+                {
+                    quoted = false;
+                }
+                else
+                {
+                    cell.Append(ch);
+                }
+            }
+            else if (ch == '"')
+            {
+                quoted = true;
+            }
+            else if (ch == separator)
+            {
+                row.Add(cell.ToString().Trim());
+                cell.Clear();
+            }
+            else if (ch == '\n')
+            {
+                row.Add(cell.ToString().Trim());
+                cell.Clear();
+                if (row.Any(v => v.Length > 0))
+                {
+                    rows.Add(row);
+                }
+
+                row = [];
+            }
+            else if (ch != '\r')
+            {
+                cell.Append(ch);
+            }
+        }
+
+        row.Add(cell.ToString().Trim());
+        if (row.Any(v => v.Length > 0))
+        {
+            rows.Add(row);
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// A primeira linha é o cabeçalho; cada linha seguinte sai como "Coluna: valor; Coluna: valor", para a IA achar
+    /// um valor pelo nome da coluna (por exemplo a senha de um e-mail). Sem cabeçalho, os valores saem separados por " | ".
+    /// </summary>
+    private static string Rows(List<List<string>> rows)
+    {
+        var text = new StringBuilder();
+        if (rows.Count == 0)
+        {
+            return "";
+        }
+
+        var header = rows[0];
+        if (rows.Count == 1 || header.Count(h => h.Length > 0) < 2)
+        {
+            foreach (var row in rows)
+            {
+                text.Append(string.Join(" | ", row.Where(v => v.Length > 0))).Append('\n');
+            }
+
+            return text.ToString();
+        }
+
+        text.Append("Colunas: ").Append(string.Join(" | ", header.Where(h => h.Length > 0))).Append('\n');
+        foreach (var row in rows.Skip(1))
+        {
+            var parts = row.Select((value, i) => (value, name: i < header.Count ? header[i] : ""))
+                .Where(p => p.value.Length > 0)
+                .Select(p => p.name.Length > 0 ? $"{p.name}: {p.value}" : p.value);
+            text.Append(string.Join("; ", parts)).Append('\n');
         }
 
         return text.ToString();

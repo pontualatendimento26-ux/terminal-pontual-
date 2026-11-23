@@ -85,7 +85,7 @@ const estadoDe = (i) => (i.enabled ? 'active' : i.fileStatus === 'no_text' ? 'pe
 const VISTAS = {
   mapa: ['Cérebro Neural', 'Tudo o que alimenta a IA da Pontual e como se conecta.'],
   roteiros: ['Roteiros', 'Os roteiros operacionais que a IA segue para responder.'],
-  documentos: ['Documentos', 'PDF, DOCX e TXT: o texto é extraído e entra na base.'],
+  documentos: ['Documentos', 'PDF, DOCX, TXT e planilhas (XLSX, CSV): o texto é extraído e entra na base.'],
   aprendizado: ['Aprendizado das atendentes', 'O que as conversas ensinam. Nada vira fonte oficial sem a sua aprovação.'],
   horarios: ['Horários da IA', 'Os dias e os horários em que a IA pode atender os clientes no lugar de cada atendente.'],
   base: ['Base de Conhecimento', 'Tudo o que a IA possui, em um só lugar.'],
@@ -380,6 +380,9 @@ async function gavetaItem(id) {
   const chave = el('button', { type: 'button', className: 'interruptor', role: 'switch', 'aria-checked': String(i.enabled), 'aria-label': `${i.enabled ? 'Desativar' : 'Ativar'} ${i.title}`, disabled: !c.content });
   chave.onclick = () => agir(chave, () => api('PUT', `/neural/items/${id}`, { enabled: !i.enabled }), `${i.title}: ${i.enabled ? 'desativado, a IA deixou de usar' : 'ativado, a IA já usa'}.`).then(() => E.gaveta === id && gavetaItem(id));
 
+  const interna = el('button', { type: 'button', className: 'interruptor', role: 'switch', 'aria-checked': String(!!i.staffOnly), 'aria-label': `Só para atendentes: ${i.title}` });
+  interna.onclick = () => agir(interna, () => api('PUT', `/neural/items/${id}`, { staffOnly: !i.staffOnly }), `${i.title}: ${i.staffOnly ? 'a IA que responde os clientes também passa a usar' : 'agora só para as atendentes'}.`).then(() => E.gaveta === id && gavetaItem(id));
+
   const editar = botao('Editar', 'editar', 'btn mini'); editar.onclick = () => abrirFormulario(c);
   const ligar = botao('Vincular', 'elo'); ligar.onclick = () => abrirLigar(i);
   const abrir = botao('Abrir o texto', 'abrir'); abrir.disabled = !c.content;
@@ -405,6 +408,7 @@ async function gavetaItem(id) {
     el('h2', { textContent: i.title }),
     i.description ? el('p', { className: 'frase', textContent: i.description }) : null,
     el('div', { className: 'linha-opcao' }, el('div', {}, el('b', { textContent: i.enabled ? 'Em uso pela IA' : 'Fora de uso' }), el('small', { textContent: c.content ? 'Desligue para guardar sem a IA usar.' : 'Sem texto, não há o que a IA ler.' })), chave),
+    el('div', { className: 'linha-opcao' }, el('div', {}, el('b', { textContent: 'Só para atendentes' }), el('small', { textContent: i.staffOnly ? 'A IA que responde os clientes na cobertura de ausência não vê este conhecimento.' : 'Ligue para logins, senhas e o que nunca pode chegar ao cliente.' })), interna),
     i.fileStatus === 'no_text' ? el('p', { className: 'aviso', textContent: i.fileError }) : null,
     el('dl', { className: 'dados' },
       dado('Banco ou assunto', i.bank), dado('Categoria', i.category),
@@ -819,7 +823,7 @@ async function enviarArquivos(arquivos, substituirId) {
     E.envios.unshift(envio); pintarEnvios();
     const extensao = arquivo.name.slice(arquivo.name.lastIndexOf('.')).toLowerCase();
     try {
-      exigir(limites.extensions.includes(extensao), 'Formato não aceito. Envie PDF, DOCX ou TXT.');
+      exigir(limites.extensions.includes(extensao), 'Formato não aceito. Envie PDF, DOCX, TXT, XLSX ou CSV.');
       exigir(arquivo.size > 0, 'O arquivo está vazio.');
       exigir(arquivo.size <= limites.upload, `O arquivo tem ${tamanho(arquivo.size)}; o máximo é ${tamanho(limites.upload)}.`);
       const doc = await enviarUm(arquivo, substituirId, (p) => { envio.p = p; envio.nota = p >= 1 ? 'Lendo o texto…' : `${Math.round(p * 100)}%`; pintarEnvios(); });
@@ -879,7 +883,7 @@ function desenharLista(vista) {
     el('div', { className: 'cartao-topo' }, el('div', {}, el('h2', { textContent: titulos[vista][0] }), el('p', { textContent: titulos[vista][1] })), ...acoes));
   if (vista === 'documentos') {
     const solte = el('div', { className: 'solte', role: 'button', tabIndex: 0, 'aria-label': 'Enviar documentos: solte os arquivos aqui ou pressione Enter para escolher' },
-      ic('enviar', 30), el('b', { textContent: 'Arraste os arquivos para cá' }), el('span', { textContent: `ou clique para escolher. PDF, DOCX ou TXT, até ${tamanho(E.d.limits.upload)} cada.` }),
+      ic('enviar', 30), el('b', { textContent: 'Arraste os arquivos para cá' }), el('span', { textContent: `ou clique para escolher. PDF, DOCX, TXT, XLSX ou CSV, até ${tamanho(E.d.limits.upload)} cada.` }),
       el('span', { className: 'nota', textContent: 'PDF escaneado (imagem) fica guardado e desativado até o leitor de PDF escaneado ser conectado.' }));
     solte.onclick = () => escolherArquivo(null);
     solte.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); escolherArquivo(null); } };
@@ -915,7 +919,7 @@ function pintarTabela(vista) {
   const tabela = $(`tb-${vista}`);
   if (!lista.length) {
     const nenhum = !(fixo ? itensDe(fixo) : E.d.items).length;
-    const frases = { roteiros: 'Use "Novo roteiro" para cadastrar o primeiro.', documentos: 'Arraste um PDF, DOCX ou TXT para a área acima.', base: 'Cadastre um roteiro ou envie um documento para começar.' };
+    const frases = { roteiros: 'Use "Novo roteiro" para cadastrar o primeiro.', documentos: 'Arraste um PDF, DOCX, TXT ou planilha para a área acima.', base: 'Cadastre um roteiro ou envie um documento para começar.' };
     tabela.replaceChildren(cab, el('tbody', {}, el('tr', {}, el('td', { colSpan: colunas.length }, nenhum ? vazio('Nada cadastrado ainda', frases[vista]) : vazio('Nada com esses filtros', 'Limpe a busca ou troque os filtros.')))));
     return;
   }

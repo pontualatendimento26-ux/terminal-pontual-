@@ -111,7 +111,7 @@ public static class MonitorEndpoints
             .Take(200)
             .ToListAsync(ct);
 
-        return Results.Ok(records.Select(a => new { sequence = a.Sequence, at = a.OccurredAt, actor = a.ActorName, text = a.Text }));
+        return Results.Ok(records.Select(a => new { sequence = a.Sequence, at = a.OccurredAt, actor = a.ActorName, text = a.Text, justification = a.Justification }));
     }
 
     private static async Task<IResult> VerifyAsync(PontualDb db, CancellationToken ct)

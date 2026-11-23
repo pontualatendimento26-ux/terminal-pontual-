@@ -206,6 +206,23 @@ public sealed class TerminalTests
     }
 
     [Fact]
+    public async Task Evento_app_failed_vai_para_o_historico_com_o_motivo_e_cria_um_alerta()
+    {
+        using var app = new TestApp();
+        var owner = await app.OwnerAsync();
+        var (deviceId, terminal) = await app.ApprovedDeviceAsync(owner, "PC-05", "Ana");
+
+        await terminal.SendEventsAsync(
+            new { type = "app_failed", item = "Notas Autoadesivas", detail = "o aplicativo não está instalado nesta conta do Windows", at = DateTime.UtcNow },
+            new { type = "app_failed", item = "Notas Autoadesivas", detail = "de novo", at = DateTime.UtcNow });
+
+        var history = (await owner.GetAsync($"/api/v1/devices/{deviceId}/history").Json()).EnumerateArray().ToList();
+        Assert.Contains(history, h => h.GetProperty("text").GetString() == "Não conseguiu abrir Notas Autoadesivas: o aplicativo não está instalado nesta conta do Windows");
+        var alert = Assert.Single((await owner.GetAsync("/api/v1/alerts").Json()).EnumerateArray());
+        Assert.Contains("Notas Autoadesivas", alert.GetProperty("text").GetString());
+    }
+
+    [Fact]
     public async Task Evento_opened_cria_notificacao_nao_urgente_e_historico()
     {
         using var app = new TestApp();

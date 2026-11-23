@@ -89,7 +89,9 @@ public partial class MainWindow
         var bar = Bar.ActualHeight > 0 ? Bar.ActualHeight : 0;
         window.WindowStartupLocation = WindowStartupLocation.Manual;
         window.Left = Math.Max(area.Left, area.Right - window.Width - margin);
-        window.Top = Math.Max(area.Top, area.Bottom - window.Height - margin - bar);
+        // No modo bloqueado a área de trabalho já termina acima da barra; não desconta duas vezes.
+        var bottom = Math.Min(area.Bottom, SystemParameters.PrimaryScreenHeight - bar);
+        window.Top = Math.Max(area.Top, bottom - window.Height - margin);
     }
 
     private void OnCalculatorMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)

@@ -95,6 +95,36 @@ public sealed class PanelTests
     }
 
     [Fact]
+    public async Task Acao_sensivel_exige_senha_e_motivo_e_grava_o_motivo()
+    {
+        using var app = new TestApp();
+        var owner = await app.OwnerAsync();
+        await app.AdminAsync(owner, "Bia", "admin");
+        var biaId = (await owner.GetAsync("/api/v1/admins").Json()).EnumerateArray()
+            .Single(a => a.GetProperty("email").GetString() == "bia@pontual.test").GetProperty("id").GetGuid();
+
+        // Painel logado, mas sem senha nem motivo nos cabeçalhos.
+        var bare = app.Panel(withHeader: false);
+        bare.DefaultRequestHeaders.Add("X-Pontual", "1");
+        await TestApp.LoginAsync(bare, TestApp.OwnerEmail);
+
+        var missing = await bare.DeleteAsync($"/api/v1/admins/{biaId}");
+        Assert.Equal((HttpStatusCode)428, missing.StatusCode);
+        Assert.Contains("\"need\":\"senha,justificativa\"", await missing.Content.ReadAsStringAsync());
+
+        bare.DefaultRequestHeaders.Add("X-Pontual-Justificativa", Uri.EscapeDataString("saiu da empresa"));
+        bare.DefaultRequestHeaders.Add("X-Pontual-Senha", "senha-errada-000");
+        Assert.Equal(HttpStatusCode.Forbidden, (await bare.DeleteAsync($"/api/v1/admins/{biaId}")).StatusCode);
+
+        bare.DefaultRequestHeaders.Remove("X-Pontual-Senha");
+        bare.DefaultRequestHeaders.Add("X-Pontual-Senha", Uri.EscapeDataString(TestApp.Password));
+        Assert.Equal(HttpStatusCode.NoContent, (await bare.DeleteAsync($"/api/v1/admins/{biaId}")).StatusCode);
+
+        var audit = await owner.GetAsync("/api/v1/audit").Json();
+        Assert.Contains(audit.EnumerateArray(), a => a.GetProperty("justification").GetString() == "saiu da empresa");
+    }
+
+    [Fact]
     public async Task Lida_vale_so_para_quem_abriu_as_notificacoes()
     {
         using var app = new TestApp();

@@ -331,4 +331,26 @@ public sealed class CoverageTests
         Assert.False(Coverage.RevealsCover("Recebi sim! Já te retorno.", "Gabi"));
         Assert.False(Coverage.RevealsCover("Gabriela, boa tarde! Recebi o extrato.", "Gabi"));
     }
+
+    [Fact]
+    public async Task Conhecimento_so_para_atendentes_nunca_chega_a_IA_que_fala_com_o_cliente()
+    {
+        var (app, model, _, owner, deviceId, terminal) = await SetupAsync();
+        using var _app = app;
+
+        Assert.True((await owner.PostAsJsonAsync("/api/v1/neural/items",
+            new { kind = "knowledge", title = "Acessos", content = "E-mail: portal@exemplo.com; Senha: Segredo#987", staffOnly = true })).IsSuccessStatusCode);
+        Assert.True((await owner.PostAsJsonAsync("/api/v1/neural/items",
+            new { kind = "knowledge", title = "Extrato", content = "O extrato sai no app Meu INSS." })).IsSuccessStatusCode);
+        await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/coverage", new { mode = "on" });
+        await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/absence", new { absent = true });
+
+        model.Decisions.Enqueue(Decide("enviar", "Ok!"));
+        await ReadAsync(terminal, "Maria", "[09:05] Cliente: Qual a senha do portal?");
+
+        var request = Assert.Single(model.Requests);
+        Assert.Contains("O extrato sai no app Meu INSS.", request.AllInstructions);
+        Assert.DoesNotContain("Segredo#987", request.AllInstructions);
+        Assert.DoesNotContain("Segredo#987", request.Input);
+    }
 }

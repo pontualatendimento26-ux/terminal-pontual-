@@ -364,3 +364,6 @@ textarea.campo.ia-texto-medio { min-height: 220px; }
 .ad .menu { order: 3; flex: 1 1 100%; width: 100%; min-width: 0; margin: 0; flex-wrap: wrap; overflow: visible; }
 .ad .menu button { padding: 0 12px; }
 @media (max-width: 1160px) { .ad .menu button { padding: 0 8px; font-size: 14px; } }
+
+/* Motivo informado numa ação sensível, na lista da auditoria. */
+.motivo { display: block; font-style: italic; opacity: .85; }

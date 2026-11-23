@@ -27,7 +27,10 @@ $ProgramasFixos = @(
     # Planilhas: Excel ou LibreOffice, se estiverem instalados.
     'EXCEL.EXE', 'soffice.exe', 'soffice.bin', 'scalc.exe',
     # Navegadores: as atendentes usam os perfis deles (um WhatsApp em cada). O Terminal vigia os enderecos.
-    'chrome.exe', 'firefox.exe', 'opera.exe'
+    'chrome.exe', 'firefox.exe', 'opera.exe',
+    # Aplicativos da Microsoft (pedido do dono em 23/11/2026): Office, Teams, Outlook novo, OneDrive e a Microsoft Store.
+    'WINWORD.EXE', 'POWERPNT.EXE', 'OUTLOOK.EXE', 'ONENOTE.EXE', 'MSACCESS.EXE', 'MSPUB.EXE', 'VISIO.EXE',
+    'ms-teams.exe', 'Teams.exe', 'olk.exe', 'OneDrive.exe', 'WinStore.App.exe'
 )
 
 function Mensagem([string]$Texto, [string]$Icone = 'Information', [string]$Botoes = 'OK') {

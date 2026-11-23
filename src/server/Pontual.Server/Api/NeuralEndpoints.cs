@@ -22,7 +22,7 @@ public static class NeuralEndpoints
 
     private sealed record ItemBody(
         string? Kind, string? Title, string? Description, string? Category, string? Bank, string? Keywords,
-        string? Content, string? AiInstructions, string? Notes, bool? Enabled);
+        string? Content, string? AiInstructions, string? Notes, bool? Enabled, bool? StaffOnly);
     private sealed record LinkBody(Guid? From, Guid? To);
     private sealed record SuggestionBody(string? Title, string? Detail, string? ProposedContent, string? Bank, string? Category);
     private sealed record ApproveBody(string? CreateKind, Guid? ItemId, string? Title, string? Content, string? Bank, string? Category, string? Description);
@@ -68,6 +68,7 @@ public static class NeuralEndpoints
         bank = s.Bank,
         keywords = s.Keywords,
         enabled = s.Enabled,
+        staffOnly = s.StaffOnly,
         chars = s.Content.Length,
         createdAt = s.CreatedAt,
         updatedAt = s.UpdatedAt,
@@ -87,7 +88,7 @@ public static class NeuralEndpoints
             .Select(s => new
             {
                 id = s.Id, kind = s.Kind, title = s.Title, description = s.Description, category = s.Category, bank = s.Bank,
-                keywords = s.Keywords, enabled = s.Enabled, chars = s.Content.Length, createdAt = s.CreatedAt, updatedAt = s.UpdatedAt,
+                keywords = s.Keywords, enabled = s.Enabled, staffOnly = s.StaffOnly, chars = s.Content.Length, createdAt = s.CreatedAt, updatedAt = s.UpdatedAt,
                 updatedBy = s.UpdatedByName, source = s.Source, fileName = s.FileName, fileSize = s.FileSize,
                 fileStatus = s.FileStatus, fileError = s.FileError, hasInstructions = s.AiInstructions != "",
             })
@@ -371,6 +372,11 @@ public static class NeuralEndpoints
             item.Enabled = enabled;
         }
 
+        if (body.StaffOnly is { } staffOnly)
+        {
+            item.StaffOnly = staffOnly;
+        }
+
         if (item.Content.Length == 0)
         {
             // Sem texto não há o que a IA ler: um PDF escaneado fica guardado e desligado.
@@ -532,7 +538,7 @@ public static class NeuralEndpoints
         var extension = Path.GetExtension(name).ToLowerInvariant();
         if (name.Length == 0 || !DocumentText.Extensions.Contains(extension))
         {
-            throw ApiError.BadRequest("Formato não aceito. Envie um arquivo PDF, DOCX ou TXT.");
+            throw ApiError.BadRequest("Formato não aceito. Envie um arquivo PDF, DOCX, TXT, XLSX ou CSV.");
         }
 
         var megabytes = KnowledgeLimits.Upload / (1024 * 1024);
@@ -596,6 +602,8 @@ public static class NeuralEndpoints
 
         item.Content = extracted.Text;
         item.FileName = name;
+        // Planilha (como a de logins e senhas) nasce só para as atendentes; a supervisão pode liberar depois.
+        item.StaffOnly |= extension is ".xlsx" or ".csv";
         item.FileSize = bytes.Length;
         item.FileStatus = extracted.Status;
         item.FileError = extracted.Error;

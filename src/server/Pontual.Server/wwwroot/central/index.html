@@ -397,6 +397,15 @@
   <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn rubi" id="conf-ok"></button></div>
 </form></dialog>
 
+<!-- Ações sensíveis: o servidor pede a senha de novo e/ou o motivo (vai para a auditoria). -->
+<dialog id="dlg-passo" aria-labelledby="passo-titulo"><form class="dlg" novalidate>
+  <h2 id="passo-titulo">Confirme esta ação</h2><p id="passo-texto">Esta ação é registrada na auditoria.</p>
+  <label id="passo-senha-campo">Sua senha<input class="campo" id="passo-senha" type="password" autocomplete="current-password" aria-describedby="passo-erro"></label>
+  <label id="passo-motivo-campo">Motivo<textarea class="campo" id="passo-motivo" rows="3" maxlength="500" aria-describedby="passo-dica passo-erro"></textarea><span class="dica" id="passo-dica">Por que você está fazendo isso? Fica gravado na auditoria.</span></label>
+  <p class="erro" id="passo-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Confirmar</button></div>
+</form></dialog>
+
 <!-- Só notificações urgentes que ainda não foram vistas aparecem aqui. -->
 <div class="avisos" id="avisos" aria-live="assertive"></div>
 

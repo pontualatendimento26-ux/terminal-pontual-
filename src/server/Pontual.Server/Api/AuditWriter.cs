@@ -23,7 +23,7 @@ public sealed record AuditInfo(
 /// As gravações são serializadas: ler a cabeça da cadeia e inserir o próximo elo acontecem sob o mesmo
 /// semáforo, então a cadeia não se ramifica. A chave primária em <c>Sequence</c> é a segunda barreira.
 /// </summary>
-public sealed class AuditWriter(TimeProvider time)
+public sealed class AuditWriter(TimeProvider time, IHttpContextAccessor? http = null)
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -44,7 +44,7 @@ public sealed class AuditWriter(TimeProvider time)
                 AuditRecord.ChainAction(info.Code, info.ActorName, info.Text),
                 info.TargetType,
                 info.TargetId,
-                info.Justification));
+                info.Justification ?? http?.HttpContext?.Items[StepUp.JustificationKey] as string));
 
             db.Audit.Add(new AuditRecord
             {

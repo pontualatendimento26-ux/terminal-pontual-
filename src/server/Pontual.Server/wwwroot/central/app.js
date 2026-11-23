@@ -179,9 +179,10 @@ const ERRO_PADRAO = {
 function marcarConexao(ok) {
   $('faixa-rede').hidden = ok;
 }
-async function api(metodo, caminho, corpo) {
+async function api(metodo, caminho, corpo, extra) {
   const opcoes = { method: metodo, credentials: 'same-origin', headers: { Accept: 'application/json' } };
   if (metodo !== 'GET') opcoes.headers['X-Pontual'] = '1';
+  if (extra) Object.assign(opcoes.headers, extra);
   if (corpo !== undefined) { opcoes.headers['Content-Type'] = 'application/json'; opcoes.body = JSON.stringify(corpo); }
   let resposta;
   try {
@@ -197,7 +198,13 @@ async function api(metodo, caminho, corpo) {
     if (bruto) { try { dados = JSON.parse(bruto); } catch { dados = null; } }
   }
   if (resposta.ok) return dados;
-  const mensagem = (dados && typeof dados.error === 'string' && dados.error.trim())
+  // Ação sensível: o servidor pediu a senha de novo e/ou o motivo. Pergunta e reenvia.
+  if ((resposta.status === 428 || resposta.status === 403) && dados && typeof dados.need === 'string') {
+    const pedido = await pedirPasso(dados.need.split(','), resposta.status === 403 ? dados.error : '', extra);
+    if (!pedido) throw new ErroApi(499, 'Ação cancelada.');
+    return api(metodo, caminho, corpo, pedido);
+  }
+  const mensagem =(dados && typeof dados.error === 'string' && dados.error.trim())
     || ERRO_PADRAO[resposta.status] || `O servidor respondeu com o erro ${resposta.status}.`;
   // Qualquer 401 depois de entrar significa que a sessão acabou: volta ao login.
   if (resposta.status === 401 && S.me && caminho !== '/auth/login') sessaoPerdida();
@@ -1394,7 +1401,7 @@ function desenharAuditoria() {
   const espera = situacaoLista('audit'), lista = S.audit || [];
   trocar($('ls-auditoria'), espera || !lista.length ? [el('li', { className: 'vazio', textContent: espera || 'Nenhuma ação registrada ainda.' })] : lista.map((a) => {
     const i = el('i', { style: 'background:var(--azul-50);color:var(--elo)' }, ic('history', 20));
-    return el('li', {}, i, el('div', {}, texto(a.text), el('time', { dateTime: texto(a.at), textContent: [quando(a.at), texto(a.actor), `registro nº ${texto(a.sequence)}`].filter(Boolean).join(' · ') })));
+    return el('li', {}, i, el('div', {}, texto(a.text), a.justification ? el('small', { className: 'motivo', textContent: `Motivo: ${texto(a.justification)}` }) : null, el('time', { dateTime: texto(a.at), textContent: [quando(a.at), texto(a.actor), `registro nº ${texto(a.sequence)}`].filter(Boolean).join(' · ') })));
   }));
 }
 // O servidor informa o tipo da falha por um código; aqui ele vira uma frase.
@@ -1464,6 +1471,34 @@ aoEnviar('dlg-senha', 'senha-erro', async () => {
 });
 
 // ====================================================== diálogos e formulários
+// Pergunta o que o servidor pediu ("senha", "justificativa") e devolve os cabeçalhos para reenviar,
+// ou null se a pessoa cancelar. O motivo já digitado é mantido quando só a senha estava errada.
+function pedirPasso(precisa, erro, anteriores) {
+  return new Promise((resolver) => {
+    const dlg = $('dlg-passo'), form = dlg.querySelector('form');
+    const querSenha = precisa.includes('senha');
+    const motivoAnterior = anteriores && anteriores['X-Pontual-Justificativa'];
+    const querMotivo = precisa.includes('justificativa') || !!motivoAnterior;
+    $('passo-senha-campo').hidden = !querSenha; $('passo-motivo-campo').hidden = !querMotivo;
+    $('passo-senha').value = '';
+    $('passo-motivo').value = motivoAnterior ? decodeURIComponent(motivoAnterior) : '';
+    if (erro) falharEm('passo-erro', erro); else $('passo-erro').hidden = true;
+    let resposta = null;
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      const senha = $('passo-senha').value, motivo = $('passo-motivo').value.trim();
+      if (querSenha && !senha) return falharEm('passo-erro', 'Digite a sua senha.');
+      if (querMotivo && motivo.length < 5) return falharEm('passo-erro', 'Escreva o motivo (pelo menos 5 letras).');
+      resposta = {};
+      if (querSenha) resposta['X-Pontual-Senha'] = encodeURIComponent(senha);
+      if (querMotivo) resposta['X-Pontual-Justificativa'] = encodeURIComponent(motivo);
+      dlg.close();
+    };
+    dlg.addEventListener('close', () => { $('passo-senha').value = ''; resolver(resposta); }, { once: true });
+    dlg.showModal();
+    (querSenha ? $('passo-senha') : $('passo-motivo')).focus();
+  });
+}
 function confirmar({ titulo, texto: mensagem, botao }) {
   return new Promise((resolver) => {
     const dlg = $('dlg-confirmar');

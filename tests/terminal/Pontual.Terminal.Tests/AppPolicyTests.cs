@@ -75,6 +75,37 @@ public class AppPolicyTests
     }
 
     [Fact]
+    public void Aplicativo_da_Microsoft_abre_liberado_mas_o_bloqueio_do_TI_vale_mais()
+    {
+        const string Store = @"C:\Program Files\WindowsApps\Microsoft.WindowsStore_22410.1401.5.0_x64__8wekyb3d8bbwe\WinStore.App.exe";
+        Assert.Equal(AppVerdict.Allowed, AppPolicy.Decide(Store, Config(), microsoft: true));
+        Assert.Equal(AppVerdict.Allowed, AppPolicy.Decide(Store, null, microsoft: true));
+        Assert.Equal(AppVerdict.Allowed, AppPolicy.Decide(Excel, Config(), microsoft: true));
+        Assert.Equal(AppVerdict.Blocked, AppPolicy.Decide(Store, Config(blocked: ["winstore.app.exe"]), microsoft: true));
+        Assert.Equal(AppVerdict.Request, AppPolicy.Decide(Store, Config()));
+    }
+
+    [Theory]
+    [InlineData("WindowsTerminal")]
+    [InlineData("wsl")]
+    [InlineData("ubuntu")]
+    [InlineData("QuickAssist")]
+    [InlineData("SystemSettings")]
+    public void Aplicativo_da_Microsoft_que_abre_console_ou_acesso_remoto_continua_recusado(string name)
+    {
+        Assert.Equal(AppVerdict.Refused, AppPolicy.Decide($@"C:\Program Files\WindowsApps\x\{name}.exe", Config(), microsoft: true));
+    }
+
+    [Theory]
+    [InlineData("WINWORD.EXE")]
+    [InlineData("olk.exe")]
+    [InlineData("ms-teams.exe")]
+    public void Office_e_Teams_sao_da_Microsoft(string exe)
+    {
+        Assert.Contains(exe, AppPolicy.MicrosoftExes);
+    }
+
+    [Fact]
     public void Bloqueado_pelo_TI_vence_tudo()
     {
         Assert.Equal(AppVerdict.Blocked, AppPolicy.Decide(Spotify, Config(blocked: ["spotify.exe"])));

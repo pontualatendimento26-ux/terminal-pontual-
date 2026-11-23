@@ -63,6 +63,9 @@ public sealed class TestApp : WebApplicationFactory<Program>
         if (withHeader)
         {
             client.DefaultRequestHeaders.Add("X-Pontual", "1");
+            // Reautenticação e motivo, para as ações que a matriz exige; todas as contas de teste usam a mesma senha.
+            client.DefaultRequestHeaders.Add("X-Pontual-Senha", Uri.EscapeDataString(Password));
+            client.DefaultRequestHeaders.Add("X-Pontual-Justificativa", Uri.EscapeDataString("teste automático"));
         }
 
         return client;

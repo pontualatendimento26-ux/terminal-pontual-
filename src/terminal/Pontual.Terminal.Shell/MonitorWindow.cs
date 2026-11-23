@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -20,7 +20,8 @@ internal sealed class MonitorWindow : Window
     private NativeMethods.Rect _bounds;
     private bool _allowClose;
 
-    public MonitorWindow(NativeMethods.Rect bounds)
+    /// <param name="floatingBar">Modo bloqueado: a barra fica numa janela "sempre visível" própria (<see cref="BarWindow"/>).</param>
+    public MonitorWindow(NativeMethods.Rect bounds, bool floatingBar = false)
     {
         _bounds = bounds;
         Title = "Terminal Pontual - segundo monitor";
@@ -53,8 +54,20 @@ internal sealed class MonitorWindow : Window
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.Children.Add(_host);
         root.Children.Add(_message);
-        Grid.SetRow(Bar, 1);
-        root.Children.Add(Bar);
+        if (floatingBar)
+        {
+            // Espaço vazio do tamanho da barra: ela mesma fica por cima, na janela própria.
+            var space = new Border { Height = BarWindow.BarHeight, Background = Brushes.White };
+            Grid.SetRow(space, 1);
+            root.Children.Add(space);
+            FloatingBar = new BarWindow(Bar);
+        }
+        else
+        {
+            Grid.SetRow(Bar, 1);
+            root.Children.Add(Bar);
+        }
+
         Content = root;
         Bar.ShowHome(false);
     }
@@ -63,6 +76,9 @@ internal sealed class MonitorWindow : Window
     public event Action<SiteTab>? BlockedBack;
 
     public TerminalBar Bar { get; } = new();
+
+    /// <summary>A janela "sempre visível" da barra, no modo bloqueado; nula na janela comum.</summary>
+    public BarWindow? FloatingBar { get; }
 
     /// <summary>Onde entram os WebView2 das páginas que estão neste monitor.</summary>
     public Panel Host => _host;
@@ -80,12 +96,15 @@ internal sealed class MonitorWindow : Window
             NativeMethods.SetWindowPos(handle, IntPtr.Zero, bounds.Left, bounds.Top, bounds.Right - bounds.Left, bounds.Bottom - bounds.Top,
                 NativeMethods.SwpNoZOrder | NativeMethods.SwpNoActivate);
         }
+
+        FloatingBar?.Place(bounds);
     }
 
     /// <summary>Fecha de verdade (sem passar pela trava do Alt+F4).</summary>
     public void ForceClose()
     {
         _allowClose = true;
+        FloatingBar?.ForceClose();
         Close();
     }
 
@@ -127,6 +146,7 @@ internal sealed class MonitorWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
+        FloatingBar?.Show();
         Place(_bounds);
     }
 

@@ -348,6 +348,12 @@ public sealed class AssistantScript
     public DateTime UpdatedAt { get; set; }
     public string UpdatedByName { get; set; } = "";
 
+    /// <summary>
+    /// Só para as atendentes (ex.: a planilha de logins e senhas): a IA do chat usa, mas a IA que responde os
+    /// clientes na cobertura de ausência nunca recebe este conhecimento.
+    /// </summary>
+    public bool StaffOnly { get; set; }
+
     public string Kind { get; set; } = KnowledgeKind.Script;
     public string Description { get; set; } = "";
     public string Category { get; set; } = "";

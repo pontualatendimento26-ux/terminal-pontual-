@@ -147,6 +147,12 @@ public static class DbInitializer
             return;
         }
 
+        if (addedNow.Contains("StaffOnly"))
+        {
+            // Planilha enviada antes da marca existir (a de senhas): nunca pode chegar à IA que fala com cliente.
+            await RunAsync(db, "UPDATE \"AssistantScripts\" SET \"StaffOnly\" = 1 WHERE lower(\"FileName\") LIKE '%.xlsx' OR lower(\"FileName\") LIKE '%.csv'");
+        }
+
         await RunAsync(db, "UPDATE \"AssistantScripts\" SET \"Kind\" = 'script' WHERE \"Kind\" = ''");
         await RunAsync(db, "UPDATE \"AssistantScripts\" SET \"CreatedAt\" = \"UpdatedAt\" WHERE \"CreatedAt\" = ''");
         await RunAsync(db, "UPDATE \"AssistantScripts\" SET \"Source\" = CASE WHEN \"UpdatedByName\" = 'Sistema' THEN 'sistema' ELSE 'manual' END WHERE \"Source\" = ''");

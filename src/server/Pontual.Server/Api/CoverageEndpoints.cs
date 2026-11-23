@@ -217,7 +217,8 @@ public static class CoverageEndpoints
     private static async Task<(IReadOnlyList<string> Cached, string Found)> InstructionsAsync(
         PontualDb db, Device device, Dictionary<string, string> settings, string incoming, DateTime now, CancellationToken ct)
     {
-        var scripts = KnowledgeText.Ordered(await db.AssistantScripts.AsNoTracking().Where(s => s.Enabled && s.Content != "").ToListAsync(ct));
+        var scripts = KnowledgeText.Ordered(await db.AssistantScripts.AsNoTracking()
+            .Where(s => s.Enabled && !s.StaffOnly && s.Content != "").ToListAsync(ct));
         var general = settings.GetValueOrDefault(TextSetting.AssistantInstructions, "");
         string shared;
         var found = "";

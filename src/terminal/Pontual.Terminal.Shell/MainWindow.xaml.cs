@@ -74,6 +74,9 @@ public partial class MainWindow : Window
     private bool _unenrolled;
     private HwndSource? _hwndSource;
 
+    /// <summary>Modo bloqueado: a barra numa janela "sempre visível", por cima de qualquer programa. Nula na janela comum.</summary>
+    private BarWindow? _barWindow;
+
     internal MainWindow(Enrollment enrollment, bool windowed, bool locked = false)
     {
         _enrollment = enrollment;
@@ -93,8 +96,22 @@ public partial class MainWindow : Window
         _homeUrl = _homeOrigin + (_local ? "/index.html" : "/terminal/");
 
         InitializeComponent();
+        if (locked && !windowed)
+        {
+            // A barra sai da janela e vai para a janela própria; fica um espaço vazio do mesmo tamanho embaixo.
+            Root.Children.Remove(Bar);
+            var space = new System.Windows.Controls.Border { Height = BarWindow.BarHeight, Background = System.Windows.Media.Brushes.White };
+            Grid.SetRow(space, 1);
+            Root.Children.Add(space);
+            _barWindow = new BarWindow(Bar);
+        }
+
         WireBar(Bar, monitor: null);
-        _windowsTimer.Tick += (_, _) => RefreshWindows();
+        _windowsTimer.Tick += (_, _) =>
+        {
+            RefreshWindows();
+            KeepBarsOnTop();
+        };
 
         if (!windowed)
         {
@@ -197,12 +214,14 @@ public partial class MainWindow : Window
 
         _windowsTimer.Stop();
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
+        ReleaseBarSpace();
         foreach (var monitor in _monitors)
         {
             monitor.ForceClose();
         }
 
         _monitors.Clear();
+        _barWindow?.ForceClose();
         _home.Dispose();
         _api?.Dispose();
         base.OnClosed(e);
@@ -210,6 +229,13 @@ public partial class MainWindow : Window
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (msg == NativeMethods.WmGetMinMaxInfo && _locked && !_windowed)
+        {
+            FillMonitorWhenMaximized(hwnd, lParam);
+            handled = true;
+            return IntPtr.Zero;
+        }
+
         if (msg == NativeMethods.WmHotkey && wParam.ToInt32() == ExitHotkeyId)
         {
             handled = true;
@@ -365,6 +391,7 @@ public partial class MainWindow : Window
         try
         {
             _clock.Start();
+            _barWindow?.Show();
             SyncMonitors();
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
             if (_locked)
@@ -1273,13 +1300,43 @@ public partial class MainWindow : Window
     {
         bar.Bind(_tabs, _windows);
         bar.SetLocked(_locked);
-        bar.HomeClick += () => Activate(null);
-        bar.HelpClick += CallHelp;
+        // Com a barra em janela própria, clicar nela não traz mais o Terminal para a frente sozinho: é feito aqui.
+        Window host = (Window?)monitor ?? this;
+        void Front()
+        {
+            if (_barWindow is not null)
+            {
+                host.Activate();
+            }
+        }
+
+        bar.HomeClick += () =>
+        {
+            Front();
+            Activate(null);
+        };
+        bar.HelpClick += () =>
+        {
+            Front();
+            CallHelp();
+        };
         bar.FilesClick += OpenFiles;
-        bar.PowerClick += () => ShowPowerMenu((Window?)monitor ?? this);
+        bar.PowerClick += () =>
+        {
+            Front();
+            ShowPowerMenu(host);
+        };
         bar.ShowUpdate(_locked && !_local);
-        bar.UpdateClick += () => StartUpdate((Window?)monitor ?? this);
-        bar.TabClick += tab => ShowTab(tab, monitor);
+        bar.UpdateClick += () =>
+        {
+            Front();
+            StartUpdate(host);
+        };
+        bar.TabClick += tab =>
+        {
+            Front();
+            ShowTab(tab, monitor);
+        };
         bar.TabCloseClick += CloseTab;
         bar.WindowClick += window => OtherWindows.BringToFront(window.Handle);
 
@@ -1292,6 +1349,7 @@ public partial class MainWindow : Window
                 return;
             }
 
+            Front();
             if (_tabs.FirstOrDefault(t => t.Id == item.Id) is { } open)
             {
                 ShowTab(open, monitor);
@@ -1317,6 +1375,7 @@ public partial class MainWindow : Window
 
         try
         {
+            _barWindow?.Place(Monitors.Primary());
             var bounds = Monitors.Secondary();
 
             // Monitor que saiu: as páginas dele voltam para o principal.
@@ -1343,7 +1402,7 @@ public partial class MainWindow : Window
                     continue;
                 }
 
-                var monitor = new MonitorWindow(bounds[i]);
+                var monitor = new MonitorWindow(bounds[i], floatingBar: _barWindow is not null);
                 WireBar(monitor.Bar, monitor);
                 monitor.BlockedBack += ResolveBlocked;
                 _monitors.Add(monitor);
@@ -1358,6 +1417,19 @@ public partial class MainWindow : Window
         UpdateClock();
         UpdateAttendant();
         UpdateLayoutState();
+
+        // Depois de as barras serem medidas: tira a faixa delas da área dos programas maximizados.
+        Dispatcher.BeginInvoke(ReserveBarSpace, DispatcherPriority.Loaded);
+    }
+
+    /// <summary>Outro programa "sempre visível" pode ter passado na frente das barras: elas voltam para o topo.</summary>
+    private void KeepBarsOnTop()
+    {
+        _barWindow?.KeepOnTop();
+        foreach (var monitor in _monitors)
+        {
+            monitor.FloatingBar?.KeepOnTop();
+        }
     }
 
     /// <summary>Atualiza a lista de janelas dos outros programas mostrada na barra (só no modo bloqueado).</summary>

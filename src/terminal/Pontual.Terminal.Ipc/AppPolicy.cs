@@ -38,6 +38,9 @@ public static class AppPolicy
         // Interpretadores e ferramentas de desenvolvedor: rodam qualquer código. O TI cadastra como programa se precisar.
         "git-bash", "git-cmd", "sh", "python", "pythonw", "py", "node", "ruby", "perl", "java", "javaw", "ssh", "scp", "sftp",
         "curl", "wget", "mintty", "appverif", "windbg", "procexp", "procexp64", "procmon", "procmon64", "autoruns", "nircmd",
+        // Aplicativos da Loja que abrem um console, outro computador ou as configurações do Windows.
+        "windowsterminal", "openconsole", "wsl", "wslhost", "ubuntu", "debian", "kali", "winget", "appinstaller",
+        "systemsettings", "quickassist", "msrdc", "mstsc", "powertoys", "powertoys.run", "devhome", "microsoft.cmdpal.ui",
     };
 
     /// <summary>Nome do arquivo em minúsculas ("spotify.exe"), ou <c>null</c> se o caminho não indica um .exe.</summary>
@@ -71,8 +74,22 @@ public static class AppPolicy
         return stem.Length == 0 || RefusedNames.Contains(stem) || stem.StartsWith("pontual.terminal", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>O veredito para um caminho, segundo a configuração atual da máquina.</summary>
-    public static AppVerdict Decide(string? path, TerminalConfig? config)
+    /// <summary>
+    /// Programas clássicos da Microsoft (Office, Teams, OneDrive) que já vêm liberados (pedido do dono em 23/11/2026:
+    /// "libere o acesso a todos os apps da microsoft"). Só contam quando estão em Arquivos de Programas, que a atendente
+    /// não consegue gravar; quem confere a pasta é o catálogo do Terminal.
+    /// </summary>
+    public static readonly IReadOnlySet<string> MicrosoftExes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "winword.exe", "excel.exe", "powerpnt.exe", "outlook.exe", "onenote.exe", "msaccess.exe", "mspub.exe",
+        "visio.exe", "winproj.exe", "lync.exe", "teams.exe", "ms-teams.exe", "olk.exe", "onedrive.exe",
+    };
+
+    /// <summary>
+    /// O veredito para um caminho, segundo a configuração atual da máquina. <paramref name="microsoft"/>: aplicativo da
+    /// Microsoft (da Loja ou do Office), que abre liberado; o bloqueio do TI continua valendo mais.
+    /// </summary>
+    public static AppVerdict Decide(string? path, TerminalConfig? config, bool microsoft = false)
     {
         if (path is null || IsRefused(path) || !Path.IsPathFullyQualified(path))
         {
@@ -81,7 +98,7 @@ public static class AppPolicy
 
         if (config is null)
         {
-            return AppVerdict.Request;
+            return microsoft ? AppVerdict.Allowed : AppVerdict.Request;
         }
 
         var exe = ExeName(path)!;
@@ -90,7 +107,7 @@ public static class AppPolicy
             return AppVerdict.Blocked;
         }
 
-        if (Matches(exe, config.AppsAllowed) || config.Items.Any(i => i.IsProgram && string.Equals(i.Target, path, StringComparison.OrdinalIgnoreCase)))
+        if (microsoft || Matches(exe, config.AppsAllowed) || config.Items.Any(i => i.IsProgram && string.Equals(i.Target, path, StringComparison.OrdinalIgnoreCase)))
         {
             return AppVerdict.Allowed;
         }

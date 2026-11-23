@@ -13,6 +13,9 @@ public sealed class ApiError(int status, string message) : Exception(message)
 {
     public int Status { get; } = status;
 
+    /// <summary>O que o painel precisa perguntar antes de reenviar ("senha", "justificativa").</summary>
+    public string? Need { get; init; }
+
     public static ApiError BadRequest(string message) => new(StatusCodes.Status400BadRequest, message);
     public static ApiError NotFound(string message) => new(StatusCodes.Status404NotFound, message);
     public static ApiError Conflict(string message) => new(StatusCodes.Status409Conflict, message);
@@ -20,7 +23,9 @@ public sealed class ApiError(int status, string message) : Exception(message)
         new(StatusCodes.Status403Forbidden, message);
 }
 
-public sealed record ErrorBody(string Error);
+public sealed record ErrorBody(
+    string Error,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Need = null);
 
 /// <summary>Marca uma rota do painel. Sem permissão e sem login exigido = rota pública (login, setup).</summary>
 public sealed record PanelRoute(Permission? Permission, bool RequireAuth);
