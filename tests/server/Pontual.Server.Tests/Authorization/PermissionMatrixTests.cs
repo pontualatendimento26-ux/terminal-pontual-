@@ -21,6 +21,7 @@ public class PermissionMatrixTests
         new("sites.manage",             false, false, true,  true,  Requirement.None),
         new("usage.read",               true,  true,  true,  true,  Requirement.None),
         new("usage.read.individual",    true,  false, true,  true,  Requirement.AuditedRead),
+        new("screen.control",           false, false, true,  true,  Requirement.AuditedRead),
         new("alerts.read",              true,  true,  true,  true,  Requirement.None),
         new("alerts.handle",            false, true,  true,  true,  Requirement.None),
         new("alert-rules.manage",       false, false, true,  true,  R | J),
@@ -92,20 +93,20 @@ public class PermissionMatrixTests
     }
 
     [Fact]
-    public void The_mirror_table_has_120_access_cases()
+    public void The_mirror_table_has_124_access_cases()
     {
-        Assert.Equal(30, Document.Length);
-        Assert.Equal(120, AccessCases().Count);
+        Assert.Equal(31, Document.Length);
+        Assert.Equal(124, AccessCases().Count);
     }
 
     [Fact]
-    public void Permissions_are_exactly_the_30_codes_of_the_document()
+    public void Permissions_are_exactly_the_31_codes_of_the_document()
     {
         var expected = Document.Select(row => row.Code).Order(StringComparer.Ordinal);
         var actual = PermissionMatrix.Permissions.Select(permission => permission.Code).Order(StringComparer.Ordinal);
 
         Assert.Equal(expected, actual);
-        Assert.Equal(30, PermissionMatrix.Permissions.Count);
+        Assert.Equal(31, PermissionMatrix.Permissions.Count);
     }
 
     [Fact]
@@ -170,12 +171,12 @@ public class PermissionMatrixTests
     }
 
     [Fact]
-    public void Only_individual_usage_is_marked_as_audited_read()
+    public void Only_individual_usage_and_screen_control_are_marked_as_audited_read()
     {
         var audited = PermissionMatrix.Permissions
             .Where(permission => PermissionMatrix.RequirementsFor(permission).HasFlag(Requirement.AuditedRead));
 
-        Assert.Equal([Permission.UsageReadIndividual], audited);
+        Assert.Equal([Permission.UsageReadIndividual, Permission.ScreenControl], audited);
     }
 
     [Theory]

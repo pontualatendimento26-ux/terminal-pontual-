@@ -474,6 +474,7 @@ public partial class MainWindow : Window
         if (!_local)
         {
             _ = ScreenLoopAsync(_cts.Token);
+            _ = ControlLoopAsync(_cts.Token);
             StartRecording(_cts.Token);
         }
     }
@@ -548,10 +549,16 @@ public partial class MainWindow : Window
         };
     }
 
-    // ------------------------------------------------------------------ visualização ao vivo pelo TI
+    // ------------------------------------------------------------------ visualização ao vivo e controle pelo TI
 
     private static readonly TimeSpan ScreenAskInterval = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan ScreenFrameInterval = TimeSpan.FromMilliseconds(600);
+
+    /// <summary>O TI está com a tela aberta agora? O laço de controle só busca comandos enquanto isto é verdade.</summary>
+    private volatile bool _screenWanted;
+
+    /// <summary>A plaquinha "TI controlando", enquanto o controle está ativo. Vive só na thread da interface.</summary>
+    private ControlNotice? _controlNotice;
 
     /// <summary>
     /// A cada poucos segundos pergunta ao servidor se o TI abriu a visualização desta tela. Enquanto estiver aberta,
@@ -568,6 +575,7 @@ public partial class MainWindow : Window
                 if (_state != HeartbeatResponse.StatePending && _online != false)
                 {
                     var request = await api.GetScreenRequestAsync(ct);
+                    _screenWanted = request.Wanted;
                     if (request.Wanted)
                     {
                         // O aviso fixo "As atividades serão monitoradas" já está sempre na barra; nada muda na tela agora.
@@ -576,6 +584,7 @@ public partial class MainWindow : Window
                         {
                             var frame = await Task.Run(() => ScreenCapture.Jpeg(maxWidth: 3200, maxBytes: 1_900_000), ct);
                             wanted = await api.SendScreenAsync(frame, ct);
+                            _screenWanted = wanted;
                             if (wanted)
                             {
                                 await Task.Delay(ScreenFrameInterval, ct);

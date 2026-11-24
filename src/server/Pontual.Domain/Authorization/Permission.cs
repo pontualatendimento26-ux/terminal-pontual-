@@ -17,6 +17,7 @@ public sealed class Permission
     public static readonly Permission SitesManage = new("sites.manage");
     public static readonly Permission UsageRead = new("usage.read");
     public static readonly Permission UsageReadIndividual = new("usage.read.individual");
+    public static readonly Permission ScreenControl = new("screen.control");
     public static readonly Permission AlertsRead = new("alerts.read");
     public static readonly Permission AlertsHandle = new("alerts.handle");
     public static readonly Permission AlertRulesManage = new("alert-rules.manage");

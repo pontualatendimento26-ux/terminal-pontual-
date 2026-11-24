@@ -358,8 +358,13 @@
 
 <dialog id="dlg-tela" aria-labelledby="t-tela"><div class="dlg">
   <h2 id="t-tela">Tela da atendente</h2><p id="tela-sub"></p>
-  <div class="tela-quadro"><img id="tela-img" alt="Tela do computador da atendente, ao vivo" hidden><p id="tela-estado" role="status"></p></div>
-  <div class="acoes"><button type="button" class="btn" data-fechar>Fechar</button></div>
+  <div class="tela-quadro"><img id="tela-img" alt="Tela do computador da atendente, ao vivo" hidden tabindex="0"><p id="tela-estado" role="status"></p></div>
+  <p id="tela-controle-aviso" class="aviso-linha" hidden></p>
+  <div class="acoes">
+    <button type="button" class="btn" id="tela-assumir" hidden>Assumir o controle</button>
+    <button type="button" class="btn perigo" id="tela-soltar" hidden>Soltar o controle</button>
+    <button type="button" class="btn claro" data-fechar>Fechar</button>
+  </div>
 </div></dialog>
 
 <dialog id="dlg-grav" aria-labelledby="t-grav"><div class="dlg">

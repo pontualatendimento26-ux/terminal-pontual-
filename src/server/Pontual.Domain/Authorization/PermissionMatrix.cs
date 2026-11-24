@@ -34,6 +34,7 @@ public static class PermissionMatrix
         (Permission.SitesManage,            new(Administrators, None)),
         (Permission.UsageRead,              new(Everyone, None)),
         (Permission.UsageReadIndividual,    new(Grants.Auditor | Administrators, AuditedRead)),
+        (Permission.ScreenControl,          new(Administrators, AuditedRead)),
         (Permission.AlertsRead,             new(Everyone, None)),
         (Permission.AlertsHandle,           new(Grants.Support | Administrators, None)),
         (Permission.AlertRulesManage,       new(Administrators, Reauthentication | Justification)),

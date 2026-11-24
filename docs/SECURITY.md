@@ -55,6 +55,7 @@ Exigências: **R** reautenticação · **J** justificativa obrigatória · **P**
 | `sites.manage` — unidades | | | ✓ | ✓ | |
 | `usage.read` — histórico por máquina | ✓ | ✓ | ✓ | ✓ | |
 | `usage.read.individual` — histórico por atendente | ✓ | | ✓ | ✓ | leitura auditada |
+| `screen.control` — controlar mouse e teclado da tela ao vivo | | | ✓ | ✓ | leitura auditada |
 | `alerts.read` | ✓ | ✓ | ✓ | ✓ | |
 | `alerts.handle` — reconhecer e resolver | | ✓ | ✓ | ✓ | |
 | `alert-rules.manage` | | | ✓ | ✓ | R, J |
@@ -164,6 +165,21 @@ Requisitos inegociáveis:
 Durante a sessão, o administrador vê o que está na tela, inclusive **dados de clientes da Pontual**. Isso é tratamento de dados pessoais de terceiros e precisa constar no procedimento e no registro de operações.
 
 A ferramenta é escolhida por PoC na Fase 0 **[H-06]**. Se nenhuma cumprir as condições, o módulo não é entregue como descrito.
+
+### 8.1 Controle da tela ao vivo (`screen.control`)
+
+Separado do suporte remoto acima: é o controle do **mouse e do teclado** em cima da visualização ao vivo já existente, sem terminal, sem arquivos e sem execução de comandos. O administrador age **como a atendente** — o que ele faz vale onde ela poderia agir, e sai com a identidade dela nos sistemas (WhatsApp, CRM).
+
+Regras:
+
+- **só de administrador** (`screen.control`), e **só com a visualização da tela aberta** — não se controla o que não se vê;
+- **não exige o clique da atendente** nem um segundo administrador (decisão do dono, 2026-11-24). É a diferença deliberada em relação à seção 8: aqui o TI assume direto;
+- **aviso na tela da atendente** enquanto dura o controle — uma plaquinha pequena e discreta no canto, por processo independente do Shell, que não se arrasta nem se fecha. É pouco visível a pedido do dono, mas nunca oculta;
+- **início e término vão para a auditoria** (`screen.control`, `screen.control.end`), com administrador, máquina e hora. O que é digitado **não** é registrado;
+- **expira sozinho** em segundos se o painel para de enviar comando, e termina ao fechar a janela;
+- vale **só em computadores** e **não** alcança o que o Windows protege da própria atendente (janela do UAC, tela de login, Ctrl+Alt+Del).
+
+Risco aceito pelo dono: como não há clique nem segundo administrador, a atribuição de uma ação depende do registro de quem estava com o controle no momento, não de um consentimento por ação. A plaquinha é o que mantém a atendente ciente.
 
 ## 9. Matriz de ameaças
 

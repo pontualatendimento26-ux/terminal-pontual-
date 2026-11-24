@@ -808,7 +808,9 @@ async function abrirTela(d, nome) {
   const caminho = `/devices/${encodeURIComponent(d.id)}/screen`;
   const dizer = (mensagem) => { estado.textContent = mensagem; estado.hidden = false; img.hidden = true; };
   $('t-tela').textContent = `Tela de ${texto(nome) || 'atendente'}`;
-  $('tela-sub').textContent = 'Ao vivo. A atendente vê o aviso "O TI está vendo sua tela" enquanto esta janela estiver aberta, e a abertura fica na auditoria.';
+  $('tela-sub').textContent = pode('screen.control')
+    ? 'Ao vivo. A barra do Terminal da atendente mostra sempre "As atividades serão monitoradas"; a abertura fica na auditoria. Para mexer no mouse e no teclado dela, clique em "Assumir o controle" — aí aparece uma plaquinha na tela dela e o que você fizer sai no nome dela.'
+    : 'Ao vivo. A barra do Terminal da atendente mostra sempre "As atividades serão monitoradas", e a abertura fica na auditoria.';
   img.removeAttribute('src');
   dizer('Pedindo a imagem ao computador. Leva alguns segundos.');
   dlg.showModal();
@@ -816,12 +818,95 @@ async function abrirTela(d, nome) {
   let vivo = true, url = null, temImagem = false;
   const parar = () => {
     if (!vivo) return;
+    pararControle();
     vivo = false;
     api('DELETE', caminho).catch(() => {});
     if (url) URL.revokeObjectURL(url);
     img.removeAttribute('src');
   };
   dlg.addEventListener('close', parar, { once: true });
+
+  // ---- Controle do mouse e do teclado (só para quem tem a permissão screen.control) ----
+  // Enquanto o controle está ativo, o que o TI faz sobre a imagem vira comandos enviados ao Terminal,
+  // que os aplica no Windows da atendente. Nada é gravado. A atendente vê uma plaquinha na tela dela.
+  const controleCaminho = `/devices/${encodeURIComponent(d.id)}/control`;
+  const btnAssumir = $('tela-assumir'), btnSoltar = $('tela-soltar'), avisoControle = $('tela-controle-aviso');
+  const podeControlar = pode('screen.control');
+  let controlando = false, fila = [], flushTimer = null, ultimoMove = 0, ultimoEnvio = 0;
+  btnAssumir.hidden = !podeControlar;
+  btnSoltar.hidden = true;
+  avisoControle.hidden = true;
+
+  // Fração de 0 a 1 sobre a imagem de verdade, descontando a borda preta de uma imagem que não preenche o quadro.
+  const posicao = (ev) => {
+    const r = img.getBoundingClientRect();
+    if (!img.naturalWidth || !r.width) return { x: 0, y: 0 };
+    const nat = img.naturalWidth / img.naturalHeight, cx = r.width / r.height;
+    let w = r.width, h = r.height, ox = 0, oy = 0;
+    if (nat > cx) { h = r.width / nat; oy = (r.height - h) / 2; } else { w = r.height * nat; ox = (r.width - w) / 2; }
+    const x = (ev.clientX - r.left - ox) / w, y = (ev.clientY - r.top - oy) / h;
+    return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) };
+  };
+
+  const flush = async () => {
+    if (!controlando) return;
+    const agora = Date.now();
+    if (!fila.length && agora - ultimoEnvio < 3000) return; // sinal de vida a cada 3 s para o controle não vencer
+    const lote = fila; fila = []; ultimoEnvio = agora;
+    try {
+      await api('POST', `${controleCaminho}/input`, lote);
+    } catch (e) {
+      if (e && e.status === 410) pararControle('O controle foi encerrado. Clique em "Assumir o controle" de novo.');
+    }
+  };
+
+  const onMove = (ev) => { const t = Date.now(); if (t - ultimoMove < 40) return; ultimoMove = t; const p = posicao(ev); fila.push({ type: 'move', x: p.x, y: p.y }); };
+  const onDown = (ev) => { ev.preventDefault(); const p = posicao(ev); fila.push({ type: 'move', x: p.x, y: p.y }, { type: 'down', button: ev.button }); img.focus(); };
+  const onUp = (ev) => { ev.preventDefault(); fila.push({ type: 'up', button: ev.button }); };
+  const onWheel = (ev) => { ev.preventDefault(); fila.push({ type: 'wheel', delta: ev.deltaY < 0 ? 120 : -120 }); };
+  const onMenu = (ev) => ev.preventDefault();
+  const onKey = (ev) => {
+    ev.preventDefault();
+    if (ev.key && ev.key.length === 1 && !ev.ctrlKey && !ev.altKey && !ev.metaKey) fila.push({ type: 'text', text: ev.key });
+    else fila.push({ type: 'key', key: ev.keyCode });
+  };
+  const onKeyUp = (ev) => { ev.preventDefault(); fila.push({ type: 'keyup', key: ev.keyCode }); };
+
+  const ouvintes = (ligar) => {
+    const m = ligar ? 'addEventListener' : 'removeEventListener';
+    img[m]('mousemove', onMove); img[m]('mousedown', onDown); img[m]('mouseup', onUp);
+    img[m]('wheel', onWheel, { passive: false }); img[m]('contextmenu', onMenu);
+    img[m]('keydown', onKey); img[m]('keyup', onKeyUp);
+  };
+
+  async function assumirControle() {
+    if (!vivo || controlando) return;
+    try { await api('POST', controleCaminho); }
+    catch (e) { recado(e && e.message ? e.message : 'Não foi possível assumir o controle.', true); return; }
+    controlando = true; ultimoEnvio = Date.now();
+    btnAssumir.hidden = true; btnSoltar.hidden = false;
+    avisoControle.hidden = false;
+    avisoControle.textContent = 'Você está mexendo no mouse e no teclado da atendente — o que fizer sai no nome dela. Clique na imagem e use o teclado. Uma plaquinha avisa a atendente na tela dela.';
+    img.style.cursor = 'crosshair';
+    ouvintes(true); img.focus();
+    flushTimer = setInterval(flush, 50);
+  }
+
+  function pararControle(msg) {
+    if (!controlando) { if (podeControlar && vivo) btnAssumir.hidden = false; btnSoltar.hidden = true; return; }
+    controlando = false;
+    ouvintes(false);
+    if (flushTimer) { clearInterval(flushTimer); flushTimer = null; }
+    fila = [];
+    img.style.cursor = '';
+    btnSoltar.hidden = true; btnAssumir.hidden = !(podeControlar && vivo);
+    avisoControle.hidden = true;
+    api('DELETE', controleCaminho).catch(() => {});
+    if (msg) recado(msg, true);
+  }
+
+  btnAssumir.onclick = assumirControle;
+  btnSoltar.onclick = () => pararControle();
 
   // Troca a imagem só depois de o navegador terminar de decodificar a nova, para não piscar nem mostrar quadro pela metade.
   const trocar = (novoUrl) => new Promise((pronto) => {
@@ -854,6 +939,7 @@ async function abrirTela(d, nome) {
       if (!vivo) break;
       if (r.status === 200) {
         await trocar(URL.createObjectURL(await r.blob()));
+        if (controlando) atraso = 120; // controlando: atualiza mais rápido para o TI ver o que faz
       } else if (r.status === 204) {
         // Ainda sem a primeira imagem: espera um pouco mais entre as tentativas.
         atraso = 900;

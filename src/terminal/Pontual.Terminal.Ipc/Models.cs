@@ -44,8 +44,18 @@ public sealed record CoverageOutgoing(Guid Id, string Contact, string Message);
 
 public sealed record EnrollResponse(string DeviceId, string Token);
 
-/// <summary>O TI está com a visualização ao vivo desta tela aberta? <c>Viewer</c> é o nome de quem está vendo.</summary>
-public sealed record ScreenRequest(bool Wanted, string? Viewer);
+/// <summary>O TI está com a visualização ao vivo desta tela aberta? <c>Viewer</c> é o nome de quem está vendo.
+/// <c>Controlling</c>: o TI também está mexendo no mouse e no teclado desta máquina agora.</summary>
+public sealed record ScreenRequest(bool Wanted, string? Viewer, bool Controlling = false);
+
+/// <summary>
+/// Um comando do mouse ou do teclado vindo do TI (mesmos tipos de <c>Pontual.Server.Api.InputEvent</c>).
+/// <c>move</c> usa <c>X</c>/<c>Y</c> de 0 a 1 na área de todos os monitores.
+/// </summary>
+public sealed record InputCommand(string Type, double X = 0, double Y = 0, int Button = 0, int Delta = 0, int Key = 0, string? Text = null);
+
+/// <summary>Os comandos que o Terminal buscou de uma vez. <c>Controlling</c> falso = o controle acabou.</summary>
+public sealed record ControlBatch(bool Controlling, IReadOnlyList<InputCommand> Events);
 
 /// <summary>Como gravar a tela (decidido na Central). <c>Record</c> falso = não grava.</summary>
 /// <remarks>StartMinute/EndMinute: janela do dia (hora local, em minutos desde 0h) em que se grava; fora dela, nada. Ausentes (Central antiga) = o dia todo.</remarks>

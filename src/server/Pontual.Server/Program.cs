@@ -73,6 +73,12 @@ builder.Services.AddRateLimiter(options =>
         "device:" + Secrets.Sha256(context.Request.Headers.Authorization.ToString()),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 300, Window = TimeSpan.FromMinutes(1) }));
 
+    // Tela ao vivo e controle: as imagens rápidas e a busca contínua de comandos passam do teto da máquina.
+    // O teto é bem mais alto, mas só vale enquanto um administrador está olhando (fora disso as rotas respondem na hora).
+    options.AddPolicy(ScreenEndpoints.ScreenRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
+        "screen:" + Secrets.Sha256(context.Request.Headers.Authorization.ToString()),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 2000, Window = TimeSpan.FromMinutes(1) }));
+
     // O CRM avisa cada mensagem de cliente; o teto só segura um envio em laço.
     options.AddPolicy(CrmEndpoints.WebhookRateLimit, context => RateLimitPartition.GetFixedWindowLimiter(
         "crm:" + Client(context), _ => new FixedWindowRateLimiterOptions { PermitLimit = 600, Window = TimeSpan.FromMinutes(1) }));

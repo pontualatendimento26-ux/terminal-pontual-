@@ -113,6 +113,20 @@ public sealed class ServerApi : IDisposable
         return (await ReadAsync<ScreenRequest>(response, ct).ConfigureAwait(false)).Wanted;
     }
 
+    /// <summary>
+    /// Busca os comandos do mouse e do teclado que o TI mandou. A chamada pode ficar alguns segundos
+    /// esperando o próximo comando (por isso o tempo-limite próprio, maior que o padrão de 10 s).
+    /// <c>Controlling</c> falso na resposta = o controle acabou.
+    /// </summary>
+    public async Task<ControlBatch> FetchControlAsync(CancellationToken ct = default)
+    {
+        using var slow = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        slow.CancelAfter(TimeSpan.FromSeconds(12));
+        using var request = new HttpRequestMessage(HttpMethod.Get, "device/control");
+        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, slow.Token).ConfigureAwait(false);
+        return await ReadAsync<ControlBatch>(response, slow.Token).ConfigureAwait(false);
+    }
+
     /// <summary>Pergunta à Central se esta máquina deve gravar a tela, e como.</summary>
     public async Task<RecordingPolicy> GetRecordingPolicyAsync(CancellationToken ct = default)
     {
