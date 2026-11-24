@@ -403,6 +403,19 @@ public static class AssistantEndpoints
                 ? Guid.NewGuid()
                 : last.ConversationId;
 
+            // Textos salvos por palavra-chave: o servidor responde na hora, sem a IA.
+            var history = await db.AssistantMessages.AsNoTracking()
+                .Where(m => m.DeviceId == device.Id && m.ConversationId == conversationId)
+                .OrderByDescending(m => m.Id)
+                .Take(ContextTurns)
+                .ToListAsync(ct);
+            history.Reverse();
+            if (await SavedTexts.ReplyAsync(db, device.Id, history, question, now, ct) is { } ready)
+            {
+                await SendReadyAsync(context, db, device.Id, conversationId, question, ready, now, ct);
+                return Results.Empty;
+            }
+
             // A tela só entra se a Central permitir; e só nesta pergunta (as anteriores voltam à IA sem ela).
             var screen = await ScreenAllowedAsync(db, ct) ? ReadScreen(body.Screen) : (Text: null, Image: null, Note: "");
 
@@ -491,6 +504,24 @@ public static class AssistantEndpoints
         }
 
         return Results.Empty;
+    }
+
+    /// <summary>Grava a pergunta e a resposta pronta e manda a resposta no mesmo fluxo que a da IA.</summary>
+    private static async Task SendReadyAsync(
+        HttpContext context, PontualDb db, Guid deviceId, Guid conversationId, string question, string ready, DateTime now, CancellationToken ct)
+    {
+        var asked = new AssistantMessage { DeviceId = deviceId, ConversationId = conversationId, Role = AssistantRole.User, Text = question, At = now };
+        db.AssistantMessages.Add(asked);
+        await db.SaveChangesAsync(ct);
+        var answered = new AssistantMessage { DeviceId = deviceId, ConversationId = conversationId, Role = AssistantRole.Assistant, Text = ready, At = now };
+        db.AssistantMessages.Add(answered);
+        await db.SaveChangesAsync(CancellationToken.None);
+
+        context.Response.ContentType = "text/event-stream";
+        context.Response.Headers.CacheControl = "no-store";
+        await SendAsync(context, new { conversationId, questionId = asked.Id, screen = "" }, ct);
+        await SendAsync(context, new { delta = ready }, ct);
+        await SendAsync(context, new { done = true, id = answered.Id, at = answered.At }, ct);
     }
 
     /// <summary>A base ligada cabe inteira nas instruções? Senão, a IA recebe o índice e abre o que precisar.</summary>

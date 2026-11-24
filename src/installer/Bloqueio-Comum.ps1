@@ -24,6 +24,8 @@ $ProgramasFixos = @(
     'Pontual.Terminal.Shell.exe', 'msedgewebview2.exe', 'explorer.exe', 'shutdown.exe',
     # PDF: o Edge (que vem no Windows, travado mais abaixo para so abrir arquivos do computador) ou o Adobe Reader.
     'msedge.exe', 'AcroRd32.exe', 'Acrobat.exe',
+    # Arquivos de texto (.txt): Bloco de Notas (pedido do dono em 24/11/2026).
+    'notepad.exe',
     # Planilhas: Excel ou LibreOffice, se estiverem instalados.
     'EXCEL.EXE', 'soffice.exe', 'soffice.bin', 'scalc.exe',
     # Navegadores: as atendentes usam os perfis deles (um WhatsApp em cada). O Terminal vigia os enderecos.
@@ -155,11 +157,8 @@ function PoliticasDoBloqueio([string]$Comando) {
         @($explorer, 'NoWinKeys', 1),
         @($explorer, 'NoControlPanel', 1),
         @($explorer, 'NoDriveTypeAutoRun', 255),
-        # O Edge comeca liberado so para abrir PDF: qualquer endereco de internet e recusado, so arquivos do computador abrem.
-        # (Os sites dos bancos abrem dentro do Terminal, que usa outro componente e nao e afetado.)
-        # Se o TI cadastrar o Edge como programa na Central, o Terminal troca o "*" pela lista de sites bloqueados pelo TI.
+        # Edge: nenhum site e bloqueado (decisao do dono, 24/11/2026). O "*" das versoes antigas e apagado em GravarBloqueio.
         @('Software\Policies\Microsoft\Edge', 'HideFirstRunExperience', 1),
-        @('Software\Policies\Microsoft\Edge\URLBlocklist', '1', '*'),
         @('Software\Policies\Microsoft\Edge\URLAllowlist', '1', 'file://*'),
         @('Software\Policies\Microsoft\Edge', 'InPrivateModeAvailability', 1),
         @('Software\Policies\Microsoft\Edge', 'BrowserGuestModeEnabled', 0),
@@ -216,6 +215,9 @@ function GravarBloqueio([string]$Raiz, [string]$Comando, [string[]]$ProgramasExt
         }
         finally { $chave.Close() }
     }
+
+    # Edge sem nenhum site bloqueado: apaga a lista antiga (o "*"). A chave vazia e recriada em LiberarListasDosNavegadores.
+    $usuarios.DeleteSubKeyTree("$Raiz\Software\Policies\Microsoft\Edge\URLBlocklist", $false)
 
     $usuarios.DeleteSubKeyTree("$Raiz\$ChaveRestrictRun", $false)
     $lista = $usuarios.CreateSubKey("$Raiz\$ChaveRestrictRun")

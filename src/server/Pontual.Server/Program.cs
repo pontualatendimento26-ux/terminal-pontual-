@@ -34,7 +34,6 @@ builder.Services.AddDbContext<PontualDb>((services, options) =>
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AuditWriter>();
-builder.Services.AddSingleton<LoginLockout>();
 builder.Services.AddSingleton<StepUp>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHostedService<Pontual.Server.Data.RetentionWorker>();

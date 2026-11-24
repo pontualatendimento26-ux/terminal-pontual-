@@ -111,6 +111,10 @@ public partial class MainWindow
                 _swallowV = down;
                 return new IntPtr(1);
             }
+            else if (key == NativeMethods.VkSnapshot && PassSnapshotKey(down))
+            {
+                // Print seletivo: a tecla segue para o Lightshot (MainWindow.Lightshot.cs).
+            }
             else if (key == NativeMethods.VkSnapshot)
             {
                 if (down && !_swallowSnapshot)

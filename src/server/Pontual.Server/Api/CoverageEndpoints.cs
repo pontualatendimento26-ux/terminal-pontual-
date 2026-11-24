@@ -18,6 +18,7 @@ public static class CoverageEndpoints
     private sealed record ResultBody(bool? Sent, bool? Holding, string? Error);
     private sealed record ModeBody(string? Mode);
     private sealed record AbsenceBody(bool? Absent);
+    private sealed record CrmLinesBody(string? Lines);
     private sealed record ApproveBody(string? Message);
     private sealed record DayBody(int? Day, bool? On, string? From, string? To);
     private sealed record ScheduleBody(List<DayBody>? Days);
@@ -33,6 +34,7 @@ public static class CoverageEndpoints
         api.MapPut("/neural/attendants/{deviceId:guid}/coverage", SetModeAsync).Panel(Permission.ConfigEdit);
         api.MapPut("/neural/attendants/{deviceId:guid}/coverage/schedule", SetScheduleAsync).Panel(Permission.ConfigEdit);
         api.MapPut("/neural/attendants/{deviceId:guid}/absence", SetAbsenceAsync).Panel(Permission.ConfigEdit);
+        api.MapPut("/neural/attendants/{deviceId:guid}/crm-lines", SetCrmLinesAsync).Panel(Permission.ConfigEdit);
         api.MapPost("/neural/coverage/{id:guid}/approve", ApproveAsync).Panel(Permission.ConfigEdit);
         api.MapPost("/neural/coverage/{id:guid}/reject", RejectAsync).Panel(Permission.ConfigEdit);
     }
@@ -354,6 +356,36 @@ public static class CoverageEndpoints
         return Results.Ok(new { absent });
     }
 
+    /// <summary>Grava as linhas de WhatsApp desta atendente no CRM: no dia da falta, a IA escreve a resposta aos clientes delas.</summary>
+    private static async Task<IResult> SetCrmLinesAsync(Guid deviceId, HttpContext context, PontualDb db, AuditWriter audit, TimeProvider time, CancellationToken ct)
+    {
+        var admin = context.Admin();
+        var body = await context.ReadBodyAsync<CrmLinesBody>();
+        var lines = CrmAgent.NormalizeLines(body.Lines);
+        if ((body.Lines ?? "").Any(char.IsAsciiDigit) && lines.Length == 0)
+        {
+            throw ApiError.BadRequest("Escreva o número completo da linha, com DDD (por exemplo 5561982378969).");
+        }
+
+        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.Id == deviceId, ct) ?? throw ApiError.NotFound("Máquina não encontrada.");
+        var profile = await db.AssistantProfiles.FirstOrDefaultAsync(p => p.DeviceId == deviceId, ct);
+        if (profile is null)
+        {
+            profile = new AssistantProfile { DeviceId = deviceId };
+            db.AssistantProfiles.Add(profile);
+        }
+
+        if (profile.CrmLines != lines)
+        {
+            profile.CrmLines = lines;
+            profile.UpdatedAt = time.GetUtcNow().UtcDateTime;
+            await audit.SaveAsync(db, AuditInfo.By(admin, "coverage.crmLines",
+                $"{admin.Name} definiu as linhas do CRM de {device.Label}: {(lines.Length > 0 ? lines : "nenhuma")}", "device", device.Id), cancellationToken: ct);
+        }
+
+        return Results.Ok(new { lines });
+    }
+
     /// <summary>Grava os dias e horários em que a IA pode atender por esta atendente. Não liga nem desliga a cobertura.</summary>
     private static async Task<IResult> SetScheduleAsync(Guid deviceId, HttpContext context, PontualDb db, AuditWriter audit, TimeProvider time, CancellationToken ct)
     {
@@ -460,7 +492,7 @@ public static class CoverageEndpoints
     public static async Task<object> ListAsync(PontualDb db, Guid deviceId, DateTime utcNow, CancellationToken ct)
     {
         var profile = await db.AssistantProfiles.AsNoTracking().Where(p => p.DeviceId == deviceId)
-            .Select(p => new { p.Coverage, p.AbsentOn, p.CoverageSchedule }).FirstOrDefaultAsync(ct);
+            .Select(p => new { p.Coverage, p.AbsentOn, p.CoverageSchedule, p.CrmLines }).FirstOrDefaultAsync(ct);
         var mode = profile?.Coverage ?? "";
         var absent = profile?.AbsentOn == Coverage.Day(utcNow);
         // Para a tela dizer na hora por que a IA não está respondendo mesmo com a falta marcada.
@@ -470,7 +502,12 @@ public static class CoverageEndpoints
             .Where(r => r.DeviceId == deviceId).OrderByDescending(r => r.CreatedAt).Take(60).ToListAsync(ct);
         var status = await db.Devices.AsNoTracking().Where(d => d.Id == deviceId)
             .Select(d => new { d.CoverageStatus, d.CoverageStatusAt }).FirstOrDefaultAsync(ct);
-        return new { mode, absent, withinHours, hours, replies = replies.Select(Dto), status = status?.CoverageStatus ?? "", statusAt = status?.CoverageStatusAt };
+        // Linhas que já apareceram nos avisos do CRM, para escolher sem digitar.
+        var since = utcNow.AddDays(-30);
+        var knownLines = await db.CrmEvents.AsNoTracking().Where(e => e.Line != "" && e.At > since)
+            .GroupBy(e => e.Line).Select(g => new { number = g.Key, name = g.Max(e => e.LineName) }).Take(80).ToListAsync(ct);
+        var crmReplies = await db.CrmReplies.AsNoTracking().CountAsync(r => r.Status == CrmReplyStatus.Pending && r.Attendant != "", ct);
+        return new { mode, absent, withinHours, crmLines = profile?.CrmLines ?? "", knownLines = knownLines.OrderBy(l => l.name), crmPending = crmReplies, hours, replies = replies.Select(Dto), status = status?.CoverageStatus ?? "", statusAt = status?.CoverageStatusAt };
     }
 
     private static object Dto(CoverageReply r) => new

@@ -1335,6 +1335,26 @@ function desenharObservados() {
 }
 
 // --------------------------------------------- alertas, notificações, auditoria
+// Nas linhas já decididas para todas: escolhe se o botão da linha vale para todas ou só para uma atendente (exceção).
+// A escolha fica guardada por linha para sobreviver ao redesenho da tabela; depois da decisão volta para "todas".
+const quemDecidido = {};
+function seletorDecidido(k, item) {
+  const s = el('select', { className: 'campo', 'data-k': k, style: 'width:auto;max-width:200px' },
+    el('option', { value: 'all', textContent: 'Para todas' }),
+    ...aprovadas().map((d) => [d.id, nomeDe(d)]).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'))
+      .map(([id, nome]) => el('option', { value: id, textContent: `Só ${nome}` })));
+  s.setAttribute('aria-label', `Para qual atendente mudar a decisão sobre ${item}`);
+  s.value = quemDecidido[k] || 'all';
+  if (!s.value) { s.value = 'all'; delete quemDecidido[k]; }
+  s.onchange = () => { quemDecidido[k] = s.value; };
+  return s;
+}
+function limparDecidido(k) {
+  delete quemDecidido[k];
+  const s = document.querySelector(`[data-k="${CSS.escape(k)}"]`);
+  if (s) s.value = 'all';
+}
+
 // ======================================================= aplicativos do computador
 // O Terminal deixa a atendente abrir os aplicativos do computador; na primeira vez o pedido chega aqui. O TI libera ou
 // bloqueia só para aquela atendente ou para todas; a decisão de uma atendente vale mais que a decisão para todas.
@@ -1394,7 +1414,10 @@ function desenharTabelasAplicativos(pendentes, decididos, espera, permite) {
       ic(voltar ? 'x' : liberar ? 'check' : 'lock', 16), voltar ? 'Tirar' : liberar ? 'Liberar' : 'Bloquear');
     b.setAttribute('aria-label', voltar ? `Tirar a decisão de ${texto(a.exe)} só para ${quem}` : `${liberar ? 'Liberar' : 'Bloquear'} ${texto(a.exe)}`);
     if (voltar) b.title = `Tira a decisão só para ${quem}: volta a valer a decisão para todas.`;
-    b.onclick = () => decidirAplicativo(b, a.exe, decisao, escopo(), quem, a.name);
+    b.onclick = () => {
+      const id = escopo(), d = id && maquina(id);
+      decidirAplicativo(b, a.exe, decisao, id, d ? nomeDe(d) : quem, a.name).then((feito) => { if (feito) limparDecidido(`aplicativos-decidido:${chave(a)}`); });
+    };
     return b;
   };
   const acoes = (...botoes) => el('td', { className: 'estreita' }, permite ? el('div', { style: 'display:flex;gap:8px' }, ...botoes) : null);
@@ -1429,7 +1452,8 @@ function desenharTabelasAplicativos(pendentes, decididos, espera, permite) {
   const colD = ['Aplicativo', 'Arquivo', 'Vale para', 'Situação', 'Decidido por', 'Quando', ''];
   trocar($('tb-aplicativos-decididos'), [cabecalho(colD), espera ? linhaUnica(colD.length, espera) : !decididos.length ? linhaUnica(colD.length, 'Nenhum aplicativo decidido ainda.') : el('tbody', {}, ...decididos.map((a) => {
     const bloqueado = a.status === 'blocked', ela = a.scope === 'device' && a.deviceId, quem = nomeApp(a);
-    const escopo = () => (ela ? a.deviceId : null);
+    const seletor = permite && !ela ? seletorDecidido(`aplicativos-decidido:${chave(a)}`, texto(a.exe)) : null;
+    const escopo = () => (ela ? a.deviceId : seletor && seletor.value !== 'all' ? seletor.value : null);
     return el('tr', {},
       el('td', {}, nome(a)),
       el('td', {}, arquivo(a)),
@@ -1438,7 +1462,7 @@ function desenharTabelasAplicativos(pendentes, decididos, espera, permite) {
       el('td', { textContent: texto(a.decidedBy) || nada }),
       el('td', { textContent: a.decidedAt ? quando(a.decidedAt) : nada }),
       ela ? acoes(botao(a, bloqueado ? 'allow' : 'block', escopo, quem), botao(a, 'reset', escopo, quem))
-        : acoes(botao(a, bloqueado ? 'allow' : 'block', escopo, quem)));
+        : acoes(seletor, botao(a, bloqueado ? 'allow' : 'block', escopo, quem)));
   }))]);
 }
 
@@ -1487,7 +1511,10 @@ function desenharChrome() {
       ic(voltar ? 'x' : liberar ? 'check' : 'lock', 16), voltar ? 'Tirar' : liberar ? 'Liberar' : 'Bloquear');
     b.setAttribute('aria-label', voltar ? `Tirar a decisão de ${texto(c.host)} só para ${quem}` : `${liberar ? 'Liberar' : 'Bloquear'} ${texto(c.host)}`);
     if (voltar) b.title = `Tira a decisão só para ${quem}: volta a valer a decisão para todas.`;
-    b.onclick = () => decidirChrome(b, c.host, decisao, escopo(), quem);
+    b.onclick = () => {
+      const id = escopo(), d = id && maquina(id);
+      decidirChrome(b, c.host, decisao, id, d ? nomeDe(d) : quem).then((feito) => { if (feito) limparDecidido(`chrome-decidido:${chave(c)}`); });
+    };
     return b;
   };
   const acoes = (...botoes) => el('td', { className: 'estreita' }, permite ? el('div', { style: 'display:flex;gap:8px' }, ...botoes) : null);
@@ -1522,7 +1549,8 @@ function desenharChrome() {
   const colD = ['Domínio', 'Vale para', 'Situação', 'Decidido por', 'Quando', ''];
   trocar($('tb-chrome-decididos'), [cabecalho(colD), espera ? linhaUnica(colD.length, espera) : !decididos.length ? linhaUnica(colD.length, 'Nenhum domínio decidido ainda.') : el('tbody', {}, ...decididos.map((c) => {
     const bloqueado = c.status === 'blocked', ela = c.scope === 'device' && c.deviceId, quem = nomeChrome(c);
-    const escopo = () => (ela ? c.deviceId : null);
+    const seletor = permite && !ela ? seletorDecidido(`chrome-decidido:${chave(c)}`, texto(c.host)) : null;
+    const escopo = () => (ela ? c.deviceId : seletor && seletor.value !== 'all' ? seletor.value : null);
     return el('tr', {},
       el('td', {}, el('span', { className: 'dominio', textContent: texto(c.host) })),
       el('td', { textContent: ela ? `Só ${quem}` : 'Todas as atendentes' }),
@@ -1530,7 +1558,7 @@ function desenharChrome() {
       el('td', { textContent: texto(c.decidedBy) || nada }),
       el('td', { textContent: c.decidedAt ? quando(c.decidedAt) : nada }),
       ela ? acoes(botao(c, bloqueado ? 'allow' : 'block', escopo, quem), botao(c, 'reset', escopo, quem))
-        : acoes(botao(c, bloqueado ? 'allow' : 'block', escopo, quem)));
+        : acoes(seletor, botao(c, bloqueado ? 'allow' : 'block', escopo, quem)));
   }))]);
 }
 $('chrome-novo').addEventListener('submit', (e) => {

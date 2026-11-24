@@ -248,6 +248,7 @@ public static class AssistantPrompt
         var name = string.IsNullOrWhiteSpace(device.AttendantName) ? "uma atendente" : device.AttendantName;
         var today = TimeZoneInfo.ConvertTimeFromUtc(utcNow, BrazilTime).ToString("dddd, d 'de' MMMM 'de' yyyy", CultureInfo.GetCultureInfo("pt-BR"));
         var text = new StringBuilder($"Você está conversando com {name}. Hoje é {today}.");
+        text.Append("\n\nTextos salvos: ela pode salvar textos no perfil dela com uma palavra-chave. Quem salva e responde é o próprio sistema, antes de você, então nunca diga que salvou ou apagou um texto. Se ela quiser usar, ensine: escrever \"quero que salve isso no meu perfil\", depois mandar o texto e a palavra-chave. Para ver a lista: \"minhas palavras-chave\". Para apagar: \"apagar palavra-chave\" e o nome dela.");
 
         if (profile is { Instructions.Length: > 0 })
         {

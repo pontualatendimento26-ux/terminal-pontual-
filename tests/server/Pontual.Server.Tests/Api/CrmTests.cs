@@ -52,11 +52,12 @@ public sealed class CrmTests
 
     private static object Decide(string acao, string mensagem, string motivo = "teste") => new { acao, mensagem, motivo };
 
-    private static object Aviso(string conversa, string texto, bool fromMe = false) => new
+    private static object Aviso(string conversa, string texto, bool fromMe = false, string funil = CrmAgent.TestFunnel, string linha = "556182378969") => new
     {
         evento = "mensagem_recebida",
-        conversa = new { id = conversa, contato = new { nome = "Maria Souza", telefone = "5561999990000" } },
+        conversa = new { id = conversa, contato = new { nome = "Maria Souza", telefone = "5561999990000" }, linha = new { id = "Sarah", nome = "Sarah | 58", numero = linha } },
         mensagem = new { texto, from_me = fromMe },
+        funil = new { id = funil, nome = "Funil" },
     };
 
     private static async Task<(TestApp App, FakeModel Model, FakeCrm Crm, HttpClient Owner, string Webhook)> SetupAsync()
@@ -94,7 +95,50 @@ public sealed class CrmTests
         var c = CrmAgent.Parse("""{"conversa_id":"9","mensagem":{"tipo":"audio","transcricao":"quero saber da margem","direcao":"entrada"}}""");
         Assert.Equal(("9", CrmAuthor.Client, "[áudio] quero saber da margem"), (c.ConversationId, c.Author, c.Text));
 
+        Assert.Equal(("556182378969", "Sarah | 58", CrmAgent.TestFunnel), (a.Line, a.LineName, a.Funnel));
+
         Assert.Equal("", CrmAgent.Parse("não é json").ConversationId);
+    }
+
+    [Fact]
+    public void Linhas_aceitam_numero_formatado_e_sem_o_nono_digito()
+    {
+        var lines = CrmAgent.NormalizeLines("55 61 98237-8969, 556182378969; 123");
+        Assert.Equal("5561982378969,556182378969", lines);
+        Assert.True(CrmAgent.HasLine(lines, "556182378969"));
+        Assert.True(CrmAgent.HasLine("5561982378969", "556182378969"));
+        Assert.False(CrmAgent.HasLine(lines, "556199990000"));
+    }
+
+    [Fact]
+    public async Task Fora_do_funil_de_teste_so_atende_cliente_de_quem_faltou()
+    {
+        var (app, model, _, owner, webhook) = await SetupAsync();
+        using var _app = app;
+        var anonymous = app.CreateClient();
+        var (deviceId, _) = await app.ApprovedDeviceAsync(owner, "PC-09", "Sarah");
+        var allDay = Enumerable.Range(0, 7).Select(d => new { day = d, on = true, from = "00:00", to = "23:59" }).ToArray();
+        await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/coverage/schedule", new { days = allDay });
+        await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/crm-lines", new { lines = "55 61 8237-8969" });
+
+        // Sarah veio trabalhar: a IA não escreve.
+        await anonymous.PostAsJsonAsync(webhook, Aviso("500", "Oi", funil: "3"));
+        await WriteAsync(app, "500");
+        Assert.Empty((await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray());
+
+        // Faltou: a resposta fica esperando aprovação, com o nome dela.
+        await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{deviceId}/absence", new { absent = true });
+        await anonymous.PostAsJsonAsync(webhook, Aviso("500", "Tem alguém aí?", funil: "3"));
+        model.Decisions.Enqueue(Decide("responder", "Oi! Estou aqui, como posso ajudar?"));
+        await WriteAsync(app, "500");
+        var pending = Assert.Single((await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray());
+        Assert.Equal("Sarah", pending.GetProperty("attendant").GetString());
+        Assert.Equal("pending", pending.GetProperty("status").GetString());
+
+        // Cliente de outra linha continua sem resposta.
+        await anonymous.PostAsJsonAsync(webhook, Aviso("501", "Oi", funil: "3", linha: "556199990000"));
+        await WriteAsync(app, "501");
+        Assert.Single((await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray());
     }
 
     [Fact]

@@ -509,11 +509,33 @@ function botaoFalta(deviceId, nome, ausente, depois) {
   const b = botao(ausente ? 'Desmarcar a falta' : `${nome} faltou hoje`, null, ausente ? 'btn claro' : 'btn');
   b.title = ausente ? `A IA para de responder por ${nome}.` : `A IA responde os clientes de ${nome} no WhatsApp, hoje.`;
   b.onclick = async () => {
-    if (!ausente && !confirm(`Marcar que ${nome} faltou hoje?\n\nA IA passa a abrir as conversas não lidas do WhatsApp de ${nome} e responder na hora, como ${nome}. O que envolver valor, prazo ou proposta espera a sua aprovação na ficha dela.\n\nVale só por hoje, nos horários da aba Horários da IA. O computador de ${nome} precisa estar ligado, com o Terminal e o WhatsApp abertos nele.`)) return;
+    if (!ausente && !confirm(`Marcar que ${nome} faltou hoje?\n\nNo CRM: a IA escreve a resposta para os clientes que mandarem mensagem nas linhas de ${nome}, e cada resposta espera a sua aprovação em Clientes do CRM.\n\nNo WhatsApp do computador: a IA passa a abrir as conversas não lidas do WhatsApp de ${nome} e responder na hora, como ${nome}. O que envolver valor, prazo ou proposta espera a sua aprovação na ficha dela.\n\nVale só por hoje, nos horários da aba Horários da IA. O computador de ${nome} precisa estar ligado, com o Terminal e o WhatsApp abertos nele.`)) return;
     if (await agir(b, () => api('PUT', `/neural/attendants/${deviceId}/absence`, { absent: !ausente }),
       ausente ? `Falta de ${nome} desmarcada.` : `${nome} marcada como ausente hoje. A IA responde por ela.`) && depois) depois();
   };
   return b;
+}
+
+// As linhas de WhatsApp da atendente no CRM: no dia da falta, a IA escreve (para aprovação) aos clientes delas.
+function linhasCrm(deviceId, nome, c) {
+  const atuais = (c.crmLines || '').split(',').filter(Boolean);
+  const campo = el('input', { className: 'campo', value: atuais.join(', '), placeholder: 'Ex.: 556182378969', 'aria-label': `Linhas do CRM de ${nome}` });
+  const salvar = botao('Salvar linhas', null, 'btn mini');
+  salvar.onclick = async () => { if (await agir(salvar, () => api('PUT', `/neural/attendants/${deviceId}/crm-lines`, { lines: campo.value }), `Linhas do CRM de ${nome} salvas.`)) gavetaAtendente(deviceId); };
+  const sugestoes = (c.knownLines || []).filter((l) => !atuais.some((x) => x.slice(-8) === l.number.slice(-8))).map((l) => {
+    const b = botao(`+ ${l.name || l.number}`, null, 'btn claro mini');
+    b.title = l.number;
+    b.onclick = () => { campo.value = [...campo.value.split(',').map((x) => x.trim()).filter(Boolean), l.number].join(', '); };
+    return b;
+  });
+  return el('div', {},
+    el('h4', { textContent: `Linhas de ${nome} no CRM` }),
+    el('p', { className: 'nota', textContent: atuais.length
+      ? 'No dia da falta, a IA escreve a resposta para quem mandar mensagem nessas linhas no CRM. Nada vai ao cliente sem a sua aprovação em Clientes do CRM.'
+      : `Nenhuma linha ligada: no dia da falta, a IA não atende os clientes de ${nome} no CRM. Escreva o número da linha de WhatsApp dela (com 55 e DDD) ou escolha abaixo.` }),
+    el('div', { className: 'botoes' }, campo, salvar),
+    sugestoes.length ? el('p', { className: 'nota', textContent: 'Linhas que já mandaram aviso ao CRM (clique para acrescentar e depois salve):' }) : null,
+    sugestoes.length ? el('div', { className: 'botoes' }, ...sugestoes) : null);
 }
 
 function secaoCobertura(deviceId, a) {
@@ -531,6 +553,7 @@ function secaoCobertura(deviceId, a) {
     el('p', { className: 'nota', textContent: c.absent
       ? `${a.name} faltou hoje: a IA está respondendo os clientes dela na hora, como se fosse ela. Amanhã volta sozinha ao normal.`
       : `A IA só responde pelos clientes de ${a.name} no dia em que você marcar a falta. Se ${a.name} veio trabalhar e não está respondendo o WhatsApp, a IA não entra.` }),
+    linhasCrm(deviceId, a.name, c),
     el('h4', { textContent: `No dia em que ${a.name} faltar, a IA` }),
     el('div', { className: 'botoes' }, segmento, agenda),
     el('p', { className: 'nota', textContent: explica }),
@@ -548,6 +571,7 @@ function cartaoCobertura(deviceId, r, editavel) {
   const [rotulo, classe] = SITUACAO_COBERTURA[r.status] || [r.status, 'liso'];
   const partes = [
     el('header', {}, selo(classe, rotulo), el('b', { textContent: r.contact }), el('small', { textContent: quando(r.sentAt || r.createdAt) })),
+    r.attendant ? el('p', { className: 'nota', textContent: `Cliente de ${r.attendant}, que faltou hoje.` }) : null,
     el('div', { className: 'citacao' }, el('b', { textContent: 'Cliente escreveu' }), r.incoming),
   ];
   if (r.holding) partes.push(el('div', { className: 'citacao' }, el('b', { textContent: 'Aviso enviado na hora' }), r.holding));

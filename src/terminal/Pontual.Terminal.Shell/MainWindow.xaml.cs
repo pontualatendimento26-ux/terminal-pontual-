@@ -508,7 +508,7 @@ public partial class MainWindow : Window
     /// Trava comum a todos os WebView2: sem DevTools, menu de contexto, atalhos do navegador,
     /// gerenciador de senhas, preenchimento automático nem downloads.
     /// </summary>
-    private void ApplySettings(CoreWebView2 core, bool isHome)
+    private void ApplySettings(CoreWebView2 core, bool isHome, bool openPdfs = false)
     {
         var settings = core.Settings;
         settings.AreDevToolsEnabled = false;
@@ -521,7 +521,7 @@ public partial class MainWindow : Window
         settings.IsSwipeNavigationEnabled = false;
         settings.IsWebMessageEnabled = isHome;
 
-        core.DownloadStarting += (_, args) => OnDownloadStarting(args);
+        core.DownloadStarting += (_, args) => OnDownloadStarting(args, openPdfs);
 
         // Endereços como mailto:, tel: ou ms-settings: abririam outros programas do Windows.
         core.LaunchingExternalUriScheme += (_, args) => args.Cancel = true;
@@ -630,12 +630,18 @@ public partial class MainWindow : Window
     /// Os downloads dos sites vão direto para a pasta Downloads da atendente, sem a janela de downloads
     /// do navegador (que tem atalhos para abrir programas). Programas e scripts são recusados.
     /// </summary>
-    private void OnDownloadStarting(CoreWebView2DownloadStartingEventArgs args)
+    private void OnDownloadStarting(CoreWebView2DownloadStartingEventArgs args, bool openPdfs)
     {
         args.Handled = true;
         try
         {
             var name = Path.GetFileName(args.ResultFilePath);
+            if (!string.IsNullOrWhiteSpace(name) && Path.GetExtension(name).Length == 0
+                && args.DownloadOperation.MimeType.StartsWith("application/pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                name += ".pdf"; // PDF sem extensão no nome: sem ela o Windows não saberia abrir
+            }
+
             if (string.IsNullOrWhiteSpace(name) || BlockedDownloadExtensions.Contains(Path.GetExtension(name)))
             {
                 args.Cancel = true;
@@ -658,10 +664,19 @@ public partial class MainWindow : Window
             {
                 if (operation.State == CoreWebView2DownloadState.Completed)
                 {
+                    if (openPdfs && IsPdf(target) && !_pdfsOnScreen.Remove(name))
+                    {
+                        // Fora do evento do WebView2, que não aceita criar outro WebView2 dentro dele.
+                        Dispatcher.BeginInvoke(() => { _ = OpenPdfAsync(target); });
+                        ShowToast($"Arquivo salvo na pasta Downloads: {shown}.");
+                        return;
+                    }
+
                     ShowToast($"Arquivo salvo na pasta Downloads: {shown}." + (_locked ? " Para abrir, use o botão Arquivos." : ""));
                 }
                 else if (operation.State == CoreWebView2DownloadState.Interrupted)
                 {
+                    Log.Info($"Download interrompido: {operation.InterruptReason}");
                     ShowToast($"O download de {shown} não foi concluído. Tente de novo.");
                 }
             };
@@ -852,6 +867,7 @@ public partial class MainWindow : Window
         _policy = config is null ? HostPolicy.Empty : HostPolicy.FromConfig(config);
         ApplyChromeConfig(config);
         ApplyAppsConfig(config);
+        ApplyLightshot();
         ApplyStoreShell(config);
         if (!_local && config is not null && !string.IsNullOrWhiteSpace(config.AttendantName))
         {
@@ -1104,24 +1120,25 @@ public partial class MainWindow : Window
             }
 
             var core = tab.View.CoreWebView2;
-            ApplySettings(core, isHome: false);
-            core.NavigationStarting += (_, args) => OnSiteNavigationStarting(tab, args);
-            core.NewWindowRequested += (_, args) =>
+            ApplySettings(core, isHome: false, openPdfs: IsNexus(tab));
+            core.NavigationStarting += (_, args) =>
             {
-                // Sem janelas novas: o destino abre na mesma aba e passa pela mesma política (em NavigationStarting).
-                args.Handled = true;
-                if (!string.IsNullOrEmpty(args.Uri) && !args.Uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
+                if (IsAllowedBlob(args.Uri))
                 {
-                    try
-                    {
-                        core.Navigate(args.Uri);
-                    }
-                    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Runtime.InteropServices.COMException)
-                    {
-                        // Endereço que o navegador não aceita: fica onde está.
-                    }
+                    args.Cancel = true;
+                    OpenBlobInWindow(tab, args.Uri);
+                    return;
                 }
+
+                OnSiteNavigationStarting(tab, args);
             };
+            core.NewWindowRequested += (_, args) => OnSiteNewWindow(tab, core, args);
+            await AllowNexusDownloadsAsync(tab);
+            if (tab.IsClosed)
+            {
+                return;
+            }
+
             core.Navigate(item.Target);
         }
         catch (Exception ex)

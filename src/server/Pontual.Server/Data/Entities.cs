@@ -588,6 +588,24 @@ public sealed class AssistantProfile
     /// fica ligada e responde na hora, sem esperar o computador ficar parado. Vale só para o dia marcado.
     /// </summary>
     public string AbsentOn { get; set; } = "";
+    /// <summary>
+    /// Números das linhas de WhatsApp desta atendente no CRM, só dígitos, separados por vírgula. No dia da falta,
+    /// a IA escreve a resposta (para aprovação) aos clientes que escreverem nessas linhas.
+    /// </summary>
+    public string CrmLines { get; set; } = "";
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>Um texto que a atendente salvou no perfil dela e chama por uma palavra-chave.</summary>
+public sealed class SavedText
+{
+    public long Id { get; set; }
+    public Guid DeviceId { get; set; }
+    /// <summary>A palavra-chave na forma de comparação (sem acento nem maiúscula).</summary>
+    public required string Keyword { get; set; }
+    /// <summary>A palavra-chave como a atendente escreveu.</summary>
+    public string Label { get; set; } = "";
+    public string Text { get; set; } = "";
     public DateTime UpdatedAt { get; set; }
 }
 
@@ -789,6 +807,12 @@ public sealed class CrmEvent
     /// <summary>Quem escreveu: <see cref="CrmAuthor"/>.</summary>
     public string Author { get; set; } = "";
     public string Text { get; set; } = "";
+    /// <summary>Número da linha de WhatsApp da Pontual em que a conversa está (conversa.linha.numero), só dígitos.</summary>
+    public string Line { get; set; } = "";
+    /// <summary>Nome da linha no CRM (conversa.linha.nome), para a tela.</summary>
+    public string LineName { get; set; } = "";
+    /// <summary>ID do funil da conversa (funil.id).</summary>
+    public string Funnel { get; set; } = "";
     /// <summary>O corpo como chegou (cortado), para conferir o formato do CRM.</summary>
     public string Body { get; set; } = "";
 }
@@ -814,6 +838,8 @@ public sealed class CrmReply
     /// <summary>"responder", "humano" ou "nada": o que a IA sugeriu.</summary>
     public string Decision { get; set; } = "";
     public string Reason { get; set; } = "";
+    /// <summary>A atendente que faltou e de quem é este cliente; vazio no funil de teste.</summary>
+    public string Attendant { get; set; } = "";
     public required string Status { get; set; }
     /// <summary>Último aviso do cliente que esta resposta leva em conta: um aviso mais novo deixa a resposta velha.</summary>
     public long LastEventId { get; set; }

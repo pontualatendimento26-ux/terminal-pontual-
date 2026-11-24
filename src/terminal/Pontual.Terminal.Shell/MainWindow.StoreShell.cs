@@ -30,6 +30,8 @@ public partial class MainWindow
     private NativeMethods.WinEventProc? _showProc;
     /// <summary>Estado da barra de tarefas antes de o Terminal ligar o "ocultar automaticamente" (para devolver ao sair).</summary>
     private int? _taskbarStateBefore;
+    private Task _appBarTask = Task.CompletedTask;
+    private bool _reserveAfterHide;
 
     private void ApplyStoreShell(TerminalConfig? config)
     {
@@ -95,7 +97,9 @@ public partial class MainWindow
     /// <summary>Esconde a barra de tarefas de todos os monitores e devolve a faixa da barra do Terminal.</summary>
     private void HideTaskbars()
     {
-        var hidden = false;
+        // O Explorer esconde a barra depois (o pedido não espera por ele): a faixa é conferida de novo na volta seguinte.
+        var hidden = _reserveAfterHide;
+        _reserveAfterHide = false;
         NativeMethods.EnumWindows((handle, _) =>
         {
             var name = ClassName(handle);
@@ -106,8 +110,9 @@ public partial class MainWindow
 
             if ((name == "Shell_TrayWnd" || name == "Shell_SecondaryTrayWnd") && NativeMethods.IsWindowVisible(handle))
             {
-                NativeMethods.ShowWindow(handle, NativeMethods.SwHide);
+                NativeMethods.ShowWindowAsync(handle, NativeMethods.SwHide);
                 hidden = true;
+                _reserveAfterHide = true;
             }
 
             return true;
@@ -142,7 +147,9 @@ public partial class MainWindow
             var name = ClassName(handle);
             if (name is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd")
             {
-                NativeMethods.ShowWindow(handle, NativeMethods.SwHide);
+                // Sem esperar pelo Explorer: se ele não responde, a tela do Terminal não pode travar junto.
+                NativeMethods.ShowWindowAsync(handle, NativeMethods.SwHide);
+                _reserveAfterHide = true;
                 ReserveBarSpace();
             }
         };
@@ -160,6 +167,15 @@ public partial class MainWindow
     /// </summary>
     private void AutoHideTaskbar(IntPtr tray)
     {
+        // SHAppBarMessage espera a resposta do Explorer: fora da linha da tela, uma chamada por vez.
+        if (_appBarTask.IsCompleted)
+        {
+            _appBarTask = Task.Run(() => AutoHideTaskbarCore(tray));
+        }
+    }
+
+    private void AutoHideTaskbarCore(IntPtr tray)
+    {
         var data = new NativeMethods.AppBarData { Size = (uint)Marshal.SizeOf<NativeMethods.AppBarData>(), Window = tray };
         var state = (int)NativeMethods.SHAppBarMessage(NativeMethods.AbmGetState, ref data);
         if ((state & NativeMethods.AbsAutoHide) != 0)
@@ -174,6 +190,12 @@ public partial class MainWindow
     }
 
     private void RestoreTaskbarState()
+    {
+        // Ao fechar: espera pouco; um Explorer travado não segura o Terminal.
+        Task.WhenAll(_appBarTask).ContinueWith(_ => RestoreTaskbarStateCore(), TaskScheduler.Default).Wait(TimeSpan.FromSeconds(2));
+    }
+
+    private void RestoreTaskbarStateCore()
     {
         if (_taskbarStateBefore is not { } before)
         {
@@ -275,6 +297,10 @@ internal static partial class NativeMethods
 
     [DllImport("shell32.dll")]
     public static extern UIntPtr SHAppBarMessage(uint message, ref AppBarData data);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll", EntryPoint = "FindWindowW", CharSet = CharSet.Unicode)]
     public static extern IntPtr FindWindow(string? className, string? windowName);

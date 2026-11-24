@@ -28,7 +28,26 @@ public static class CrmAgent
     public const string None = "nada";
 
     /// <summary>O que deu para ler de um aviso do CRM. Campos que o aviso não trouxe ficam vazios.</summary>
-    public sealed record ParsedEvent(string ConversationId, string Contact, string Phone, string Author, string Text);
+    public sealed record ParsedEvent(string ConversationId, string Contact, string Phone, string Author, string Text,
+        string Line = "", string LineName = "", string Funnel = "");
+
+    /// <summary>
+    /// Funil de teste: a IA escreve a resposta (para aprovação) mesmo sem atendente marcada como ausente.
+    /// Nos outros funis, só para clientes de uma atendente que faltou hoje.
+    /// </summary>
+    public const string TestFunnel = "10";
+
+    /// <summary>"5561 8237-8969, 556199..." vira "556182378969,556199...": só dígitos, sem repetir, no máximo 10 linhas.</summary>
+    public static string NormalizeLines(string? text) =>
+        string.Join(',', (text ?? "").Split([',', ';', '/', (char)10], StringSplitOptions.RemoveEmptyEntries)
+            .Select(Digits).Where(d => d.Length >= 8).Distinct().Take(10));
+
+    /// <summary>Se a linha da conversa é uma destas. Compara os 8 últimos dígitos: o CRM pode mandar com ou sem 55 e o nono dígito.</summary>
+    public static bool HasLine(string lines, string line)
+    {
+        var digits = Digits(line);
+        return digits.Length >= 8 && lines.Split(',', StringSplitOptions.RemoveEmptyEntries).Any(l => l.Length >= 8 && l[^8..] == digits[^8..]);
+    }
 
     private static readonly string[] ConversationObjects = ["conversa", "conversation", "chat", "atendimento"];
     private static readonly string[] MessageObjects = ["mensagem", "message", "msg", "ultima_mensagem"];
@@ -93,7 +112,10 @@ public static class CrmAgent
             var phone = Digits(Scalar(contact, PhoneKeys).OrElse(Scalar(conversation, PhoneKeys)).OrElse(Scalar(root, PhoneKeys))
                 .OrElse(Scalar(message, "from", "remetente")));
 
-            return new ParsedEvent(Cut(conversationId, 64), Cut(name, 80), Cut(phone, 20), AuthorOf(root, message), Cut(text, MaxText));
+            var line = conversation is { } conv && Child(conv, "linha") is { ValueKind: JsonValueKind.Object } l ? l : (JsonElement?)null;
+            var funnel = Find(root, ["funil", "funnel"]);
+            return new ParsedEvent(Cut(conversationId, 64), Cut(name, 80), Cut(phone, 20), AuthorOf(root, message), Cut(text, MaxText),
+                Cut(Digits(Scalar(line, "numero", "number", "telefone")), 20), Cut(Scalar(line, "nome", "name"), 80), Cut(Scalar(funnel, "id"), 20));
         }
         catch (JsonException)
         {

@@ -59,7 +59,8 @@ internal static class ChromeReader
         var redirected = new List<BrowserRedirect>();
         var addresses = ReadAddresses((browser, window, edit, value, text) =>
         {
-            if (ChromeWatch.HostFromAddress(text) is { } host && isBlocked(host))
+            // Decisão do dono (24/11/2026): no Edge nenhum site é bloqueado.
+            if (browser.Process != "msedge" && ChromeWatch.HostFromAddress(text) is { } host && isBlocked(host))
             {
                 if (TryRedirect(browser, window, edit, value, host))
                 {
@@ -281,9 +282,6 @@ internal static class BrowserPolicy
     public const string ChromeKey = @"Software\Policies\Google\Chrome\URLBlocklist";
     public const string EdgeKey = @"Software\Policies\Microsoft\Edge\URLBlocklist";
     public const string FirefoxKey = @"Software\Policies\Mozilla\Firefox\WebsiteFilter\Block";
-
-    /// <summary>Edge que não está cadastrado como programa só abre arquivos do computador (PDF): tudo na internet é recusado.</summary>
-    public static readonly IReadOnlyList<string> EdgeFilesOnly = ["*"];
 
     private static readonly HashSet<string> Warned = new(StringComparer.Ordinal);
 

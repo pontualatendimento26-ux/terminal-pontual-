@@ -23,6 +23,7 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
     public DbSet<TextSetting> TextSettings => Set<TextSetting>();
     public DbSet<AssistantScript> AssistantScripts => Set<AssistantScript>();
     public DbSet<AssistantProfile> AssistantProfiles => Set<AssistantProfile>();
+    public DbSet<SavedText> SavedTexts => Set<SavedText>();
     public DbSet<AssistantMessage> AssistantMessages => Set<AssistantMessage>();
     public DbSet<KnowledgeLink> KnowledgeLinks => Set<KnowledgeLink>();
     public DbSet<KnowledgeSuggestion> KnowledgeSuggestions => Set<KnowledgeSuggestion>();
@@ -93,6 +94,8 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
         });
 
         modelBuilder.Entity<AssistantMessage>().HasIndex(m => new { m.DeviceId, m.Id });
+
+        modelBuilder.Entity<SavedText>().HasIndex(s => new { s.DeviceId, s.Keyword }).IsUnique();
 
         modelBuilder.Entity<AssistantUsage>().HasIndex(u => u.At);
 

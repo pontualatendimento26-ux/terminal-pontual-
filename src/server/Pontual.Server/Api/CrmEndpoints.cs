@@ -63,6 +63,9 @@ public static class CrmEndpoints
             Phone = parsed.Phone,
             Author = parsed.Author,
             Text = parsed.Text,
+            Line = parsed.Line,
+            LineName = parsed.LineName,
+            Funnel = parsed.Funnel,
             Body = body.Length <= CrmAgent.MaxBody ? body : body[..CrmAgent.MaxBody],
         };
         db.CrmEvents.Add(crmEvent);
@@ -117,6 +120,15 @@ public static class CrmEndpoints
             return;
         }
 
+        // Fora do funil de teste, a IA só escreve para clientes de uma atendente que faltou hoje (e no horário dela).
+        var line = events.LastOrDefault(e => e.Line.Length > 0)?.Line ?? "";
+        var funnel = events.LastOrDefault(e => e.Funnel.Length > 0)?.Funnel ?? "";
+        var attendant = await AbsentAttendantAsync(db, line, now, ct);
+        if (attendant is null && funnel != CrmAgent.TestFunnel)
+        {
+            return;
+        }
+
         var transcript = CrmAgent.Transcript(lines);
         var who = events.LastOrDefault(e => e.Contact.Length > 0)?.Contact ?? "";
         var phone = events.LastOrDefault(e => e.Phone.Length > 0)?.Phone ?? "";
@@ -131,7 +143,7 @@ public static class CrmEndpoints
         var reply = new CrmReply
         {
             Id = Guid.NewGuid(), ConversationId = conversationId, Contact = who, Phone = phone, Incoming = incoming, Transcript = transcript,
-            LastEventId = lastClient.Id, CreatedAt = now, UpdatedAt = now, Status = CrmReplyStatus.Pending,
+            LastEventId = lastClient.Id, Attendant = attendant ?? "", CreatedAt = now, UpdatedAt = now, Status = CrmReplyStatus.Pending,
         };
 
         var apiKey = await AssistantSecrets.ReadKeyAsync(db, configuration, ct);
@@ -169,6 +181,22 @@ public static class CrmEndpoints
 
         db.CrmReplies.Add(reply);
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>O nome da atendente dona desta linha, se ela foi marcada como ausente hoje e está no horário dela; senão, nulo.</summary>
+    public static async Task<string?> AbsentAttendantAsync(PontualDb db, string line, DateTime utcNow, CancellationToken ct)
+    {
+        if (line.Length == 0)
+        {
+            return null;
+        }
+
+        var today = Coverage.Day(utcNow);
+        var absent = await db.AssistantProfiles.AsNoTracking().Where(p => p.AbsentOn == today && p.CrmLines != "")
+            .Join(db.Devices.AsNoTracking(), p => p.DeviceId, d => d.Id, (p, d) => new { p.CrmLines, p.CoverageSchedule, d.AttendantName, d.Hostname })
+            .ToListAsync(ct);
+        var owner = absent.FirstOrDefault(a => CrmAgent.HasLine(a.CrmLines, line) && Coverage.WithinHours(utcNow, a.CoverageSchedule));
+        return owner is null ? null : (string.IsNullOrWhiteSpace(owner.AttendantName) ? owner.Hostname : owner.AttendantName);
     }
 
     /// <summary>A base (sem o que é só da equipe) e as regras do CRM, em cache; os trechos achados, fora dele.</summary>
@@ -443,7 +471,7 @@ public static class CrmEndpoints
     private static object Dto(CrmReply r) => new
     {
         id = r.Id, conversationId = r.ConversationId, contact = r.Contact, phone = r.Phone, incoming = r.Incoming, transcript = r.Transcript,
-        reply = r.Reply, decision = r.Decision, reason = r.Reason, status = r.Status, error = r.Error, reviewedBy = r.ReviewedByName,
+        reply = r.Reply, attendant = r.Attendant, decision = r.Decision, reason = r.Reason, status = r.Status, error = r.Error, reviewedBy = r.ReviewedByName,
         createdAt = r.CreatedAt, updatedAt = r.UpdatedAt, sentAt = r.SentAt,
     };
 }

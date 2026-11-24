@@ -126,6 +126,67 @@ public sealed class AssistantTests
         Assert.Contains("proibiu a assistente de ver a tela", (await owner.GetAsync("/api/v1/audit").Json()).GetRawText());
     }
 
+    [Fact]
+    public async Task Texto_salvo_no_perfil_volta_pela_palavra_chave_sem_chamar_a_ia()
+    {
+        var model = new FakeModel();
+        using var app = new TestApp { AssistantModel = model };
+        var owner = await app.OwnerAsync();
+        var (_, maria) = await app.ApprovedDeviceAsync(owner, "PC-01", "Maria Souza");
+        await owner.PutAsJsonAsync("/api/v1/assistant/settings", new { apiKey = Key });
+        async Task<string> Say(HttpClient who, string text, bool fresh = false) => Answer(await AskAsync(who, text, fresh));
+
+        // Passo a passo.
+        Assert.Equal(SavedTexts.AskText, await Say(maria, "eu quero que salve isso no meu perfil"));
+        Assert.Equal(SavedTexts.AskKeyword, await Say(maria, "Olá! Segue o PIX:\nchave 123"));
+        Assert.Equal(SavedTexts.BadKeyword, await Say(maria, "Minhas palavras-chave"));
+        Assert.Contains("salvei", await Say(maria, "Saudação"));
+        Assert.Equal("Olá! Segue o PIX:\nchave 123", await Say(maria, "SAUDACAO!", fresh: true));
+
+        // Tudo junto; texto e palavra numa mensagem só; palavra-chave antes do texto.
+        await Say(maria, "Quero que salve isso no meu perfil: Bom dia, tudo bem?\nPalavra-chave: bd");
+        Assert.Equal("Bom dia, tudo bem?", await Say(maria, "bd"));
+        await Say(maria, "salva no meu perfil");
+        await Say(maria, "Texto: Boa tarde\na palavra chave é bt");
+        Assert.Equal("Boa tarde", await Say(maria, "bt"));
+        await Say(maria, "salvar no meu perfil");
+        Assert.Equal(SavedTexts.AskText, await Say(maria, "palavra-chave: bn"));
+        await Say(maria, "Boa noite");
+        Assert.Equal("Boa noite", await Say(maria, "bn"));
+
+        Assert.Empty(model.Requests);
+    }
+
+    [Fact]
+    public async Task Textos_salvos_podem_ser_trocados_listados_e_apagados_e_sao_so_da_atendente()
+    {
+        var model = new FakeModel();
+        using var app = new TestApp { AssistantModel = model };
+        var owner = await app.OwnerAsync();
+        var (_, maria) = await app.ApprovedDeviceAsync(owner, "PC-01", "Maria Souza");
+        var (_, ana) = await app.ApprovedDeviceAsync(owner, "PC-02", "Ana Lima");
+        await owner.PutAsJsonAsync("/api/v1/assistant/settings", new { apiKey = Key });
+        async Task<string> Say(HttpClient who, string text) => Answer(await AskAsync(who, text));
+        await Say(maria, "salvar no meu perfil: Bom dia\npalavra-chave: bd");
+        await Say(maria, "salvar no meu perfil: Boa tarde\npalavra-chave: bt");
+
+        Assert.Contains("troquei", await Say(maria, "salvar no meu perfil: Oi!\npalavra-chave: BD"));
+        Assert.Equal("Oi!", await Say(maria, "bd"));
+        Assert.Contains("- BD", await Say(maria, "minhas palavras-chave"));
+        Assert.Contains("apaguei", await Say(maria, "apagar palavra-chave bt"));
+        await Say(maria, "salvar no meu perfil");
+        Assert.Contains("não salvei", await Say(maria, "cancelar"));
+        Assert.Empty(model.Requests);
+
+        // Vai para a IA: palavra apagada, palavra dentro de uma pergunta, fala comum e palavra de outra atendente.
+        await Say(maria, "bt");
+        await Say(maria, "o que é bd?");
+        await Say(maria, "cancelar");
+        await Say(maria, "como salvar no meu perfil do INSS");
+        await Say(ana, "bd");
+        Assert.Equal(5, model.Requests.Count);
+    }
+
     private static string Answer(IEnumerable<JsonElement> events) =>
         string.Concat(events.Where(e => e.TryGetProperty("delta", out _)).Select(e => e.GetProperty("delta").GetString()));
 

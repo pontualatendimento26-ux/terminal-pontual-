@@ -29,6 +29,7 @@ public partial class MainWindow
         {
             var windows = new List<(Window Window, TerminalBar Bar)> { (this, Bar) };
             windows.AddRange(_monitors.Select(m => ((Window)m, m.Bar)));
+            var areas = new List<NativeMethods.Rect>();
             foreach (var (window, bar) in windows)
             {
                 var handle = new WindowInteropHelper(window).Handle;
@@ -53,10 +54,11 @@ public partial class MainWindow
                 work.Bottom -= pixels;
                 if (!SameRect(work, info.Work))
                 {
-                    SetWorkArea(work);
+                    areas.Add(work);
                 }
             }
 
+            SetWorkAreas(areas);
             _barSpaceReserved = true;
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or DllNotFoundException or EntryPointNotFoundException)
@@ -76,16 +78,20 @@ public partial class MainWindow
         _barSpaceReserved = false;
         try
         {
+            var areas = new List<NativeMethods.Rect>();
             NativeMethods.EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr monitor, IntPtr _, ref NativeMethods.Rect _, IntPtr _) =>
             {
                 var info = new NativeMethods.MonitorInfo { Size = Marshal.SizeOf<NativeMethods.MonitorInfo>() };
                 if (NativeMethods.GetMonitorInfo(monitor, ref info) && !SameRect(info.Monitor, info.Work))
                 {
-                    SetWorkArea(info.Monitor);
+                    areas.Add(info.Monitor);
                 }
 
                 return true;
             }, IntPtr.Zero);
+            SetWorkAreas(areas);
+            // O programa está fechando: dá um tempo curto para o pedido terminar, sem ficar preso.
+            _workAreaTask.Wait(TimeSpan.FromSeconds(2));
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
@@ -114,6 +120,56 @@ public partial class MainWindow
 
     private static bool SameRect(NativeMethods.Rect a, NativeMethods.Rect b) =>
         a.Left == b.Left && a.Top == b.Top && a.Right == b.Right && a.Bottom == b.Bottom;
+
+    private readonly object _workAreaGate = new();
+    private Task _workAreaTask = Task.CompletedTask;
+    private List<NativeMethods.Rect>? _workAreaPending;
+
+    /// <summary>
+    /// O Windows avisa todas as janelas da mudança e espera resposta: com uma delas travada, o pedido demora.
+    /// Por isso roda fora da linha da tela, um por vez; chegando vários, só o mais novo espera.
+    /// </summary>
+    private void SetWorkAreas(List<NativeMethods.Rect> areas)
+    {
+        if (areas.Count == 0)
+        {
+            return;
+        }
+
+        lock (_workAreaGate)
+        {
+            _workAreaPending = areas;
+            if (_workAreaTask.IsCompleted)
+            {
+                _workAreaTask = Task.Run(ApplyPendingWorkAreas);
+            }
+        }
+    }
+
+    private void ApplyPendingWorkAreas()
+    {
+        while (true)
+        {
+            List<NativeMethods.Rect> areas;
+            lock (_workAreaGate)
+            {
+                if (_workAreaPending is null)
+                {
+                    // Dentro da trava: um pedido que chegar agora começa uma tarefa nova.
+                    _workAreaTask = Task.CompletedTask;
+                    return;
+                }
+
+                areas = _workAreaPending;
+                _workAreaPending = null;
+            }
+
+            foreach (var area in areas)
+            {
+                SetWorkArea(area);
+            }
+        }
+    }
 
     private static void SetWorkArea(NativeMethods.Rect work)
     {

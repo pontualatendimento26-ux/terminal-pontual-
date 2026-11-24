@@ -38,12 +38,9 @@ public partial class MainWindow
 
         var list = blocked.Select(HostPolicy.NormalizeHost).OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
 
-        // O Edge só vira navegador quando o TI o cadastra como programa desta máquina. Sem cadastro ele continua
-        // como o instalador deixou: abre só arquivos do computador (PDF), nada da internet.
-        var edgeIsProgram = config.Items.Any(i => i.IsProgram
-            && string.Equals(System.IO.Path.GetFileName(i.Target), "msedge.exe", StringComparison.OrdinalIgnoreCase));
-
-        _browserLists = (list, edgeIsProgram ? list : [.. BrowserPolicy.EdgeFilesOnly], [.. BrowserPolicy.FirefoxPatterns(list)]);
+        // Decisão do dono (24/11/2026): nenhum site é bloqueado no Edge. A lista dele fica sempre vazia (o que apaga o "*"
+        // gravado por instalações antigas) e a aba nunca é desviada (ChromeReader.Scan).
+        _browserLists = (list, [], [.. BrowserPolicy.FirefoxPatterns(list)]);
         ApplyBrowserPolicies();
     }
 

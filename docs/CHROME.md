@@ -1,6 +1,6 @@
 # Sites nos navegadores (Chrome, Edge, Opera e Firefox)
 
-Decisão de 20/11/2026: as atendentes usam navegadores com vários perfis (um WhatsApp Web em cada). Começou só com o Google Chrome; no mesmo dia passou a valer também para o Microsoft Edge, o Opera e o Mozilla Firefox, porque algumas atendentes usam outro navegador. O Terminal libera o navegador e **só avisa** a Central do TI quando um site não operacional é aberto. A atendente não vê aviso nenhum. O TI decide na Central, aba **Sites nos navegadores**, se o site fica liberado ou bloqueado. A decisão vale para todos os navegadores.
+Decisão de 20/11/2026: as atendentes usam navegadores com vários perfis (um WhatsApp Web em cada). Começou só com o Google Chrome; no mesmo dia passou a valer também para o Microsoft Edge, o Opera e o Mozilla Firefox, porque algumas atendentes usam outro navegador. O Terminal libera o navegador e **só avisa** a Central do TI quando um site não operacional é aberto. A atendente não vê aviso nenhum. O TI decide na Central, aba **Sites nos navegadores**, se o site fica liberado ou bloqueado. O bloqueio vale para todos, menos o Edge.
 
 ## Como funciona
 
@@ -14,9 +14,9 @@ Decisão de 20/11/2026: as atendentes usam navegadores com vários perfis (um Wh
 4. A Central cria um alerta urgente ("Abriu x num navegador...") e mostra o domínio em **Sites nos navegadores > Esperando decisão**. O histórico e a notificação dizem qual navegador.
 5. O TI escolhe:
    - **Liberar**: o domínio (e subdomínios) para de gerar aviso em todos os computadores.
-   - **Bloquear**: o Terminal desvia para uma página de "site bloqueado" a aba que estiver nesse domínio, em qualquer dos quatro navegadores, e grava o domínio na política de cada navegador da conta da atendente:
+   - **Bloquear**: o Terminal desvia para uma página de "site bloqueado" a aba que estiver nesse domínio, em qualquer navegador menos o Edge, e grava o domínio na política de cada navegador da conta da atendente:
      - Chrome: `HKCU\Software\Policies\Google\Chrome\URLBlocklist` (vale na hora);
-     - Edge: `HKCU\Software\Policies\Microsoft\Edge\URLBlocklist` (vale na hora), só se o Edge estiver cadastrado como programa da máquina;
+     - Edge: nunca bloqueia (veja "Edge: nenhum site bloqueado");
      - Firefox: `HKCU\Software\Policies\Mozilla\Firefox\WebsiteFilter\Block`, no formato `*://*.dominio/*` (o Firefox só lê ao ser aberto de novo; até lá vale o desvio da aba);
      - Opera: não aceita políticas; vale só o desvio da aba.
    A decisão resolve os alertas abertos daquele domínio (inclusive os antigos, com o texto "no Google Chrome"), fica na auditoria e pode ser trocada depois.
@@ -36,9 +36,9 @@ Pedido do dono: "a gabi pode usar o youtube mas a kamila não". Cada atendente t
 - Cada Terminal recebe em `chromeAllowed`/`chromeBlocked` a lista já calculada para o computador dele (`ChromeEndpoints.DecidedAsync(db, deviceId)`); o Terminal não mudou.
 - Limite conhecido: liberar só um subdomínio para uma atendente (ex.: `m.youtube.com`) não vence o bloqueio do domínio pai para todas (`youtube.com`).
 
-## Edge: PDF ou navegador
+## Edge: nenhum site bloqueado (24/11/2026)
 
-O instalador deixa o Edge só para abrir arquivos do computador (PDF): `URLBlocklist = *` e `URLAllowlist = file://*`. Quando o TI cadastra o Edge (`msedge.exe`) como programa da máquina, o Terminal troca o `*` pela lista de sites bloqueados pelo TI e o Edge vira navegador vigiado. Tirando o cadastro, volta o `*`. A cada 30 segundos o Terminal confere as listas, porque a atualização do Terminal regrava o `*`.
+Decisão do dono, a partir do Terminal 2.15.1: no Edge nenhum site é bloqueado, para nenhuma atendente. O instalador não grava mais o `*`, e o Terminal mantém a `URLBlocklist` do Edge vazia e não desvia abas dele. Os bloqueios do TI valem só no Chrome, no Opera e no Firefox. Site não operacional aberto no Edge continua gerando aviso; site que o TI já bloqueou abre no Edge sem aviso.
 
 ## Travas nos navegadores (instalador com bloqueio)
 

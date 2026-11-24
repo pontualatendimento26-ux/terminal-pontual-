@@ -11,7 +11,7 @@ namespace Pontual.Server.Api;
 /// Leituras (GET) não pedem nada. Quando falta algo, responde 428 com <c>need</c> dizendo o quê,
 /// e o painel pergunta e reenvia.
 /// </summary>
-public sealed class StepUp(TimeProvider time, IPasswordHasher<Admin> hasher, LoginLockout lockout)
+public sealed class StepUp(TimeProvider time, IPasswordHasher<Admin> hasher)
 {
     public const string PasswordHeader = "X-Pontual-Senha";
     public const string JustificationHeader = "X-Pontual-Justificativa";
@@ -69,15 +69,12 @@ public sealed class StepUp(TimeProvider time, IPasswordHasher<Admin> hasher, Log
 
         if (wantsPassword)
         {
-            lockout.ThrowIfLocked(admin.Email);
             if (password!.Length > 128 || hasher.VerifyHashedPassword(admin, admin.PasswordHash, password) == PasswordVerificationResult.Failed)
             {
-                lockout.Fail(admin.Email);
                 // 403 e não 401: senha errada aqui não derruba a sessão.
                 throw new ApiError(StatusCodes.Status403Forbidden, "Senha incorreta.") { Need = "senha" };
             }
 
-            lockout.Succeed(admin.Email);
             _confirmed[sessionHash] = now;
         }
     }

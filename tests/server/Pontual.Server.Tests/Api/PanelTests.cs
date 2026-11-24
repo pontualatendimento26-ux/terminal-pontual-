@@ -78,19 +78,19 @@ public sealed class PanelTests
     }
 
     [Fact]
-    public async Task Cinco_senhas_erradas_bloqueiam_a_conta_mesmo_com_a_senha_certa()
+    public async Task Senhas_erradas_seguidas_nao_bloqueiam_a_conta()
     {
         using var app = new TestApp();
         await app.OwnerAsync();
         var anonymous = app.Panel();
 
-        for (var i = 0; i < LoginLockout.MaxFailures; i++)
+        for (var i = 0; i < 8; i++)
         {
             Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsJsonAsync("/api/v1/auth/login",
                 new { email = TestApp.OwnerEmail, password = "senha-errada-000" })).StatusCode);
         }
 
-        Assert.Equal(HttpStatusCode.TooManyRequests, (await anonymous.PostAsJsonAsync("/api/v1/auth/login",
+        Assert.Equal(HttpStatusCode.OK, (await anonymous.PostAsJsonAsync("/api/v1/auth/login",
             new { email = TestApp.OwnerEmail, password = TestApp.Password })).StatusCode);
     }
 
