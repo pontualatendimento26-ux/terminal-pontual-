@@ -5,6 +5,11 @@
     <!-- Barra do rodapé, uma em cada monitor: páginas abertas, janelas de outros programas, relógio e botões. Não há barra de endereço. -->
     <Border Height="60" Background="White" BorderBrush="{StaticResource Linha}" BorderThickness="0,1,0,0">
         <DockPanel Margin="16,0" LastChildFill="True">
+            <!-- Aviso fixo, sempre visível, numa linha fina no alto da barra: não tira espaço das abas. -->
+            <TextBlock x:Name="MonitorNotice" DockPanel.Dock="Top" Height="14" LineHeight="14" LineStackingStrategy="BlockLineHeight"
+                       Text="As atividades serão monitoradas" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       FontSize="11" Foreground="{StaticResource Apagado}" />
+
             <Button x:Name="HomeButton" DockPanel.Dock="Left" Style="{StaticResource BotaoClaro}" MinHeight="38" Padding="16,0" FontSize="14"
                     VerticalAlignment="Center" Click="OnHome" AutomationProperties.Name="Início">
                 <StackPanel Orientation="Horizontal">
@@ -46,7 +51,7 @@
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal" Margin="2,4" AutomationProperties.Name="{Binding Name}">
                                             <Border Width="30" Height="30" CornerRadius="9" Background="{Binding Color}">
-                                                <TextBlock Text="{Binding Initials}" Foreground="White" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                <Grid><TextBlock Text="{Binding Initials}" Foreground="White" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /><Image Source="{Binding Logo}" Margin="2" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" /></Grid>
                                             </Border>
                                             <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding Name}" FontWeight="Medium" Foreground="{StaticResource Tinta}" />
@@ -61,10 +66,6 @@
                     </Border>
                 </Popup>
             </Grid>
-
-            <!-- Aviso fixo e discreto, sempre visível, no canto da barra. -->
-            <TextBlock x:Name="MonitorNotice" DockPanel.Dock="Left" Text="As atividades serão monitoradas" VerticalAlignment="Center" Margin="14,0,0,0"
-                       FontSize="11" Foreground="{StaticResource Apagado}" />
 
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                 <!-- Só no modo bloqueado com Central: instala a versão nova publicada na Central e reinicia o computador. -->
@@ -151,7 +152,7 @@
                                             <Button Style="{StaticResource BotaoLimpo}" HorizontalContentAlignment="Left" Padding="4,2" Click="OnAllTabsPick">
                                                 <StackPanel Orientation="Horizontal">
                                                     <Border Width="30" Height="30" CornerRadius="9" Background="{Binding Color}">
-                                                        <TextBlock Text="{Binding Initials}" Foreground="White" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                        <Grid><TextBlock Text="{Binding Initials}" Foreground="White" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /><Image Source="{Binding Logo}" Margin="2" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" /></Grid>
                                                     </Border>
                                                     <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                                                         <TextBlock Text="{Binding Name}" MaxWidth="300" TextTrimming="CharacterEllipsis" FontWeight="{Binding Weight}" Foreground="{StaticResource Tinta}" />
@@ -219,7 +220,7 @@
                                         <Button Style="{StaticResource BotaoLimpo}" Padding="6,0,4,0" Height="40" Click="OnTab" AutomationProperties.Name="{Binding Name}" ToolTip="{Binding Name}">
                                             <StackPanel Orientation="Horizontal">
                                                 <Border Width="28" Height="28" CornerRadius="9" Background="{Binding Color}">
-                                                    <TextBlock Text="{Binding Initials}" Foreground="White" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                    <Grid><TextBlock Text="{Binding Initials}" Foreground="White" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" /><Image Source="{Binding Logo}" Margin="2" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" /></Grid>
                                                 </Border>
                                                 <TextBlock x:Name="Rotulo" Text="{Binding Name}" Margin="8,0,0,0" MaxWidth="170" TextTrimming="CharacterEllipsis" FontWeight="Medium" Foreground="{StaticResource Suave}" VerticalAlignment="Center" />
                                             </StackPanel>
@@ -256,16 +257,25 @@
                                 <Border Height="42" CornerRadius="21" Margin="0,0,6,0" Background="{StaticResource Fundo}" BorderBrush="{StaticResource Linha}" BorderThickness="1">
                                     <Button Style="{StaticResource BotaoLimpo}" Padding="12,0,14,0" Height="40" Click="OnWindow" AutomationProperties.Name="{Binding Title}" ToolTip="{Binding Title}">
                                         <StackPanel Orientation="Horizontal">
-                                            <Viewbox Width="18" Height="18">
+                                            <Grid Width="18" Height="18">
+                                            <Viewbox x:Name="JanelaGenerica" Width="18" Height="18" Visibility="Collapsed">
                                                 <Canvas Width="24" Height="24">
                                                     <Rectangle Canvas.Left="3" Canvas.Top="5" Width="18" Height="14" RadiusX="2" RadiusY="2" Stroke="{StaticResource Suave}" StrokeThickness="2" />
                                                     <Path Data="M3 9h18" Stroke="{StaticResource Suave}" StrokeThickness="2" />
                                                 </Canvas>
                                             </Viewbox>
+                                            <Image x:Name="LogoJanela" Source="{Binding Logo}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
+                                            </Grid>
                                             <TextBlock Text="{Binding Title}" Margin="8,0,0,0" MaxWidth="170" TextTrimming="CharacterEllipsis" FontWeight="Medium" Foreground="{StaticResource Texto}" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </Button>
                                 </Border>
+                                <DataTemplate.Triggers>
+                                    <!-- Programa sem logo: fica o ícone genérico de janela. -->
+                                    <DataTrigger Binding="{Binding Logo}" Value="{x:Null}">
+                                        <Setter TargetName="JanelaGenerica" Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

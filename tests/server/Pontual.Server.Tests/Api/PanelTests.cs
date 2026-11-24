@@ -186,6 +186,29 @@ public sealed class PanelTests
     }
 
     [Fact]
+    public async Task So_superadmin_muda_o_cargo_de_outra_conta()
+    {
+        using var app = new TestApp();
+        var owner = await app.OwnerAsync();
+        var bia = await app.AdminAsync(owner, "Bia", "admin");
+        var admins = (await owner.GetAsync("/api/v1/admins").Json()).EnumerateArray().ToList();
+        Guid IdOf(string email) => admins.Single(a => a.GetProperty("email").GetString() == email).GetProperty("id").GetGuid();
+        var biaId = IdOf("bia@pontual.test");
+        var ownerId = IdOf(TestApp.OwnerEmail);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await bia.PostAsJsonAsync($"/api/v1/admins/{biaId}/role", new { role = "superadmin" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PostAsJsonAsync($"/api/v1/admins/{ownerId}/role", new { role = "admin" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PostAsJsonAsync($"/api/v1/admins/{biaId}/role", new { role = "rei" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.PostAsJsonAsync($"/api/v1/admins/{Guid.NewGuid()}/role", new { role = "admin" })).StatusCode);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.PostAsJsonAsync($"/api/v1/admins/{biaId}/role", new { role = "superadmin" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await bia.GetAsync("/api/v1/auth/me")).StatusCode);
+        await TestApp.LoginAsync(bia, "bia@pontual.test");
+        Assert.Equal("superadmin", (await bia.GetAsync("/api/v1/auth/me").Json()).GetProperty("role").GetString());
+        Assert.Contains("para superadministrador", (await owner.GetAsync("/api/v1/audit").Json()).GetRawText());
+    }
+
+    [Fact]
     public async Task Superadmin_apaga_e_troca_a_senha_de_contas()
     {
         using var app = new TestApp();

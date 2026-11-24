@@ -130,6 +130,17 @@ app.Use(async (context, next) =>
     await next(context);
 });
 
+// Atualização do Terminal só para um computador (DevicePackage).
+app.Use((context, next) =>
+{
+    if (DevicePackage.PathFor(context, app.Environment.WebRootPath) is { } path)
+    {
+        context.Request.Path = path;
+    }
+
+    return next(context);
+});
+
 // Telas: wwwroot/central e wwwroot/terminal, com index.html como padrão de cada pasta.
 app.UseDefaultFiles();
 var tiposDeArquivo = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
@@ -204,6 +215,10 @@ app.Use(async (context, next) =>
         // Token desconhecido ou de máquina removida.
         context.Items[HttpContextExtensions.DeviceKey] = device
             ?? throw new ApiError(StatusCodes.Status401Unauthorized, "Máquina não reconhecida. Cadastre-a de novo.");
+        if (device.Approved)
+        {
+            DevicePackage.Remember(context, device.Hostname);
+        }
     }
 
     await next(context);

@@ -60,9 +60,11 @@ internal sealed class SiteTab(ConfigItem item, WebView2 view) : INotifyPropertyC
 
     public WebView2 View { get; } = view;
 
-    public string Initials { get; } = Brand.Initials(item.Name);
+    public ImageSource? Logo { get; } = Logos.For(item);
 
-    public Brush Color { get; } = Brand.ColorFor(item.Name);
+    public string Initials { get; } = Logos.For(item) is null ? Brand.Initials(item.Name) : "";
+
+    public Brush Color { get; } = Logos.For(item) is null ? Brand.ColorFor(item.Name) : Brushes.White;
 
     public string CloseLabel => $"Fechar {Name}";
 
@@ -105,6 +107,23 @@ internal sealed class OpenWindow(IntPtr handle, string title) : INotifyPropertyC
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public IntPtr Handle { get; } = handle;
+
+    /// <summary>Logo do programa dono da janela, ou nulo (fica o ícone genérico de janela).</summary>
+    public ImageSource? Logo { get; } = FindLogo(handle);
+
+    private static ImageSource? FindLogo(IntPtr handle)
+    {
+        try
+        {
+            NativeMethods.GetWindowThreadProcessId(handle, out var processId);
+            using var process = Process.GetProcessById((int)processId);
+            return Logos.ForExe(process.ProcessName + ".exe");
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception)
+        {
+            return null;
+        }
+    }
 
     public string Title
     {

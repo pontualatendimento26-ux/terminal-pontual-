@@ -18,10 +18,12 @@ public static class AccountEndpoints
         new PasswordHasher<Admin>().HashPassword(null!, Secrets.NewToken()));
 
     private static readonly SemaphoreSlim SetupGate = new(1, 1);
+    private static readonly SemaphoreSlim RoleGate = new(1, 1);
 
     private sealed record SetupBody(string? Name, string? Email, string? Password);
     private sealed record LoginBody(string? Email, string? Password);
     private sealed record NewAdminBody(string? Name, string? Email, string? Password, string? Role);
+    private sealed record RoleBody(string? Role);
     private sealed record PasswordBody(string? Password);
     private sealed record RegisterBody(string? Name, string? Email, string? Password, string? Role, string? AuthEmail, string? AuthPassword);
 
@@ -45,6 +47,7 @@ public static class AccountEndpoints
         api.MapPost("/admins", CreateAdminAsync).Panel(Permission.AdminsManage);
         api.MapDelete("/admins/{id:guid}", DeleteAdminAsync).Panel(Permission.AdminsManage);
         api.MapPost("/admins/{id:guid}/password", ChangePasswordAsync).Panel(Permission.AdminsManage);
+        api.MapPost("/admins/{id:guid}/role", ChangeRoleAsync).Panel(Permission.AdminsManage);
     }
 
     /// <summary>Apaga outra conta (só superadministrador). A própria conta não pode ser apagada, o que garante que sempre sobra um superadministrador.</summary>
@@ -65,6 +68,46 @@ public static class AccountEndpoints
         await audit.SaveAsync(db, AuditInfo.By(actor, "admins.delete",
             $"{actor.Name} apagou a conta de {admin.Name} ({admin.Email}), que tinha a função {Roles.Label(admin.Role)}", "admin", admin.Id), cancellationToken: ct);
         return Results.NoContent();
+    }
+
+    /// <summary>Muda a função de outra conta (só superadministrador). As sessões daquela conta são encerradas.</summary>
+    private static async Task<IResult> ChangeRoleAsync(Guid id, HttpContext context, PontualDb db, AuditWriter audit, CancellationToken ct)
+    {
+        var actor = context.Admin();
+        if (id == actor.Id)
+        {
+            throw ApiError.BadRequest("Você não pode mudar o seu próprio cargo.");
+        }
+
+        var role = Roles.Parse((await context.ReadBodyAsync<RoleBody>()).Role);
+
+        // Uma troca por vez: dois superadministradores não se rebaixam ao mesmo tempo, o que deixaria a Central sem nenhum.
+        await RoleGate.WaitAsync(ct);
+        try
+        {
+            var admin = await db.Admins.FirstOrDefaultAsync(a => a.Id == id, ct) ?? throw ApiError.NotFound("Conta não encontrada.");
+            if (admin.Role == role)
+            {
+                return Results.NoContent();
+            }
+
+            if (admin.Role == Role.SuperAdmin && !await db.Admins.AnyAsync(a => a.Id != id && a.Active && a.Role == Role.SuperAdmin, ct))
+            {
+                throw ApiError.Conflict("A Central precisa de pelo menos um superadministrador ativo.");
+            }
+
+            var before = admin.Role;
+            admin.Role = role;
+            // A pessoa entra de novo já com a tela da função nova.
+            db.Sessions.RemoveRange(await db.Sessions.Where(s => s.AdminId == id).ToListAsync(ct));
+            await audit.SaveAsync(db, AuditInfo.By(actor, "admins.role",
+                $"{actor.Name} mudou a função de {admin.Name} ({admin.Email}) de {Roles.Label(before)} para {Roles.Label(role)}", "admin", admin.Id), cancellationToken: ct);
+            return Results.NoContent();
+        }
+        finally
+        {
+            RoleGate.Release();
+        }
     }
 
     /// <summary>Define uma senha nova para qualquer conta (só superadministrador). As outras sessões daquela conta são encerradas.</summary>

@@ -24,7 +24,7 @@ $Nova = Join-Path $Dist '_central-nova'
 # Registro, trabalho e copias de seguranca NUNCA na pasta gravavel (um atalho plantado ali faria o
 # SISTEMA escrever onde o atacante quisesse). A pasta Base e protegida pelo instalador do atualizador.
 $Log = Join-Path $Origem 'atualizacao.log'
-$Base = Join-Path $env:ProgramData 'Pontual\Central'
+$Base = Join-Path (Split-Path -Qualifier $Dist) 'Pontual-Central'
 $Trabalho = Join-Path $Base 'trabalho'
 $ChaveVersao = 'SOFTWARE\Pontual\Central'
 $Tarefa = 'Central do TI'
@@ -119,11 +119,11 @@ try {
     # Copia de seguranca (tem o banco): pasta protegida.
     $copia = Join-Path $Base ('backup-central-' + (Get-Date -Format 'yyyy-MM-dd-HHmmss'))
     PastaProtegida $copia
-    robocopy $Viva $copia /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+    robocopy $Viva $copia /E /XJ /R:2 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8 -or -not (Test-Path -LiteralPath (Join-Path $copia 'data\pontual.db'))) { throw 'A copia de seguranca falhou. A versao antiga foi mantida.' }
     Anotar "copia de seguranca em $copia"
 
-    robocopy $novo $Viva /E /XJ /NFL /NDL /NJH /NJS /NP | Out-Null
+    robocopy $novo $Viva /E /XJ /R:2 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "Erro ao copiar a versao nova (robocopy $LASTEXITCODE). Restaure $copia." }
 
     $marca = ChaveMaquina -Criar

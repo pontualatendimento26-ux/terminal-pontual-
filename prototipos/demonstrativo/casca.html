@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Demonstrativo do Terminal Pontual</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/*APPCSS*/
+html, body { height: 100%; overflow: hidden; }
+body { display: grid; grid-template-rows: auto 1fr auto; }
+.faixa { display: flex; align-items: center; gap: 12px; padding: 6px 16px; background: #fef3c7; color: #78350f; font-size: 13px; }
+.faixa span { flex: 1; min-width: 0; }
+.faixa .btn { min-height: 32px; padding: 0 14px; font-size: 13px; }
+#palco { position: relative; min-height: 0; overflow: hidden; background: var(--fundo); }
+#palco > iframe, .pagina { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.pagina { background: var(--fundo); display: grid; place-items: center; padding: 24px; overflow: auto; text-align: center; }
+.pagina > div { max-width: 560px; display: grid; gap: 14px; justify-items: center; }
+.pagina h2 { font-size: 28px; } .pagina p { color: var(--suave); font-size: 16px; }
+.bola { width: 96px; height: 96px; border-radius: 50%; display: grid; place-items: center; background: var(--rubi-100); color: var(--rubi-700); font-size: 44px; }
+.linha { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.campo { padding: 9px 14px; border: 1px solid var(--linha-forte); border-radius: 10px; width: 100%; }
+#barra { background: #fff; border-top: 1px solid var(--linha); padding: 0 16px 4px; position: relative; z-index: 30; min-width: 0; }
+.monit { text-align: center; font-size: 11px; line-height: 14px; color: var(--apagado); }
+.monit.grava { color: var(--rubi-700); }
+.barra-l { display: flex; align-items: center; gap: 8px; height: 46px; }
+.barra-l .btn { min-height: 38px; padding: 0 14px; font-size: 14px; }
+#abas { flex: 1; min-width: 0; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.aba { display: flex; align-items: center; flex: none; height: 42px; border: 1px solid var(--linha); border-radius: 21px; padding: 0 4px 0 6px; }
+.aba.sel { background: var(--azul-50); border-color: var(--azul-100); }
+.aba button, .limpo { border: 0; background: none; min-height: 38px; min-width: 32px; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.limpo { justify-content: center; font-size: 19px; color: var(--suave); min-width: 40px; }
+.pop { position: absolute; bottom: calc(100% + 8px); left: 110px; width: min(380px, calc(100vw - 32px)); background: #fff; border: 1px solid var(--linha); border-radius: 12px; padding: 12px; box-shadow: var(--s-3); }
+.pop.dir { left: auto; right: 16px; }
+.pop-lista { max-height: 320px; overflow: auto; margin-top: 8px; }
+.pop-lista > div { display: flex; }
+.pop-lista button { border: 0; background: none; display: flex; align-items: center; gap: 10px; padding: 6px; text-align: left; border-radius: 8px; flex: 1; }
+.pop-lista button.x { flex: none; }
+.pop-lista button:hover { background: var(--azul-50); }
+.pop-lista small { display: block; color: var(--suave); }
+.jan { position: absolute; background: #fff; border: 1px solid var(--linha-forte); border-radius: 10px; box-shadow: var(--s-3); display: flex; flex-direction: column; overflow: hidden; z-index: 20; max-width: calc(100% - 16px); max-height: calc(100% - 16px); }
+.jan header { display: flex; align-items: center; padding: 2px 4px 2px 12px; font-size: 13px; cursor: move; border-bottom: 1px solid var(--linha); user-select: none; touch-action: none; }
+.jan header b { flex: 1; font-weight: 500; }
+.jan .dentro { flex: 1; min-height: 0; overflow: auto; } .jan .texto { padding: 20px; display: grid; gap: 12px; }
+.jan iframe { width: 100%; height: 100%; border: 0; display: block; }
+#bolha { position: absolute; right: 24px; bottom: 24px; width: 56px; height: 56px; border-radius: 50%; border: 2px solid #fff; background: linear-gradient(135deg, #0d47a1, #1976d2 55%, #10b981); color: #fff; font-size: 26px; box-shadow: 0 3px 14px rgba(15,23,42,.32); z-index: 25; touch-action: none; }
+.toast-d { pointer-events: none; position: absolute; top: 16px; right: 16px; width: min(380px, calc(100% - 32px)); padding: 16px; background: #fff; border: 1px solid var(--linha-forte); border-radius: 14px; box-shadow: var(--s-2); color: var(--tinta); font-size: 14px; z-index: 60; }
+.veu-d { position: fixed; inset: 0; z-index: 80; background: rgba(15,23,42,.45); display: grid; place-items: center; padding: 16px; }
+.veu-d > div { background: #fff; border-radius: 14px; padding: 24px 28px; width: min(420px, 100%); display: grid; gap: 8px; }
+.veu-d.cheio { background: #0a2f6b; color: #fff; } .veu-d.cheio > div { background: none; text-align: center; justify-items: center; } .veu-d.cheio h2 { color: #fff; }
+#painel { position: fixed; top: 0; right: 0; bottom: 0; width: min(380px, 100%); background: #fff; box-shadow: var(--s-3); z-index: 70; padding: 18px; overflow: auto; }
+#painel h3 { margin: 20px 0 8px; font-size: 15px; }
+#painel ol { list-style: none; padding: 0; margin: 0; font-size: 14px; } #painel ol li { padding: 5px 0 5px 28px; position: relative; }
+#painel ol li::before { content: '○'; position: absolute; left: 4px; color: var(--apagado); }
+#painel ol li.ok::before { content: '✓'; color: var(--verde-700); font-weight: 700; }
+.sim { display: grid; gap: 6px; } .sim .btn { min-height: 38px; font-size: 13px; }
+#log { font-size: 12.5px; color: var(--suave); padding: 0; margin: 0; list-style: none; }
+@media (max-width: 760px) { .barra-l .rot { display: none; } }
+</style>
+</head>
+<body>
+<div class="faixa"><span><b>DEMONSTRAÇÃO</b> · os dados são de exemplo, nada é enviado e nada muda neste computador.</span><button class="btn claro" id="abre-painel">O que testar</button></div>
+<div id="palco"><button id="bolha" title="Assistente Pontual: tire dúvidas sobre os roteiros dos bancos" aria-label="Abrir a Assistente Pontual">✦</button></div>
+<div id="barra">
+  <div class="monit" id="monit">As atividades serão monitoradas</div>
+  <div class="barra-l">
+    <button class="btn claro" id="b-inicio" aria-label="Início">⌂ <span class="rot">Início</span></button>
+    <button class="btn claro" id="b-pesq" aria-label="Pesquisar">⌕ <span class="rot">Pesquisar</span></button>
+    <div id="abas"></div>
+    <button class="btn claro" id="b-todas" hidden></button>
+    <button class="btn claro" id="b-atual" hidden>↓ Atualizar</button>
+    <b id="relogio" class="num"></b>
+    <button class="limpo" id="b-ti" title="Chamar o TI" aria-label="Chamar o TI">🎧</button>
+    <button class="limpo" id="b-arq" title="Arquivos do computador" aria-label="Arquivos do computador">🗀</button>
+    <button class="limpo" id="b-ener" title="Desligar ou sair" aria-label="Desligar ou sair">⏻</button>
+  </div>
+  <div class="pop" id="p-pesq" hidden></div>
+  <div class="pop dir" id="p-todas" hidden></div>
+</div>
+<aside id="painel" hidden aria-label="Roteiro de teste"></aside>
+<script>
+const D = /*DADOS*/null;
+const $ = (id) => document.getElementById(id);
+const el = (t, p = {}, ...f) => { const n = Object.assign(document.createElement(t), p); n.append(...f.filter((x) => x != null)); return n; };
+const bt = (texto, acao, classe = 'btn claro') => el('button', { type: 'button', className: classe, textContent: texto, onclick: acao });
+const itens = D.config.items, palco = $('palco');
+const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+let abas = [], ativa = null, janelas = [], online = true, estado = 'active', z = 20, dica = 0;
+
+// ------------------------------------------------------------ páginas do Terminal
+function quadro(nome, html, extra = {}) {
+  const f = el('iframe', { title: nome });
+  const cfg = { nome, online, config: D.config, mapa: D.mapa, logos: D.logos, ...extra };
+  // O shim entra antes de tudo e faz o papel do programa Terminal e da Central.
+  f.srcdoc = html.replace('<head>', () => '<head><script>window.__DEMO=' + JSON.stringify(cfg).replace(/</g, '\\u003c') + ';(' + shim.toString() + ')()<\/script>');
+  return f;
+}
+function shim() {
+  const C = window.__DEMO, ouvintes = [];
+  const ponte = { postMessage: (m) => parent.postMessage({ demo: C.nome, m }, '*'), addEventListener: (t, f) => ouvintes.push(f) };
+  window.chrome = window.chrome || {};
+  try { Object.defineProperty(window.chrome, 'webview', { value: ponte, configurable: true }); } catch { window.chrome = { webview: ponte }; }
+  window.PONTUAL = { hosted: true, token: 'demonstracao', hostname: 'PC-DEMONSTRACAO', locked: true, apps: true, calc: true, pdf: true, actions: true, screen: false };
+  window.__LOGOS = C.logos;
+  addEventListener('message', (e) => {
+    if (e.source !== parent || !e.data || !e.data.ao) return;
+    if (typeof e.data.online === 'boolean') C.online = e.data.online;
+    ouvintes.forEach((f) => f({ data: e.data.ao }));
+  });
+  const json = (o) => new Response(JSON.stringify(o), { headers: { 'Content-Type': 'application/json' } });
+  const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
+  let n = 0;
+  const resposta = (t) => {
+    const q = t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const abrir = /\b(?:abr[aeir]+|abre)\s+(?:o |a |os )?(.+?)[.!?]*$/.exec(q);
+    if (abrir) {
+      const item = C.config.items.find((i) => i.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes(abrir[1].trim()));
+      return item ? `Certo, vou abrir o ${item.name}.\n[[abrir: ${item.name}]]` : `"${abrir[1]}" não está na lista liberada deste Terminal.`;
+    }
+    if (/document/.test(q)) return 'Resposta de exemplo. Documentos normalmente pedidos:\n\n- **Documento com foto** (RG ou CNH)\n- **Comprovante de residência** recente\n- **Contracheque ou extrato** do benefício\n\nNo Terminal real, a resposta segue o roteiro do banco escolhido.';
+    if (/portabil/.test(q)) return 'Resposta de exemplo. Na **portabilidade**:\n\n1. Peça o saldo devedor do contrato\n2. Confira as regras do banco de destino\n3. Digite a proposta e acompanhe a esteira\n\nNo Terminal real, eu consulto o roteiro do banco antes de responder.';
+    return 'Esta é uma **resposta de exemplo** da demonstração: a inteligência artificial não está ligada aqui. No Terminal real, eu respondo com base nos roteiros da Pontual.\n\nTente: "documentos necessários", "como funciona a portabilidade", "abra o WhatsApp" ou o CPF de teste 529.982.247-25.';
+  };
+  const SET = { siape: 'SIAPE', inss: 'INSS', exercito: 'Exército' };
+  window.fetch = async (url, op = {}) => {
+    const u = String(url), corpo = op.body ? JSON.parse(op.body) : {};
+    if (u.startsWith('logos/mapa')) return json(C.mapa);
+    if (!C.online) throw new TypeError('sem conexão');
+    if (u.endsWith('/device/config')) return json(C.config);
+    if (u.endsWith('/device/assistant')) return json({ enabled: true, attendantName: C.config.attendantName, messages: [], feedback: [], screen: false });
+    if (u.endsWith('/feedback')) { ponte.postMessage({ type: 'demo', feito: 'avaliar' }); return json({}); }
+    if (u.includes('/nexus/localizar')) {
+      const cpf = new URLSearchParams(u.split('?')[1]).get('cpf');
+      return json({ configured: true, cpf: cpf.replace(/(...)(...)(...)(..)/, '$1.$2.$3-$4'), nome: 'CLIENTE DE EXEMPLO', sugestao: 'siape', setores: [
+        { setor: 'siape', nome: 'SIAPE', estado: 'ok', custo: 'gratis', nota: 'grátis' },
+        { setor: 'inss', nome: 'INSS', estado: 'ok', custo: 'paga', nota: 'consulta paga' },
+        { setor: 'exercito', nome: 'Exército', estado: 'ok', custo: 'guardado', nota: 'consultado nas últimas 24 h, sem custo' }] });
+    }
+    if (u.endsWith('/nexus/consultas')) {
+      await pausa(1800);
+      ponte.postMessage({ type: 'demo', feito: 'cpf' });
+      return json({ status: 'concluida', conversationId: 'demo', resposta: { id: 'n' + (++n), text:
+        `**${SET[corpo.setor]} · CLIENTE DE EXEMPLO · 58 anos · SP**\n**Melhor opção: Banco A — R$ 4.250,00**\n\n| Banco | Libera |\n|---|---|\n| Banco A | R$ 4.250,00 |\n| Banco B ⚠️ | R$ 3.100,00 |\n\nNão passam: Banco C\n⚠️ passa com atenção · 🔎 conferir antes de digitar\n\n[[detalhes]]\nResultado inventado para a demonstração.\n\n| Banco | Resultado | Libera | Motivo |\n|---|---|---|---|\n| Banco A | ✅ Passa | R$ 4.250,00 | — |\n| Banco B | ⚠️ Atenção | R$ 3.100,00 | Conferir a margem |\n| Banco C | ❌ Não passa | — | Idade fora da regra |` } });
+    }
+    if (u.endsWith('/assistant/messages')) {
+      ponte.postMessage({ type: 'demo', feito: 'ia' });
+      const txt = resposta(corpo.text), enc = new TextEncoder();
+      return new Response(new ReadableStream({ async start(c) {
+        const manda = (o) => c.enqueue(enc.encode('data: ' + JSON.stringify(o) + '\n\n'));
+        manda({ conversationId: 'demo' }); manda({ status: 'Consultando os roteiros…' });
+        await pausa(900);
+        for (const p of txt.match(/[\s\S]{1,8}/g)) { manda({ delta: p }); await pausa(25); }
+        manda({ done: true, id: 'm' + (++n) }); c.close();
+      } }));
+    }
+    return new Response('{}', { status: 404 });
+  };
+}
+const inicio = quadro('inicio', D.inicio);
+palco.prepend(inicio);
+const mandar = (f, m) => f && f.contentWindow && f.contentWindow.postMessage({ ao: m, online }, '*');
+let fAssist = null;
+function mandarEstado() {
+  mandar(inicio, { type: 'state', open: abas.map((a) => ({ id: a.item.id, name: a.item.name })) });
+  mandar(inicio, { type: 'status', online, state: estado, attendantName: D.config.attendantName,
+    maintenance: estado === 'maintenance' ? { reason: 'Troca de peça (exemplo)', until: new Date(Date.now() + 36e5).toISOString() } : null });
+  mandar(fAssist, { type: 'demo-status' });
+}
+addEventListener('message', (e) => {
+  const d = e.data;
+  if (!d || !d.demo || ![...document.querySelectorAll('iframe')].some((f) => f.contentWindow === e.source)) return;
+  const m = d.m, item = itens.find((i) => i.id === m.id);
+  ({
+    ready: mandarEstado, open: () => item && abrir(item), focus: () => item && abrir(item), close: () => fecharAba(m.id),
+    help: () => { marcar('ti'); registrar('Chamado ao TI'); }, calc: calculadora, 'calc-close': () => fecharJan('calc'), pdf, files: arquivos, power: energia,
+    apps: () => { marcar('apps'); setTimeout(() => mandar(inicio, { type: 'apps', apps }), 500); }, 'open-app': () => abrirApp(m.id),
+    'assistant-close': () => fecharJan('ia'), 'assistant-context': () => mandar(fAssist, { type: 'assistant-context-result', id: m.id, screen: null, apps: itens.map((i) => i.name) }),
+    'assistant-action': () => {
+      const alvo = itens.find((i) => norm(i.name) === norm(m.value));
+      if (m.action === 'open' && alvo) abrir(alvo);
+      mandar(fAssist, { type: 'assistant-action-result', id: m.id, ok: !!alvo, message: alvo ? `${alvo.name} aberto.` : 'Não está liberado neste Terminal.' });
+    }, demo: () => marcar(m.feito),
+  }[m.type] || (() => {}))();
+});
+
+// ------------------------------------------------------------ abas e sites
+const logoDe = (i) => {
+  if (i.kind === 'program') return D.mapa.exes[i.target.toLowerCase()];
+  let h = new URL(i.target).hostname;
+  for (; h; h = h.includes('.') ? h.slice(h.indexOf('.') + 1) : '') if (D.mapa.hosts[h]) return D.mapa.hosts[h];
+};
+function marca(i) {
+  const l = D.logos[logoDe(i)], a = el('span', { className: 'avatar m q' + (l ? ' logo-marca' : ''), textContent: l ? '' : i.name.slice(0, 2).toUpperCase() });
+  if (l) a.append(el('img', { src: l, alt: '' })); else a.style.background = '#1976d2';
+  return a;
+}
+function abrir(item) {
+  if (estado !== 'active') return;
+  fecharPops();
+  registrar(`Abriu: ${item.name}`);
+  if (item.kind === 'program') { marcar('programa'); janela(item.id, item.name, 460, 220, el('div', { className: 'texto' }, el('h3', { textContent: item.name }), el('p', { textContent: 'No Terminal real, o programa instalado no computador abre aqui, e a janela dele aparece na barra de baixo.' }))); return; }
+  marcar('site');
+  if (!abas.some((a) => a.item.id === item.id)) {
+    const p = el('div', { className: 'pagina' });
+    palco.append(p);
+    abas.push({ item, p });
+    pintarSite(abas.at(-1));
+  }
+  if (abas.length > 1) marcar('abas');
+  ativa = item.id; desenhar();
+}
+function pintarSite(a) {
+  const url = new URL(a.item.target);
+  const campo = el('input', { className: 'campo', value: 'www.site-fora-da-lista.com.br' });
+  campo.setAttribute('aria-label', 'Endereço fora da lista');
+  a.p.replaceChildren(el('div', {}, marca(a.item), el('h2', { textContent: a.item.name }),
+    el('p', { textContent: `No Terminal real, o site ${url.hostname} abre aqui dentro, com o login normal da atendente.` }),
+    a.item.externo === false ? null : bt('Abrir o site verdadeiro em outra aba', () => open(a.item.target, '_blank', 'noopener')),
+    el('p', { textContent: 'Simule um link que leva para um site não liberado:' }), campo,
+    bt('Tentar abrir', () => bloquear(a, campo.value.trim() || 'site-fora-da-lista.com.br'), 'btn')));
+}
+function bloquear(a, host) {
+  marcar('bloqueio'); registrar(`Tentativa bloqueada: ${host}`);
+  a.p.replaceChildren(el('div', {}, el('div', { className: 'bola', textContent: '⊘' }), el('h2', { textContent: 'Este site não é permitido' }),
+    el('p', { textContent: `Só os sites autorizados pela Pontual abrem neste computador. A tentativa de abrir ${host} foi registrada e o TI foi avisado.` }),
+    bt(`Voltar para ${a.item.name}`, () => pintarSite(a), 'btn')));
+}
+function fecharAba(id) {
+  const a = abas.find((x) => x.item.id === id);
+  if (!a) return;
+  a.p.remove(); abas = abas.filter((x) => x !== a);
+  if (ativa === id) ativa = null;
+  registrar(`Fechou: ${a.item.name}`); desenhar();
+}
+function desenhar() {
+  inicio.style.visibility = ativa ? 'hidden' : '';
+  for (const a of abas) a.p.hidden = a.item.id !== ativa;
+  $('abas').replaceChildren(...abas.map((a) => {
+    const x = bt('×', () => fecharAba(a.item.id), ''); x.setAttribute('aria-label', `Fechar ${a.item.name}`);
+    return el('div', { className: 'aba' + (a.item.id === ativa ? ' sel' : '') }, el('button', { onclick: () => { ativa = a.item.id; desenhar(); } }, marca(a.item), a.item.name), x);
+  }), ...janelas.filter((j) => j.id !== 'ia' && j.id !== 'calc').map((j) => el('div', { className: 'aba' }, bt('▢ ' + j.titulo, () => { j.n.style.zIndex = ++z; }, ''))));
+  $('b-todas').hidden = abas.length < 2;
+  $('b-todas').textContent = `Abas (${abas.length})`;
+  mandarEstado();
+}
+
+// ------------------------------------------------------------ janelas flutuantes
+function arrastar(alca, alvo, aoClicar) {
+  alca.onpointerdown = (e) => {
+    if (e.target !== alca && e.target.closest('button')) return;
+    const r = alvo.getBoundingClientRect(), b = palco.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+    let moveu = false;
+    alca.setPointerCapture(e.pointerId);
+    alvo.style.zIndex = ++z;
+    alca.onpointermove = (v) => {
+      if (Math.abs(v.clientX - e.clientX) + Math.abs(v.clientY - e.clientY) > 4) moveu = true;
+      if (!moveu) return;
+      alvo.style.right = alvo.style.bottom = 'auto';
+      alvo.style.left = Math.max(0, Math.min(b.width - r.width, v.clientX - b.left - dx)) + 'px';
+      alvo.style.top = Math.max(0, Math.min(b.height - r.height, v.clientY - b.top - dy)) + 'px';
+    };
+    alca.onpointerup = () => { alca.onpointermove = alca.onpointerup = null; if (!moveu && aoClicar) aoClicar(); };
+  };
+}
+function janela(id, titulo, w, h, conteudo) {
+  const ja = janelas.find((j) => j.id === id);
+  if (ja) { ja.n.style.zIndex = ++z; return; }
+  const x = bt('×', () => fecharJan(id), 'limpo'); x.setAttribute('aria-label', `Fechar ${titulo}`);
+  const cab = el('header', {}, el('b', { textContent: titulo }), x);
+  const n = el('div', { className: 'jan' }, cab, el('div', { className: 'dentro' }, conteudo));
+  Object.assign(n.style, { width: w + 'px', height: h + 'px', right: 24 + janelas.length * 24 + 'px', bottom: 90 - Math.min(80, janelas.length * 12) + 'px', zIndex: ++z });
+  arrastar(cab, n);
+  palco.append(n); janelas.push({ id, titulo, n }); desenhar();
+}
+function fecharJan(id) { const j = janelas.find((x) => x.id === id); if (!j) return; j.n.remove(); janelas = janelas.filter((x) => x !== j); if (id === 'ia') fAssist = null; desenhar(); }
+function calculadora() { marcar('calc'); janela('calc', 'Calculadora', 380, 540, quadro('calc', D.inicio.replace('<head>', '<head><script>window.__CALC=true<\/script>'))); }
+function assistente() {
+  if (janelas.some((j) => j.id === 'ia')) { fecharJan('ia'); return; }
+  fAssist = quadro('assistente', D.assistente);
+  janela('ia', 'Assistente Pontual', 420, 560, fAssist);
+}
+function texto(titulo, t, ...mais) { return el('div', { className: 'texto' }, el('h3', { textContent: titulo }), el('p', { textContent: t }), ...mais); }
+function pdf() { marcar('pdf'); janela('pdf', 'Ferramentas de PDF', 620, 320, texto('Ferramentas de PDF', 'No Terminal real, abre aqui o Pontual Tools instalado no computador, para ler, compactar e converter PDF. Ele não funciona nesta demonstração.')); }
+function arquivos() {
+  marcar('arquivos');
+  janela('arq', 'Downloads', 520, 300, texto('Downloads', 'No Terminal real, abre a pasta Downloads no explorador do Windows. Arquivos de exemplo:',
+    ...['Proposta-exemplo.pdf', 'Contracheque-exemplo.pdf', 'Planilha-exemplo.xlsx'].map((f) => el('div', { textContent: '🗎 ' + f }))));
+}
+
+// ------------------------------------------------------------ aplicativos do computador
+const apps = [['Bloco de Notas', 'notepad.exe', 'windows', 'allowed'], ['Paint', 'mspaint.exe', 'windows', 'allowed'], ['Microsoft Excel', 'excel.exe', 'installed', 'allowed'],
+  ['VLC', 'vlc.exe', 'installed', 'request'], ['Spotify', 'spotify.exe', 'store', 'blocked'], ['Programa baixado (exemplo)', 'baixado.exe', 'downloaded', 'request']]
+  .map(([name, exe, source, status], i) => ({ id: 'app' + i, name, exe, source, status, open: false }));
+function abrirApp(id) {
+  const a = apps.find((x) => x.id === id);
+  if (!a) return;
+  if (a.source === 'downloaded') { registrar(`Pedido para liberar: ${a.name}`); toast(`${a.name} foi baixado da internet e ainda não foi liberado. O TI recebeu o pedido; tente de novo depois da liberação.`); return; }
+  if (a.status === 'request') { registrar(`Pedido para liberar: ${a.name}`); toast(`${a.name} foi aberto. O TI recebeu um pedido para liberar este aplicativo.`); } else registrar(`Aplicativo aberto: ${a.name}`);
+  janela(a.id, a.name, 420, 200, texto(a.name, 'No Terminal real, o aplicativo do computador abre aqui.'));
+}
+
+// ------------------------------------------------------------ barra
+function toast(m) { document.querySelector('.toast-d')?.remove(); const t = el('div', { className: 'toast-d', textContent: m, role: 'status' }); palco.append(t); clearTimeout(dica); dica = setTimeout(() => t.remove(), 7000); }
+function fecharPops() { $('p-pesq').hidden = $('p-todas').hidden = true; }
+function menu(pop, rotulo, fonte, escolher, fechar) {
+  const jaAberto = !pop.hidden; fecharPops(); if (jaAberto) return;
+  const campo = el('input', { className: 'campo', placeholder: rotulo }), lista = el('div', { className: 'pop-lista' });
+  campo.setAttribute('aria-label', rotulo);
+  const pintar = () => {
+    const r = fonte().filter((i) => norm(i.name).includes(norm(campo.value.trim())));
+    lista.replaceChildren(...(r.length ? r.map((i) => el('div', {}, el('button', { onclick: () => { fecharPops(); escolher(i); } }, marca(i), el('span', {}, i.name, el('small', { textContent: (i.kind === 'program' ? 'Programa' : 'Site') + ' · ' + i.group }))),
+      fechar ? bt('×', () => { fechar(i); pintar(); }, 'x') : null)) : [el('p', { textContent: campo.value ? `Nada encontrado para "${campo.value}".` : 'Nenhuma aba aberta.' })]));
+  };
+  campo.oninput = pintar;
+  campo.onkeydown = (e) => { if (e.key === 'Escape') fecharPops(); if (e.key === 'Enter') lista.querySelector('button')?.click(); };
+  pop.replaceChildren(campo, lista); pop.hidden = false; pintar(); campo.focus();
+}
+$('b-inicio').onclick = () => { fecharPops(); ativa = null; desenhar(); };
+$('b-pesq').onclick = () => { marcar('pesq'); menu($('p-pesq'), 'Digite o nome do site ou programa', () => itens, abrir); };
+$('b-todas').onclick = () => menu($('p-todas'), 'Procurar entre as abas abertas', () => abas.map((a) => a.item), (i) => { ativa = i.id; desenhar(); }, (i) => fecharAba(i.id));
+$('b-ti').onclick = () => { marcar('ti'); registrar('Chamado ao TI'); toast(online ? 'Chamado enviado. O TI já foi avisado.' : 'Sem conexão agora. O chamado vai ser enviado ao TI assim que a conexão voltar.'); $('b-ti').disabled = true; setTimeout(() => { $('b-ti').disabled = false; }, 8000); };
+$('b-arq').onclick = arquivos; $('b-ener').onclick = energia;
+palco.addEventListener('pointerdown', fecharPops);
+addEventListener('blur', () => setTimeout(() => { if (document.activeElement?.tagName === 'IFRAME') fecharPops(); }, 0));
+arrastar($('bolha'), $('bolha'), assistente);
+$('bolha').onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); assistente(); } };
+function veu(conteudo, cheio) { const v = el('div', { className: 'veu-d' + (cheio ? ' cheio' : '') }, el('div', {}, ...conteudo)); document.body.append(v); return v; }
+function reiniciar(frase) {
+  const v = veu([el('h2', { textContent: frase }), el('p', { textContent: 'Só uma simulação: o seu computador não é afetado.' }), bt('Ligar de novo', () => { v.remove(); $('b-atual').hidden = true; })], true);
+  [...abas].forEach((a) => fecharAba(a.item.id)); [...janelas].forEach((j) => fecharJan(j.id));
+}
+function energia() {
+  marcar('energia');
+  const ir = (frase) => () => { v.remove(); reiniciar(frase); };
+  const v = veu([el('h2', { textContent: 'O que você quer fazer?' }), el('p', { textContent: 'As páginas abertas serão fechadas.' }),
+    bt('Desligar o computador', ir('Computador desligado'), 'btn'), bt('Reiniciar o computador', ir('Reiniciando')), bt('Sair da conta', ir('Conta encerrada')), bt('Cancelar', () => v.remove())]);
+}
+$('b-atual').onclick = () => {
+  marcar('atual');
+  const v = veu([el('h2', { textContent: 'Atualizar o Terminal?' }), el('p', { textContent: 'A versão nova é instalada e o computador reinicia.' }), bt('Atualizar', () => { v.remove(); reiniciar('Atualizando e reiniciando'); }, 'btn'), bt('Agora não', () => v.remove())]);
+};
+
+// ------------------------------------------------------------ roteiro de teste e simulações
+const TESTES = [['site', 'Abrir um banco da lista'], ['abas', 'Abrir um segundo site e trocar de aba'], ['pesq', 'Usar o botão Pesquisar'], ['bloqueio', 'Dentro de um site, tentar abrir um endereço não liberado'],
+  ['programa', 'Abrir um programa da lista (Excel)'], ['apps', 'Ver os Aplicativos do computador'], ['calc', 'Abrir a Calculadora'], ['pdf', 'Abrir o PDF'], ['arquivos', 'Abrir os Arquivos'], ['ti', 'Chamar o TI'],
+  ['ia', 'Perguntar à Assistente (botão redondo)'], ['avaliar', 'Avaliar uma resposta da Assistente'], ['cpf', 'Na Assistente, consultar o CPF de teste 529.982.247-25'], ['energia', 'Abrir Desligar ou sair'],
+  ['manut', 'Simular: manutenção'], ['off', 'Simular: sem conexão'], ['atual', 'Simular: versão nova e clicar em Atualizar']];
+const feitos = new Set();
+const lista = el('ol'), log = el('ul', { id: 'log' }), cont = el('h3');
+function pintarTestes() { cont.textContent = `O que testar (${feitos.size} de ${TESTES.length})`; lista.replaceChildren(...TESTES.map(([k, t]) => el('li', { textContent: t, className: feitos.has(k) ? 'ok' : '' }))); }
+function marcar(k) { if (TESTES.some((t) => t[0] === k)) { feitos.add(k); pintarTestes(); } }
+function registrar(t) { log.prepend(el('li', { textContent: new Date().toLocaleTimeString('pt-BR') + ' · ' + t })); while (log.children.length > 40) log.lastChild.remove(); }
+function mudar(e, o, k) { estado = e; online = o; if (k) marcar(k); ativa = null; if (e !== 'active') [...janelas].forEach((j) => fecharJan(j.id)); $('bolha').hidden = e !== 'active'; desenhar(); $('painel').hidden = true; }
+let grav = false;
+$('painel').append(bt('Fechar', () => { $('painel').hidden = true; }), cont, lista, el('h3', { textContent: 'Simular situações' }),
+  el('div', { className: 'sim' }, bt('Funcionando normalmente', () => mudar('active', true)), bt('Computador em manutenção', () => mudar('maintenance', true, 'manut')),
+    bt('Aguardando aprovação do TI', () => mudar('pending', true)), bt('Sem conexão', () => mudar('active', false, 'off')),
+    bt('Versão nova disponível', () => { $('b-atual').hidden = false; $('painel').hidden = true; toast('Tem uma versão nova do Terminal. Clique em "Atualizar" quando puder.'); }),
+    bt('Ligar ou desligar o aviso de gravação', () => { grav = !grav; $('monit').className = 'monit' + (grav ? ' grava' : ''); $('monit').textContent = grav ? '● A tela e as atividades são gravadas (7h às 18h)' : 'As atividades serão monitoradas'; $('painel').hidden = true; })),
+  el('h3', { textContent: 'O que o TI recebe na Central (simulado)' }), log);
+pintarTestes();
+$('abre-painel').onclick = () => { $('painel').hidden = !$('painel').hidden; };
+const hora = () => { $('relogio').textContent = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); };
+hora(); setInterval(hora, 10000);
+</script>
+</body>
+</html>

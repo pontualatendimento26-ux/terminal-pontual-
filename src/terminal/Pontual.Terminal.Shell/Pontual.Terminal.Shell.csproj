@@ -21,6 +21,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Logos da barra: PNG gerados dos SVG de wwwroot/terminal/logos (o WPF não desenha SVG); o mapa é o mesmo da tela. -->
+    <Resource Include="Logos\*.png" />
+    <EmbeddedResource Include="..\..\server\Pontual.Server\wwwroot\terminal\logos\mapa.json" LogicalName="logos.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Tela inicial embutida (modo local): os mesmos arquivos que o servidor publica em /terminal/, por link. -->
     <Content Include="..\..\server\Pontual.Server\wwwroot\terminal\**\*" Link="terminal\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- Lista de sites do modo local. O TI pode editar o arquivo ao lado do programa. -->

@@ -331,6 +331,7 @@ public partial class TerminalBar : UserControl
             Name = tab.Name;
             Color = tab.Color;
             Initials = tab.Initials;
+            Logo = tab.Logo;
             Detail = tab.IsSelected ? "Página do Terminal · na tela agora"
                 : tab.Monitor is not null ? "Página do Terminal · no outro monitor"
                 : "Página do Terminal";
@@ -341,8 +342,9 @@ public partial class TerminalBar : UserControl
         {
             Window = window;
             Name = string.IsNullOrWhiteSpace(window.Title) ? "Janela sem título" : window.Title;
-            Color = Brand.ColorFor(Name);
-            Initials = Brand.Initials(Name);
+            Logo = window.Logo;
+            Color = Logo is null ? Brand.ColorFor(Name) : Brushes.White;
+            Initials = Logo is null ? Brand.Initials(Name) : "";
             Detail = "Programa";
             Weight = FontWeights.Medium;
         }
@@ -352,6 +354,8 @@ public partial class TerminalBar : UserControl
         public OpenWindow? Window { get; }
 
         public string Name { get; }
+
+        public ImageSource? Logo { get; }
 
         public string Initials { get; }
 
@@ -469,9 +473,11 @@ public partial class TerminalBar : UserControl
 
         public string Name => Item.Name;
 
-        public string Initials { get; } = Brand.Initials(item.Name);
+        public ImageSource? Logo { get; } = Logos.For(item);
 
-        public Brush Color { get; } = Brand.ColorFor(item.Name);
+        public string Initials { get; } = Logos.For(item) is null ? Brand.Initials(item.Name) : "";
+
+        public Brush Color { get; } = Logos.For(item) is null ? Brand.ColorFor(item.Name) : Brushes.White;
 
         public string Detail => string.IsNullOrWhiteSpace(Item.Group)
             ? (Item.IsProgram ? "Programa" : "Site")

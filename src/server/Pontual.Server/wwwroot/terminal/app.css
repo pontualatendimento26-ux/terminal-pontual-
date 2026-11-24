@@ -38,6 +38,8 @@ svg { flex: none; display: block; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
 .avatar { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--branco); font-size: 13px; font-weight: 600; }
 .avatar.g { width: 48px; height: 48px; font-size: 16px; } .avatar.gg { width: 56px; height: 56px; font-size: 18px; border-radius: 16px; }
+.avatar.logo-marca { background: var(--branco); border: 1px solid var(--linha); overflow: hidden; padding: 3px; }
+.avatar.logo-marca img { width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: contain; border-radius: 6px; }
 .avatar.q { border-radius: 12px; } .avatar.m { width: 28px; height: 28px; font-size: 11px; }
 .guias { display: flex; gap: 4px; border-bottom: 1px solid var(--linha); }
 .guias button { min-height: 44px; padding: 0 14px; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; color: var(--suave); font-weight: 500; transition: color var(--t), border-color var(--t); }

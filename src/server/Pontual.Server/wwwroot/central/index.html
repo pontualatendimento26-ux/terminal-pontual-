@@ -180,14 +180,19 @@
       </div>
       <div class="quadro depois">
         <div class="quadro-topo">
-          <div><h2>Já decididos</h2><p>Mude a decisão quando quiser. O bloqueio chega aos navegadores das atendentes em até meio minuto.</p></div>
+          <div><h2>Quais sites podem e quais não podem</h2><p>Cada site aparece uma vez: a regra de todas e, ao lado, quem é exceção. Para mudar, escolha para quem e clique em Liberar ou Bloquear. A mudança chega aos navegadores das atendentes em até meio minuto.</p></div>
         </div>
         <form class="ferramentas" id="chrome-novo" novalidate>
           <label class="busca"><span data-ic="globe"></span><input class="campo" id="chrome-dominio" placeholder="Decidir um domínio, ex.: jogos.com" aria-label="Domínio para liberar ou bloquear" autocomplete="off" spellcheck="false"></label>
-          <select class="campo" id="chrome-quem" aria-label="Para quem vale a decisão"><option value="all">Todas as atendentes</option></select>
+          <span id="chrome-quem"></span>
           <button type="submit" class="btn perigo" data-decisao="block"><span data-ic="lock"></span>Bloquear</button>
           <button type="submit" class="btn claro" data-decisao="allow"><span data-ic="check"></span>Liberar</button>
         </form>
+        <div class="ferramentas">
+          <label class="busca"><span data-ic="search"></span><input class="campo" id="chrome-busca" type="search" placeholder="Procurar site ou atendente" aria-label="Procurar nos sites decididos" autocomplete="off"></label>
+          <select class="campo" id="chrome-situacao" aria-label="Filtrar por situação" style="width:auto"><option value="todos">Todos os sites</option><option value="allowed">Liberados para todas</option><option value="blocked">Bloqueados para todas</option><option value="excecao">Com exceções</option></select>
+          <small id="chrome-resumo"></small>
+        </div>
         <div class="rolagem-x"><table id="tb-chrome-decididos"></table></div>
       </div>
     </section>
@@ -204,7 +209,7 @@
         </div>
         <form class="ferramentas" id="aplicativos-novo" novalidate>
           <label class="busca"><span data-ic="window"></span><input class="campo" id="aplicativos-exe" placeholder="Decidir um aplicativo, ex.: spotify.exe" aria-label="Nome do aplicativo para liberar ou bloquear" autocomplete="off" spellcheck="false"></label>
-          <select class="campo" id="aplicativos-quem" aria-label="Para quem vale a decisão"><option value="all">Todas as atendentes</option></select>
+          <span id="aplicativos-quem"></span>
           <button type="submit" class="btn perigo" data-decisao="block"><span data-ic="lock"></span>Bloquear</button>
           <button type="submit" class="btn claro" data-decisao="allow"><span data-ic="check"></span>Liberar</button>
         </form>
@@ -384,6 +389,15 @@
   <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Criar administrador</button></div>
 </form></dialog>
 
+<dialog id="dlg-cargo" aria-labelledby="t-cargo"><form class="dlg" novalidate>
+  <h2 id="t-cargo">Mudar o cargo</h2><p id="cargo-texto"></p>
+  <label>Cargo<select class="campo" id="cargo-funcao" aria-describedby="cargo-dica cargo-erro">
+    <option value="superadmin">Superadministrador</option><option value="admin">Administrador</option><option value="support">Suporte</option><option value="auditor">Auditor</option>
+  </select><span class="dica" id="cargo-dica"></span></label>
+  <p class="erro" id="cargo-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Salvar cargo</button></div>
+</form></dialog>
+
 <dialog id="dlg-senha" aria-labelledby="t-senha"><form class="dlg" novalidate>
   <h2 id="t-senha">Trocar a senha</h2><p id="senha-texto"></p>
   <label>Senha nova<input class="campo" id="senha-nova" type="password" autocomplete="new-password" minlength="10" aria-describedby="senha-dica senha-erro"><span class="dica" id="senha-dica">No mínimo 10 caracteres.</span></label>
@@ -423,6 +437,12 @@
 <dialog id="dlg-confirmar" aria-labelledby="conf-titulo" aria-describedby="conf-texto"><form class="dlg" novalidate>
   <h2 id="conf-titulo"></h2><p id="conf-texto"></p>
   <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn rubi" id="conf-ok"></button></div>
+</form></dialog>
+
+<dialog id="dlg-quem" aria-labelledby="quem-titulo" aria-describedby="quem-texto"><form class="dlg" novalidate>
+  <h2 id="quem-titulo">Escolher atendentes</h2><p id="quem-texto"></p>
+  <div class="quem-lista" id="quem-lista"></div>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn" id="quem-ok">Confirmar</button></div>
 </form></dialog>
 
 <!-- Ações sensíveis: o servidor pede a senha de novo e/ou o motivo (vai para a auditoria). -->

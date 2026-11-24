@@ -53,6 +53,26 @@
     a.setAttribute('aria-hidden', 'true');
     return a;
   };
+  // Logos dos sites (pelo domínio) e programas (pelo nome do .exe): logos/mapa.json. Sem logo, ficam as iniciais.
+  let LOGOS = { hosts: {}, exes: {} };
+  fetch('logos/mapa.json').then((r) => (r.ok ? r.json() : null)).then((m) => { if (m) { LOGOS = m; if (!modoCalc) desenhar(); } }).catch(() => {});
+  const logoDoExe = (caminho) => LOGOS.exes[String(caminho || '').split(/[\\/]/).pop().toLowerCase()];
+  const logoDe = (i) => {
+    if (!i) return undefined;
+    if (i.kind === 'program') return logoDoExe(i.target);
+    let h = '';
+    try { h = new URL(i.target).hostname; } catch { return undefined; }
+    for (; h; h = h.includes('.') ? h.slice(h.indexOf('.') + 1) : '') if (LOGOS.hosts[h]) return LOGOS.hosts[h];
+    return undefined;
+  };
+  const marca = (nome, logo, classe) => {
+    const a = avatar(nome, classe);
+    if (!logo) return a;
+    const img = el('img', { alt: '', src: `logos/${logo}.svg` });
+    img.onerror = () => a.replaceWith(avatar(nome, classe));
+    a.classList.add('logo-marca'); a.style.background = ''; a.replaceChildren(img);
+    return a;
+  };
   const primeiro = (nome) => nome.trim().split(/\s+/)[0] || '';
   const saudar = () => { const h = new Date().getHours(); return h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; };
   const texto = (v, max = 300) => (typeof v === 'string' ? v.slice(0, max) : '');
@@ -361,7 +381,7 @@
 
     $('sec-abertos').hidden = S.abertos.length === 0 || Boolean(termo);
     $('abertos').replaceChildren(...S.abertos.map((a) => {
-      const ir = el('button', { type: 'button' }, avatar(a.name, 'm q'), a.name);
+      const ir = el('button', { type: 'button' }, marca(a.name, logoDe(S.config && S.config.items.find((i) => i.id === a.id)), 'm q'), a.name);
       ir.setAttribute('aria-label', `Voltar para ${a.name}`);
       ir.onclick = () => focar(a);
       const x = el('button', { type: 'button', className: 'x' }, ic('x', 16));
@@ -373,7 +393,7 @@
     const destaques = itens.filter((i) => S.uso[i.id]).sort((a, b) => S.uso[b.id] - S.uso[a.id]).slice(0, 6);
     $('sec-destaques').hidden = Boolean(termo) || destaques.length === 0;
     $('destaques').replaceChildren(...destaques.map((i) => {
-      const b = el('button', { type: 'button', className: 'destaque' }, avatar(i.name, 'gg'),
+      const b = el('button', { type: 'button', className: 'destaque' }, marca(i.name, logoDe(i), 'gg'),
         el('span', {}, el('b', { textContent: i.name }), el('small', { textContent: i.kind === 'program' ? 'Programa' : i.group })));
       b.onclick = () => abrir(i);
       return b;
@@ -393,7 +413,7 @@
     const lista = itens.filter((i) => (S.cat === 'Todos' || i.group === S.cat) && casa(i));
     $('todos-titulo').textContent = termo ? `${lista.length} ${lista.length === 1 ? 'resultado' : 'resultados'}` : `Tudo o que está liberado para você (${itens.length})`;
     $('lista-sites').replaceChildren(...lista.map((i) => {
-      const b = el('button', { type: 'button', className: 'item' }, avatar(i.name, 'q'),
+      const b = el('button', { type: 'button', className: 'item' }, marca(i.name, logoDe(i), 'q'),
         el('span', {}, el('b', { textContent: i.name }), el('small', { textContent: i.kind === 'program' ? 'Programa instalado' : dominio(i) })), ic('arrow', 20));
       b.onclick = () => abrir(i);
       return b;
@@ -477,7 +497,7 @@
       : !lista.length ? el('p', { className: 'vazio', textContent: S.apps.length ? 'Nenhum aplicativo com esse nome.' : 'Nenhum aplicativo encontrado neste computador.' })
         : el('div', {}, ...grupos.flatMap(([titulo, itens]) => [el('h3', { textContent: titulo }), el('div', { className: 'lista-sites' }, ...itens.map((a) => {
           const bloqueado = a.status === 'blocked';
-          const b = el('button', { type: 'button', className: 'item', disabled: bloqueado }, avatar(a.name, 'q'),
+          const b = el('button', { type: 'button', className: 'item', disabled: bloqueado }, marca(a.name, logoDoExe(a.exe), 'q'),
             el('span', {}, el('b', { textContent: a.name }), el('small', { textContent: a.open ? 'Aberto agora' : SITUACAO_APP[a.status] || a.exe })), ic(bloqueado ? 'lock' : 'arrow', 20));
           b.title = a.exe;
           b.onclick = () => { aoPrograma({ type: 'open-app', id: a.id }); fecharAplicativos(); };

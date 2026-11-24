@@ -5,7 +5,7 @@
 # O que faz:
 #   1. copia Atualizar-Central.ps1 e a chave PUBLICA para "Arquivos de Programas\Pontual\Atualizador da Central"
 #      (usuarios comuns so leem);
-#   2. protege ProgramData\Pontual\Central (trabalho e copias de seguranca: so SISTEMA/administradores);
+#   2. protege F:Pontual-Central (trabalho e copias de seguranca: so SISTEMA/administradores);
 #   3. protege dist\Central-do-TI (o programa que roda como SISTEMA): usuarios so leem.
 #      Excecao: wwwroot\baixar continua gravavel, porque gerar-instalador.ps1 copia o instalador para la;
 #   4. protege as copias de seguranca antigas dist\backup-central-* (tem o banco);
@@ -25,7 +25,7 @@ $Dist = Join-Path $Raiz 'dist'
 $Viva = Join-Path $Dist 'Central-do-TI'
 $ArquivosDeProgramas = if ($env:ProgramW6432) { $env:ProgramW6432 } else { $env:ProgramFiles }
 $Destino = Join-Path $ArquivosDeProgramas 'Pontual\Atualizador da Central'
-$Base = Join-Path $env:ProgramData 'Pontual\Central'
+$Base = Join-Path (Split-Path -Qualifier $Dist) 'Pontual-Central'
 $TarefaNome = 'Atualizar a Central do TI'
 $Admins = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')
 $Sistema = New-Object System.Security.Principal.SecurityIdentifier('S-1-5-18')
@@ -65,8 +65,9 @@ $comBom = New-Object System.Text.UTF8Encoding($true)
 [IO.File]::WriteAllText((Join-Path $Destino 'config.txt'), $Dist, [Text.Encoding]::ASCII)
 
 # 2. Pasta de trabalho/copias
-Write-Host '2/6 Protegendo ProgramData\Pontual\Central...'
+Write-Host '2/6 Protegendo F:Pontual-Central...'
 New-Item -ItemType Directory -Force -Path $Base | Out-Null
+if ((Get-Item -LiteralPath $Base -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "$Base e um atalho; recusado." }
 Proteger $Base
 
 # 3. Central em uso

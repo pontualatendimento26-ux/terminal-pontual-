@@ -383,3 +383,18 @@ textarea.campo.ia-texto-medio { min-height: 220px; }
 
 /* Motivo informado numa ação sensível, na lista da auditoria. */
 .motivo { display: block; font-style: italic; opacity: .85; }
+/* Escolha de uma ou mais atendentes nas decisões de sites e aplicativos. */
+.campo.quem { width: auto; max-width: 200px; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.quem-lista { display: grid; gap: 2px; max-height: 50vh; overflow-y: auto; }
+.quem-lista label { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--r-sm); cursor: pointer; }
+.quem-lista label:hover { background: var(--azul-50); }
+.quem-lista label:first-child { border-bottom: 1px solid var(--linha); }
+.quem-lista input { width: 18px; height: 18px; flex: none; accent-color: var(--azul-500); }
+.quem-lista small { display: block; color: var(--suave); font-weight: 400; }
+/* Sites decididos: exceções por atendente. */
+.autoria { display: block; margin-top: 4px; font-size: 12.5px; color: var(--suave); }
+.excecoes { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; } .excecoes + .excecoes { margin-top: 8px; }
+.excecao { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 0 10px; border: 1px solid var(--linha-forte); border-radius: 999px; font-size: 13px; color: var(--tinta); white-space: nowrap; }
+.excecao button { display: grid; place-items: center; width: 24px; height: 24px; margin-right: -7px; padding: 0; border: none; border-radius: 50%; background: none; color: var(--suave); }
+.excecao button:hover { background: var(--rubi-100); color: var(--rubi-700); }
+#tb-chrome-decididos .dominio { display: inline-block; min-width: 160px; }
