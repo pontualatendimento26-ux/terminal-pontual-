@@ -29,7 +29,7 @@ public static class CrmAgent
 
     /// <summary>O que deu para ler de um aviso do CRM. Campos que o aviso não trouxe ficam vazios.</summary>
     public sealed record ParsedEvent(string ConversationId, string Contact, string Phone, string Author, string Text,
-        string Line = "", string LineName = "", string Funnel = "");
+        string Line = "", string LineName = "", string Funnel = "", string Sender = "");
 
     /// <summary>
     /// Funil de teste: a IA escreve a resposta (para aprovação) mesmo sem atendente marcada como ausente.
@@ -114,12 +114,72 @@ public static class CrmAgent
 
             var line = conversation is { } conv && Child(conv, "linha") is { ValueKind: JsonValueKind.Object } l ? l : (JsonElement?)null;
             var funnel = Find(root, ["funil", "funnel"]);
-            return new ParsedEvent(Cut(conversationId, 64), Cut(name, 80), Cut(phone, 20), AuthorOf(root, message), Cut(text, MaxText),
-                Cut(Digits(Scalar(line, "numero", "number", "telefone")), 20), Cut(Scalar(line, "nome", "name"), 80), Cut(Scalar(funnel, "id"), 20));
+            var author = AuthorOf(root, message);
+            // Quem da equipe digitou: é por este nome que a análise sabe de qual atendente é a mensagem.
+            var sender = author == CrmAuthor.Team ? Scalar(Find(root, ["remetente", "sender"]), "nome", "name") : "";
+            return new ParsedEvent(Cut(conversationId, 64), Cut(name, 80), Cut(phone, 20), author, Cut(text, MaxText),
+                Cut(Digits(Scalar(line, "numero", "number", "telefone")), 20), Cut(Scalar(line, "nome", "name"), 80), Cut(Scalar(funnel, "id"), 20),
+                Cut(sender, 80));
         }
         catch (JsonException)
         {
             return new ParsedEvent("", "", "", "", "");
+        }
+    }
+
+    /// <summary>
+    /// O ID do usuário do CRM com este nome. Primeiro o nome igual (sem acento nem maiúscula); se não houver, um único
+    /// usuário cujo nome começa com o informado ("Kamila" → "Kamila Oliveira Borges"). Mais de um possível: nulo.
+    /// </summary>
+    public static string? MatchUser(IEnumerable<CrmClient.User> users, string name)
+    {
+        var wanted = Fold(name);
+        if (wanted.Length == 0)
+        {
+            return null;
+        }
+
+        var list = users.ToList();
+        var exact = list.Where(u => Fold(u.Name) == wanted).ToList();
+        if (exact.Count == 1)
+        {
+            return exact[0].Id;
+        }
+
+        var starts = list.Where(u => Fold(u.Name).StartsWith(wanted + " ", StringComparison.Ordinal)).ToList();
+        return exact.Count == 0 && starts.Count == 1 ? starts[0].Id : null;
+    }
+
+    /// <summary>Se o remetente do CRM é uma pessoa da equipe: não o celular ("Externo"), não um robô nem o agente.</summary>
+    public static bool IsPerson(string sender)
+    {
+        var name = Fold(sender ?? "");
+        return name.Length > 0 && name != "externo" && !name.StartsWith("agente", StringComparison.Ordinal)
+            && !name.Contains("ia_pontual") && !name.Contains("ia pontual") && !name.Contains("bot");
+    }
+
+    /// <summary>Etiqueta que o cliente ganha no CRM quando uma resposta escrita pela IA vai para ele.</summary>
+    public const string AiTag = "Atendida pela IA";
+
+    /// <summary>O ID da linha de WhatsApp no aviso (conversa.linha.id): é o "bot" que as rotas de conversa do CRM pedem.</summary>
+    public static string LineIdOf(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return "";
+            }
+
+            return Find(root, ConversationObjects) is { } conversation && Child(conversation, "linha") is { ValueKind: JsonValueKind.Object } line
+                ? Scalar(line, "id")
+                : "";
+        }
+        catch (JsonException)
+        {
+            return "";
         }
     }
 
@@ -225,7 +285,7 @@ public static class CrmAgent
 
     private static string Cut(string value, int max) => value.Length <= max ? value : value[..max];
 
-    private static string Fold(string text)
+    internal static string Fold(string text)
     {
         var decomposed = text.Trim().ToLowerInvariant().Normalize(NormalizationForm.FormD);
         return new string(decomposed.Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).ToArray());

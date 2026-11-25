@@ -398,3 +398,18 @@ textarea.campo.ia-texto-medio { min-height: 220px; }
 .excecao button { display: grid; place-items: center; width: 24px; height: 24px; margin-right: -7px; padding: 0; border: none; border-radius: 50%; background: none; color: var(--suave); }
 .excecao button:hover { background: var(--rubi-100); color: var(--rubi-700); }
 #tb-chrome-decididos .dominio { display: inline-block; min-width: 160px; }
+
+/* Notas adesivas da atendente (aba "Notas" da máquina). As cores são as mesmas das notas no Terminal, nos dois temas. */
+.nota-yellow { --nc: #fff7d1; --nt: #fff2ab; --ni: #1f1f1f; } .nota-green { --nc: #e4f9e0; --nt: #cbf1c4; --ni: #1f1f1f; } .nota-pink { --nc: #ffe4f1; --nt: #ffcce5; --ni: #1f1f1f; }
+.nota-purple { --nc: #f2e6ff; --nt: #e7cfff; --ni: #1f1f1f; } .nota-blue { --nc: #e2f1ff; --nt: #cde9ff; --ni: #1f1f1f; } .nota-gray { --nc: #f3f2f1; --nt: #e1dfdd; --ni: #1f1f1f; } .nota-charcoal { --nc: #696969; --nt: #494745; --ni: #fff; }
+.nota-enviar { display: grid; gap: 10px; } .nota-enviar strong { color: var(--tinta); }
+.nota-enviar-fim { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .nota-enviar-fim .btn { margin-left: auto; }
+.nota-cores { display: flex; gap: 6px; }
+.nota-cores button { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(15, 23, 42, 0.25); background: var(--nt); cursor: pointer; padding: 0; }
+.nota-cores button[aria-checked="true"] { box-shadow: 0 0 0 2px var(--branco), 0 0 0 4px var(--azul-500); }
+.notas-lista { display: grid; gap: 12px; }
+.nota-cartao { background: var(--nc); color: var(--ni); border-top: 4px solid var(--nt); border-radius: 4px; box-shadow: var(--s-1); }
+.nota-cartao .nota-topo { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 14px 0; font-size: 12px; opacity: 0.75; }
+.nota-cartao .nota-topo .redondo { width: 30px; height: 30px; color: inherit; flex: none; }
+.nota-cartao .nota-corpo { padding: 6px 14px 14px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.45; }
+.nota-cartao .nota-corpo ul { margin: 0; padding-left: 22px; }

@@ -95,7 +95,93 @@ public partial class TerminalBar : UserControl
             : $"Tem uma versão nova do Terminal ({version}). Clique quando puder: o Terminal reinicia em cerca de 1 minuto.";
     }
 
-    internal void SetClock(string text) => ClockText.Text = text;
+    internal void SetClock(string text)
+    {
+        if (ClockText.Text == text)
+        {
+            return;
+        }
+
+        ClockText.Text = text;
+
+        // Uma vez por minuto o ícone confere o som: o volume pode ter mudado pelo teclado ou pela barra do outro monitor.
+        ShowVolumeIcon(SystemVolume.Read());
+    }
+
+    // ------------------------------------------------------------------ volume do som
+    // O volume é do próprio computador, então a barra resolve sozinha, sem passar pela MainWindow.
+
+    private bool _volumeSync;
+
+    private void OnVolume(object sender, RoutedEventArgs e)
+    {
+        ShowVolume(SystemVolume.Read(), moveSlider: true);
+        VolumePopup.IsOpen = true;
+    }
+
+    private void OnVolumeChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_volumeSync)
+        {
+            return;
+        }
+
+        var percent = (int)Math.Round(e.NewValue);
+        if (SystemVolume.SetPercent(percent))
+        {
+            // O controle fica onde a atendente soltou; só os textos acompanham. Com volume zero, o mudo fica como estava.
+            var muted = percent == 0 && SystemVolume.Read() is { Muted: true };
+            ShowVolume((percent, muted), moveSlider: false);
+        }
+        else
+        {
+            ShowVolume(SystemVolume.Read(), moveSlider: true);
+        }
+    }
+
+    private void OnMute(object sender, RoutedEventArgs e)
+    {
+        if (SystemVolume.Read() is { } state)
+        {
+            SystemVolume.SetMuted(!state.Muted);
+        }
+
+        ShowVolume(SystemVolume.Read(), moveSlider: true);
+    }
+
+    private void ShowVolume((int Percent, bool Muted)? state, bool moveSlider)
+    {
+        _volumeSync = true;
+        try
+        {
+            VolumeSlider.IsEnabled = state is not null;
+            MuteButton.IsEnabled = state is not null;
+            VolumeMissing.Visibility = state is null ? Visibility.Visible : Visibility.Collapsed;
+            VolumePercent.Text = state is not { } found ? string.Empty : found.Muted ? "Sem som" : $"{found.Percent}%";
+            MuteButton.Content = state is { Muted: true } ? "Ativar o som" : "Silenciar";
+            if (moveSlider)
+            {
+                VolumeSlider.Value = state?.Percent ?? 0;
+            }
+        }
+        finally
+        {
+            _volumeSync = false;
+        }
+
+        ShowVolumeIcon(state);
+    }
+
+    /// <summary>O alto-falante da barra ganha um X vermelho quando o som está silenciado ou no zero.</summary>
+    private void ShowVolumeIcon((int Percent, bool Muted)? state)
+    {
+        var silent = state is { Muted: true } or { Percent: 0 };
+        VolumeCross.Visibility = silent ? Visibility.Visible : Visibility.Collapsed;
+        VolumeWaves.Visibility = silent ? Visibility.Collapsed : Visibility.Visible;
+        VolumeButton.ToolTip = state is not { } found ? "Volume do som"
+            : silent ? "Volume do som: sem som"
+            : $"Volume do som: {found.Percent}%";
+    }
 
     internal void SetAttendant(string name)
     {

@@ -261,6 +261,28 @@ public class ServerApiTests
         Assert.True(ServerApi.IsNetworkFailure(new TaskCanceledException()));
     }
 
+    [Fact]
+    public async Task FetchControl_le_os_eventos_do_corpo()
+    {
+        var json = """
+        { "controlling": true, "events": [
+          { "type": "move", "x": 0.5, "y": 0.25, "button": 0, "delta": 0, "key": 0, "text": null },
+          { "type": "text", "x": 0, "y": 0, "button": 0, "delta": 0, "key": 0, "text": "oi" }
+        ] }
+        """;
+        var handler = new FakeHandler(HttpStatusCode.OK, json);
+        using var api = new ServerApi("http://srv:5080", "tok-1", handler);
+
+        var batch = await api.FetchControlAsync();
+
+        Assert.True(batch.Controlling);
+        Assert.Equal(2, batch.Events.Count);
+        Assert.Equal("move", batch.Events[0].Type);
+        Assert.Equal(0.5, batch.Events[0].X, 3);
+        Assert.Equal("text", batch.Events[1].Type);
+        Assert.Equal("oi", batch.Events[1].Text);
+    }
+
     private sealed class FakeHandler(HttpStatusCode status, string responseBody) : HttpMessageHandler
     {
         public HttpMethod? Method { get; private set; }

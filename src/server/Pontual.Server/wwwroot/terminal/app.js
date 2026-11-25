@@ -19,6 +19,7 @@
     wrench: '<path d="M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.6 2.6-2-2 2.6-2.6Z"/>',
     ban: '<circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     pdf: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+    nota: '<path d="M5 4h14v10l-5 6H5V4Z"/><path d="M14 20v-6h5M8.5 8.5h7M8.5 12h4"/>',
     calc: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/>',
     grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
     lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
@@ -82,7 +83,7 @@
   const parametros = new URLSearchParams(location.search);
   const injetado = window.PONTUAL && typeof window.PONTUAL === 'object' ? window.PONTUAL : null;
   const P = injetado && injetado.hosted === true
-    ? { token: texto(injetado.token, 500), hostname: texto(injetado.hostname, 100), hosted: true, local: injetado.local === true, locked: injetado.locked === true, apps: injetado.apps === true, calc: injetado.calc === true, pdf: injetado.pdf === true }
+    ? { token: texto(injetado.token, 500), hostname: texto(injetado.hostname, 100), hosted: true, local: injetado.local === true, locked: injetado.locked === true, apps: injetado.apps === true, calc: injetado.calc === true, pdf: injetado.pdf === true, notes: injetado.notes === true }
     : { token: parametros.get('token') || '', hostname: parametros.get('hostname') || 'Navegador', hosted: false, local: false };
   // Modo janela da calculadora: o Terminal (2.11+) abre esta mesma página numa janela própria do Windows com ?calc=1.
   const modoCalc = parametros.get('calc') === '1';
@@ -462,7 +463,7 @@
       folha.setAttribute('aria-labelledby', 'aviso-titulo');
       folha.replaceChildren(el('h2', { id: 'aviso-titulo', textContent: 'O que é registrado neste computador' }),
         el('h3', { textContent: 'A Pontual registra' }),
-        lista(['Horários em que o computador está ligado e conectado.', 'Quais programas e sites autorizados você abriu, e por quanto tempo.', 'Tentativas de abrir um programa ou site bloqueado.',
+        lista(['Horários em que o computador está ligado e conectado.', 'As notas adesivas que você escreve no Terminal: ficam guardadas na Central, e o TI pode ler.', 'Quais programas e sites autorizados você abriu, e por quanto tempo.', 'Tentativas de abrir um programa ou site bloqueado.',
           'O endereço (só o domínio) dos sites fora da lista que foram abertos, e os chamados feitos ao TI.']),
         el('h3', { textContent: 'O TI pode ver a sua tela ao vivo' }),
         lista(['Quando precisar, o TI pode abrir a visualização da tela deste computador, incluindo os dois monitores.',
@@ -640,6 +641,36 @@
   $('at-calc').onclick = abrirCalculadora;
   // Ferramentas de PDF: janela própria do Terminal com o Pontual Tools local (MainWindow.PdfTools.cs).
   if (P.hosted && P.pdf && ponte) { $('at-pdf').hidden = false; $('at-pdf').onclick = () => aoPrograma({ type: 'pdf' }); }
+  // Notas adesivas da Pontual (pedido do dono, 25/11/2026): cada nota é uma janela própria do Terminal (MainWindow.Notes.cs).
+  // As janelas só gravam no armazenamento local; esta tela, que fica aberta o dia todo, é quem envia as notas para a
+  // Central e busca os recados do TI (notas-base.js). No navegador comum, para teste, a lista abre em outra aba.
+  const NOTAS = window.PontualNotas || null;
+  const temNotas = Boolean(NOTAS) && (P.hosted ? P.notes && Boolean(ponte) : Boolean(P.token));
+  const mostrarNotas = (notas) => { for (const n of notas) aoPrograma({ type: 'note-show', id: n.id, color: n.color, x: n.x, y: n.y, w: n.w, h: n.h, activate: false }); };
+  let notasTimer = 0;
+  async function sincronizarNotas() {
+    if (!temNotas || P.local || S.invalido || (S.estado !== 'active' && S.estado !== 'maintenance')) return;
+    try {
+      const r = await NOTAS.sincronizar(api);
+      if (!r) return;
+      // Recado novo do TI aparece na tela; recado retirado pelo TI some.
+      mostrarNotas(r.mostrar);
+      for (const id of r.fechar) aoPrograma({ type: 'note-close', id });
+    } catch (e) {
+      if (e.status === 401) { S.invalido = true; desenhar(); }
+      // Sem conexão ou máquina pendente: as notas continuam guardadas aqui e a próxima rodada tenta de novo.
+    }
+  }
+  if (temNotas) {
+    $('at-notas').hidden = false;
+    $('at-notas').onclick = () => { if (ponte) aoPrograma({ type: 'notes' }); else window.open('notas.html', 'notas-lista', 'width=360,height=600'); };
+    // Uma janela de nota gravou alguma coisa: manda para a Central logo em seguida.
+    window.addEventListener('storage', (e) => { if (NOTAS.ehChave(e.key)) { clearTimeout(notasTimer); notasTimer = setTimeout(sincronizarNotas, 1500); } });
+    setInterval(sincronizarNotas, 20000);
+    setTimeout(sincronizarNotas, 3000);
+    // Ao ligar o Terminal, as notas que estavam abertas voltam para o mesmo lugar da tela.
+    mostrarNotas(NOTAS.todas().filter((n) => n.open));
+  }
   $('at-veu').onclick = (e) => { if (e.target === $('at-veu')) { if (S.appsAberto) fecharAplicativos(); else if (S.calcAberto) fecharCalculadora(); else fecharAviso(); } };
   document.addEventListener('keydown', (e) => {
     if (S.calcAberto) { teclaCalculadora(e); return; }

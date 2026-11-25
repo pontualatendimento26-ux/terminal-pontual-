@@ -49,6 +49,7 @@ builder.Services.AddHostedService<Pontual.Server.Assistant.AnalysisWorker>();
 builder.Services.AddSingleton<CrmQueue>();
 builder.Services.AddSingleton(services => new Pontual.Server.Assistant.CrmClient(services.GetRequiredService<TimeProvider>()));
 builder.Services.AddHostedService<CrmWorker>();
+builder.Services.AddHostedService<Pontual.Server.Assistant.CrmLostWorker>();
 // Consulta de CPF no Nexus pelo chat da IA (a Central chama a API de integração do Nexus).
 builder.Services.AddSingleton(services => new Pontual.Server.Assistant.NexusClient(services.GetRequiredService<TimeProvider>()));
 builder.Services.AddSingleton<IPasswordHasher<Admin>, PasswordHasher<Admin>>();
@@ -251,6 +252,7 @@ ItemEndpoints.Map(api);
 MonitorEndpoints.Map(api);
 TerminalEndpoints.Map(api);
 ScreenEndpoints.Map(api);
+NoteEndpoints.Map(api);
 RecordingEndpoints.Map(api);
 SharedPhoneEndpoints.Map(api);
 AssistantEndpoints.Map(api);

@@ -26,6 +26,8 @@ public sealed class CrmClient
     private string _tokenFor = "";
     private string _token = "";
     private DateTime _tokenUntil;
+    private string _tagFor = "";
+    private JsonElement? _tagId;
 
     public CrmClient(TimeProvider time, HttpMessageHandler? handler = null)
     {
@@ -64,13 +66,165 @@ public sealed class CrmClient
     }
 
     /// <summary>Passa a conversa para uma atendente (o CRM escolhe quem, se não vier o ID).</summary>
-    public async Task<string> HandOverAsync(CrmAccess access, string conversationId, string reason, CancellationToken ct)
+    public async Task<string> HandOverAsync(CrmAccess access, string conversationId, string reason, string userId, CancellationToken ct)
     {
         using var response = await SendAsync(access, HttpMethod.Put, $"/api/agente-externo/v1/conversas/{Uri.EscapeDataString(conversationId)}/atendimento",
-            new { modo = "humano", motivo = reason }, ct);
+            new { modo = "humano", motivo = reason, usuario_id = userId }, ct);
         var json = await ReadAsync(response, ct);
         return json.ValueKind == JsonValueKind.Object && json.TryGetProperty("responsavel", out var who) && who.ValueKind == JsonValueKind.Object
             && who.TryGetProperty("nome", out var name) ? name.ToString() : "";
+    }
+
+    /// <summary>
+    /// Marca o cliente com a etiqueta <see cref="CrmAgent.AiTag"/>, pelas rotas que a tela de conversa do CRM usa
+    /// (a API do Agente Externo não tem etiqueta). Cria a etiqueta se ela ainda não existe. Marcar de novo não muda nada.
+    /// </summary>
+    public async Task TagAsync(CrmAccess access, string phone, string lineId, CancellationToken ct)
+    {
+        if (phone.Length == 0 || lineId.Length == 0)
+        {
+            throw new CrmFailure("O aviso do CRM não trouxe o telefone do cliente ou a linha do WhatsApp.");
+        }
+
+        var tagId = await TagIdAsync(access, ct);
+        using var response = await SendAsync(access, HttpMethod.Post, "/api/chat/tags/toggle",
+            new { chatId = phone.Contains('@') ? phone : $"{phone}@c.us", botId = lineId, tagId, action = "add" }, ct);
+        await ReadAsync(response, ct);
+    }
+
+    private async Task<JsonElement> TagIdAsync(CrmAccess access, CancellationToken ct)
+    {
+        if (_tagFor == access.Url && _tagId is { } known)
+        {
+            return known;
+        }
+
+        var id = await FindTagAsync(access, ct);
+        if (id is null)
+        {
+            using var created = await SendAsync(access, HttpMethod.Post, "/api/tags", new { name = CrmAgent.AiTag, color = "#7c3aed", tipo = "chat" }, ct);
+            await ReadAsync(created, ct);
+            id = await FindTagAsync(access, ct) ?? throw new CrmFailure($"O CRM não mostrou a etiqueta \"{CrmAgent.AiTag}\" depois de criada.");
+        }
+
+        _tagId = id;
+        _tagFor = access.Url;
+        return id.Value;
+    }
+
+    private async Task<JsonElement?> FindTagAsync(CrmAccess access, CancellationToken ct)
+    {
+        using var response = await SendAsync(access, HttpMethod.Get, "/api/tags?tipo=chat", null, ct);
+        var json = await ReadAsync(response, ct);
+        if (json.ValueKind == JsonValueKind.Object && json.TryGetProperty("tags", out var inner))
+        {
+            json = inner;
+        }
+
+        if (json.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        foreach (var tag in json.EnumerateArray())
+        {
+            if (tag.ValueKind == JsonValueKind.Object && tag.TryGetProperty("id", out var id)
+                && (tag.TryGetProperty("name", out var name) || tag.TryGetProperty("nome", out name))
+                && name.ValueKind == JsonValueKind.String
+                && string.Equals(name.GetString()?.Trim(), CrmAgent.AiTag, StringComparison.OrdinalIgnoreCase))
+            {
+                return id.Clone();
+            }
+        }
+
+        return null;
+    }
+
+    // ---- Rotas da tela de conversa do CRM (bate-papo). Pedem um usuário que veja as conversas de todos (admin).
+
+    /// <summary>As linhas de WhatsApp e o funil (canal) de cada uma.</summary>
+    public async Task<IReadOnlyList<(string Id, string Funnel)>> LinesAsync(CrmAccess access, CancellationToken ct)
+    {
+        using var response = await SendAsync(access, HttpMethod.Get, "/api/sessions", null, ct);
+        var json = await ReadAsync(response, ct);
+        return json.ValueKind != JsonValueKind.Array ? [] : json.EnumerateArray()
+            .Where(s => s.ValueKind == JsonValueKind.Object && s.TryGetProperty("id", out _))
+            .Select(s => (s.GetProperty("id").ToString(), s.TryGetProperty("canal_id", out var c) ? c.ToString() : ""))
+            .ToList();
+    }
+
+    /// <summary>Uma página (20) das conversas cuja última mensagem é do cliente, nestas linhas, da mais nova para a mais velha.</summary>
+    public async Task<(JsonElement Chats, bool More)> WaitingChatsAsync(CrmAccess access, IEnumerable<string> lineIds, DateTime fromDay, DateTime toDay, int page, CancellationToken ct)
+    {
+        var query = $"/api/chat/contacts?page={page}&busca=&botId={Uri.EscapeDataString(string.Join(',', lineIds))}&status=recebidas&vendedores=&tags=&etapas=&ordem=desc"
+            + $"&periodo=custom&dataInicio={fromDay:yyyy-MM-dd}&dataFim={toDay:yyyy-MM-dd}";
+        using var response = await SendAsync(access, HttpMethod.Get, query, null, ct);
+        var json = await ReadAsync(response, ct);
+        var chats = json.ValueKind == JsonValueKind.Object && json.TryGetProperty("chats", out var c) && c.ValueKind == JsonValueKind.Array ? c : default;
+        var more = json.ValueKind == JsonValueKind.Object && json.TryGetProperty("temMais", out var m) && m.ValueKind == JsonValueKind.True;
+        return (chats, more);
+    }
+
+    /// <summary>O histórico da conversa do cliente nesta linha.</summary>
+    public async Task<JsonElement> MessagesAsync(CrmAccess access, string chatId, string botId, CancellationToken ct)
+    {
+        using var response = await SendAsync(access, HttpMethod.Get,
+            $"/api/chat/messages?chatId={Uri.EscapeDataString(chatId)}&botId={Uri.EscapeDataString(botId)}", null, ct);
+        var json = await ReadAsync(response, ct);
+        return json.ValueKind == JsonValueKind.Object && json.TryGetProperty("messages", out var list) && list.ValueKind == JsonValueKind.Array ? list : default;
+    }
+
+    /// <summary>Manda texto ao cliente pela tela de conversa do CRM (sai na linha dele, em nome do usuário da IA).</summary>
+    public async Task SendChatAsync(CrmAccess access, string chatId, string botId, string text, CancellationToken ct)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            var token = await TokenAsync(access, ct);
+            using var request = new HttpRequestMessage(HttpMethod.Post, access.Url + "/api/chat/send");
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            request.Content = new MultipartFormDataContent { { new StringContent(chatId), "chatId" }, { new StringContent(botId), "botId" }, { new StringContent(text), "message" } };
+            HttpResponseMessage response;
+            try
+            {
+                response = await _http.SendAsync(request, ct);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+            {
+                throw new CrmFailure($"O CRM não respondeu ({access.Url}). Confira se ele está no ar.");
+            }
+
+            using (response)
+            {
+                if (attempt == 0 && response.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    Forget();
+                    continue;
+                }
+
+                await ReadAsync(response, ct);
+                return;
+            }
+        }
+    }
+
+    /// <summary>Um usuário do CRM: o ID que a transferência pede e o nome de exibição (o mesmo do campo Responsável).</summary>
+    public sealed record User(string Id, string Name);
+
+    /// <summary>Todos os usuários do CRM (<c>GET /usuarios</c> do Agente Externo).</summary>
+    public async Task<IReadOnlyList<User>> UsersAsync(CrmAccess access, CancellationToken ct)
+    {
+        using var response = await SendAsync(access, HttpMethod.Get, "/api/agente-externo/v1/usuarios", null, ct);
+        var json = await ReadAsync(response, ct);
+        if (json.ValueKind == JsonValueKind.Object && json.TryGetProperty("usuarios", out var inner))
+        {
+            json = inner;
+        }
+
+        return json.ValueKind != JsonValueKind.Array ? [] : json.EnumerateArray()
+            .Where(u => u.ValueKind == JsonValueKind.Object && u.TryGetProperty("id", out _))
+            .Select(u => new User(u.GetProperty("id").ToString(), u.TryGetProperty("nome", out var n) ? n.ToString() : u.TryGetProperty("name", out n) ? n.ToString() : ""))
+            .Where(u => u.Id.Length > 0 && u.Name.Length > 0)
+            .ToList();
     }
 
     private void Forget()

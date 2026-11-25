@@ -25,6 +25,7 @@ const IC = {
   elo: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   baixar: '<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>', enviar: '<path d="M12 16V5M7 9l5-5 5 5M5 20h14"/>',
   mira: '<circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
+  balao: '<path d="M4 5h16v11H9l-5 4V5Z"/><path d="m9 10.5 2 2 4-4"/>',
   relogio: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   raio: '<path d="M13 3 5 13h6l-1 8 8-10h-6l1-8Z"/>', abrir: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
 };
@@ -88,6 +89,7 @@ const VISTAS = {
   documentos: ['Documentos', 'PDF, DOCX, TXT e planilhas (XLSX, CSV): o texto é extraído e entra na base.'],
   aprendizado: ['Aprendizado das atendentes', 'O que as conversas ensinam. Nada vira fonte oficial sem a sua aprovação.'],
   horarios: ['Horários da IA', 'Os dias e os horários em que a IA pode atender os clientes no lugar de cada atendente.'],
+  aprovar: ['Mensagens para aprovar', 'As respostas que a IA escreveu para os clientes do CRM, separadas por atendente. Tudo o que você aprova vira exemplo para a IA.'],
   crm: ['Clientes do CRM', 'A IA escreve a resposta para os clientes do sistema interno; nada vai ao cliente sem a sua aprovação.'],
   nexus: ['Consulta no Nexus', 'A atendente manda o CPF no chat da IA e vê em qual banco o cliente passa, pelo roteiro do Nexus.'],
   base: ['Base de Conhecimento', 'Tudo o que a IA possui, em um só lugar.'],
@@ -206,6 +208,7 @@ function desenhar() {
   else if (E.vista === 'aprendizado') desenharAprendizado();
   else if (E.vista === 'horarios') desenharHorarios();
   else if (E.vista === 'crm') desenharCrm();
+  else if (E.vista === 'aprovar') desenharAprovar();
   else if (E.vista === 'nexus') desenharNexus();
   else if (E.vista === 'visao') desenharVisao();
 }
@@ -234,7 +237,7 @@ function grafo() {
     if (n) nos.push({ id: g, pai: 'r:attendant', tipo: 'grupo', ramo: 'attendant', rotulo, n });
   }
   for (const a of d.attendants) {
-    nos.push({ id: `a:${a.deviceId}`, pai: a.phone ? 'g:att:cel' : 'g:att:pc', tipo: 'attendant', rotulo: a.name, estado: a.hasProfile ? 'active' : a.questions || a.whatsappPending ? 'pending' : 'disabled', novo: (a.newMessages > 0 || a.whatsappPending > 0) && a.hasProfile });
+    nos.push({ id: `a:${a.deviceId}`, pai: a.phone ? 'g:att:cel' : 'g:att:pc', tipo: 'attendant', rotulo: a.name, estado: a.hasProfile ? 'active' : a.questions || a.whatsappPending || a.crmPending ? 'pending' : 'disabled', novo: (a.newMessages > 0 || a.whatsappPending > 0 || a.crmPending > 0) && a.hasProfile });
   }
   nos.push({ id: 'r:suggestion', pai: 'ia', tipo: 'ramo', ramo: 'suggestion', rotulo: 'Aprendizado', n: d.suggestions.pending });
   const agruparSug = d.pendingSuggestions.length > 10;
@@ -272,7 +275,7 @@ function desenharFiltrosMapa() {
       .map(([v, r]) => el('option', { value: v, textContent: r, selected: v === E.estadoMapa })));
   estado.onchange = () => { E.estadoMapa = estado.value; aplicarFiltroMapa(); };
   $('mapa-filtros').replaceChildren(...chips, estado);
-  $('mapa-rodape').textContent = `${plural(d.items.length, 'conhecimento', 'conhecimentos')} · ${plural(d.links.length, 'ligação', 'ligações')} · ${plural(d.attendants.length, 'atendente', 'atendentes')}. Arraste o fundo para mover o mapa e um círculo para mudá-lo de lugar; role para aproximar; clique num ramo para abrir ou fechar.`;
+  $('mapa-rodape').textContent = `${plural(d.items.length, 'conhecimento', 'conhecimentos')} · ${plural(d.links.length, 'ligação', 'ligações')} · ${plural(d.attendants.length, 'atendente', 'atendentes')}. Arraste o fundo para mover o mapa e um círculo para mudá-lo de lugar; role para aproximar; clique num ramo para abrir ou fechar; segure um ramo (ou o centro) parado para girar o que sai dele.`;
 }
 
 $('z-mais').onclick = () => E.mapa.zoom(1.25);
@@ -449,7 +452,7 @@ async function gavetaAtendente(deviceId) {
   if (E.gaveta !== chave) return;
   const p = a.profile;
   const analisar = botao(p ? 'Atualizar o perfil agora' : 'Montar o perfil agora', 'raio', 'btn mini');
-  analisar.disabled = !(a.newMessages || a.whatsappPending) || !E.d.settings.hasKey;
+  analisar.disabled = !(a.newMessages || a.whatsappPending || a.crmPending) || !E.d.settings.hasKey;
   analisar.onclick = () => analisarAtendente(deviceId, a.name, analisar);
   const lista = (itens) => (itens && itens.length ? el('ul', { className: 'pontos' }, ...itens.map((t) => el('li', { textContent: t }))) : el('p', { className: 'nota', textContent: 'Nada registrado.' }));
   const maior = p && p.bancos && p.bancos.length ? Math.max(...p.bancos.map((b) => b.perguntas || 0), 1) : 1;
@@ -462,12 +465,13 @@ async function gavetaAtendente(deviceId) {
       dado('Computador', a.hostname), dado('Perguntas feitas', mil(a.questions)),
       dado('Falas analisadas', mil(a.messagesAnalyzed)), dado('Falas novas', mil(a.newMessages)),
       dado('Conversas de WhatsApp analisadas', mil(a.whatsappAnalyzed)), dado('Conversas de WhatsApp na fila', mil(a.whatsappPending)),
+      dado('Conversas do CRM analisadas', mil(a.crmAnalyzed)), dado('Mensagens novas dela no CRM', mil(a.crmPending)),
       dado('Respostas que ajudaram', mil(a.feedback.helpful)), dado('Respostas corrigidas', mil(a.feedback.notHelpful))),
     el('div', { className: 'botoes' }, analisar),
-    !E.d.settings.hasKey ? el('p', { className: 'aviso', textContent: 'Sem a chave da IA não há análise.' }) : !a.newMessages && !a.whatsappPending && !p ? el('p', { className: 'nota', textContent: 'Ainda não há conversas dela para analisar.' }) : null,
+    !E.d.settings.hasKey ? el('p', { className: 'aviso', textContent: 'Sem a chave da IA não há análise.' }) : !a.newMessages && !a.whatsappPending && !a.crmPending && !p ? el('p', { className: 'nota', textContent: 'Ainda não há conversas dela para analisar.' }) : null,
     secaoCobertura(deviceId, a),
     a.history ? secaoHistorico(a.history, lista) : null,
-    p ? secao('Resumo', el('p', { className: 'frase', textContent: p.resumo })) : a.history ? null : vazio('Perfil ainda não montado', 'A IA monta o perfil lendo as conversas dela com os clientes no WhatsApp e as perguntas que ela faz à assistente.'),
+    p ? secao('Resumo', el('p', { className: 'frase', textContent: p.resumo })) : a.history ? null : vazio('Perfil ainda não montado', 'A IA monta o perfil lendo as conversas dela com os clientes no WhatsApp e no CRM e as perguntas que ela faz à assistente.'),
     p && p.atendimento ? secao('Como atende os clientes', el('p', { className: 'frase', textContent: p.atendimento })) : null,
     p ? secao('Como pergunta à assistente', el('p', { className: 'frase', textContent: p.estilo })) : null,
     p && p.bancos && p.bancos.length ? secao('Bancos mais consultados', el('div', { className: 'barras' }, ...p.bancos.slice().sort((x, y) => y.perguntas - x.perguntas).slice(0, 8).map((b) => el('div', {}, el('span', { textContent: b.nome }), el('b', { textContent: mil(b.perguntas) }), el('i', { style: `--p:${Math.round((b.perguntas / maior) * 100)}%` }))))) : null,
@@ -477,7 +481,7 @@ async function gavetaAtendente(deviceId) {
     p ? secao('Recomendações para a supervisão', lista(p.recomendacoes)) : null,
     a.instructions ? secao('Orientações escritas para ela', el('p', { className: 'frase', textContent: a.instructions })) : null,
     a.suggestions.length ? secao('Sugestões que vieram dela', el('div', { className: 'lista-simples' }, ...a.suggestions.map((s) => el('div', {}, el('i', { className: 'ponto', style: `--c:${MAPA_CORES.suggestion}` }), el('span', { className: 'nome', textContent: s.title }), selo(`${s.status} liso`, SITUACAO[s.status]))))) : null,
-    p ? el('p', { className: 'nota', textContent: `Perfil montado pela IA em ${quando(a.analyzedAt)}, a partir de ${plural(a.whatsappAnalyzed, 'conversa de WhatsApp', 'conversas de WhatsApp')} e de ${plural(a.messagesAnalyzed, 'fala', 'falas')} com a assistente. As conversas do WhatsApp são apagadas do servidor depois de analisadas. Esta leitura ficou registrada na auditoria.` }) : null);
+    p ? el('p', { className: 'nota', textContent: `Perfil montado pela IA em ${quando(a.analyzedAt)}, a partir de ${plural(a.whatsappAnalyzed, 'conversa de WhatsApp', 'conversas de WhatsApp')}, de ${plural(a.crmAnalyzed, 'conversa do CRM', 'conversas do CRM')} e de ${plural(a.messagesAnalyzed, 'fala', 'falas')} com a assistente. As conversas do WhatsApp são apagadas do servidor depois de analisadas. Esta leitura ficou registrada na auditoria.` }) : null);
 }
 
 // ============================================================= cobertura de ausência
@@ -669,7 +673,7 @@ function secaoHistorico(h, lista) {
 async function analisarAtendente(deviceId, nome, alvo) {
   recado(`Analisando as conversas de ${nome}… pode levar até um minuto.`);
   const r = await agir(alvo, () => api('POST', `/neural/attendants/${deviceId}/analyze`),
-    (x) => (x.messagesRead || x.conversationsRead ? `Perfil de ${nome} atualizado: ${plural(x.conversationsRead, 'conversa de WhatsApp lida', 'conversas de WhatsApp lidas')}, ${plural(x.messagesRead, 'fala com a assistente', 'falas com a assistente')}, ${plural(x.newSuggestions, 'sugestão nova', 'sugestões novas')}${x.more ? '. Ainda há material na fila; rode de novo para continuar' : ''}.` : `${nome} não tem nada novo para analisar.`));
+    (x) => (x.messagesRead || x.conversationsRead || x.crmRead ? `Perfil de ${nome} atualizado: ${plural(x.conversationsRead, 'conversa de WhatsApp lida', 'conversas de WhatsApp lidas')}, ${plural(x.crmRead || 0, 'conversa do CRM lida', 'conversas do CRM lidas')}, ${plural(x.messagesRead, 'fala com a assistente', 'falas com a assistente')}, ${plural(x.newSuggestions, 'sugestão nova', 'sugestões novas')}${x.more ? '. Ainda há material na fila; rode de novo para continuar' : ''}.` : `${nome} não tem nada novo para analisar.`));
   if (r && E.gaveta === `a:${deviceId}`) gavetaAtendente(deviceId);
 }
 
@@ -1032,7 +1036,7 @@ function desenharAprendizado() {
 
   const pessoas = d.attendants.map((a) => {
     const ver = botao(a.hasProfile ? 'Ver o perfil' : 'Abrir', 'abrir'); ver.onclick = () => verNoMapa(`a:${a.deviceId}`);
-    const temNovo = a.newMessages > 0 || a.whatsappPending > 0;
+    const temNovo = a.newMessages > 0 || a.whatsappPending > 0 || a.crmPending > 0;
     const analisar = botao('Analisar agora', 'raio', 'btn mini'); analisar.disabled = !temNovo || !d.settings.hasKey;
     analisar.title = !d.settings.hasKey ? 'Cadastre a chave da IA primeiro.' : temNovo ? 'Lê só o que é novo e atualiza o perfil.' : 'Não há nada novo.';
     analisar.onclick = () => analisarAtendente(a.deviceId, a.name, analisar);
@@ -1040,6 +1044,7 @@ function desenharAprendizado() {
     return el('div', { className: 'pessoa' },
       el('div', {}, el('b', { textContent: a.name }), el('small', { textContent: `${plural(a.questions, 'pergunta', 'perguntas')} à assistente · ${a.newMessages ? plural(a.newMessages, 'fala nova', 'falas novas') : 'nenhuma fala nova'}` }),
         el('small', { textContent: a.whatsappPending ? `${plural(a.whatsappPending, 'conversa de WhatsApp', 'conversas de WhatsApp')} na fila da análise` : 'Nenhuma conversa de WhatsApp na fila' }),
+        el('small', { textContent: a.crmPending ? `${plural(a.crmPending, 'mensagem nova dela', 'mensagens novas dela')} no CRM para analisar` : 'Nenhuma mensagem nova dela no CRM' }),
         el('small', { textContent: a.hasProfile ? `Perfil atualizado: ${quando(a.analyzedAt)}` : 'Perfil ainda não montado' }),
         a.absent ? el('small', { className: 'aviso', textContent: 'Faltou hoje: a IA está respondendo os clientes dela' }) : null,
         a.coverage === 'test' || a.coveragePending ? el('small', { className: a.coveragePending ? 'aviso' : null, textContent: `${a.coverage === 'test' ? 'Na falta, a IA só escreve (ensaio)' : 'Cobertura de ausência'}${a.coveragePending ? ` · ${plural(a.coveragePending, 'resposta esperando', 'respostas esperando')} aprovação` : ''}` }) : null),
@@ -1051,7 +1056,7 @@ function desenharAprendizado() {
       el('div', { className: 'cartao-topo' }, el('div', {}, el('h2', { textContent: 'Sugestões de conhecimento' }), el('p', { textContent: 'Correções enviadas pelas atendentes e lacunas que a IA encontrou nas conversas. Você revisa, edita e decide.' })), segmento),
       fila),
     el('div', { className: 'cartao' },
-      el('div', { className: 'cartao-topo' }, el('div', {}, el('h2', { textContent: 'Perfil de cada atendente' }), el('p', { textContent: 'A IA lê as conversas de cada atendente com os clientes no WhatsApp e as perguntas que ela faz à assistente, atualiza o perfil de atendimento e aponta o que falta na base.' }))),
+      el('div', { className: 'cartao-topo' }, el('div', {}, el('h2', { textContent: 'Perfil de cada atendente' }), el('p', { textContent: 'A IA lê as conversas de cada atendente com os clientes no WhatsApp e no CRM e as perguntas que ela faz à assistente, atualiza o perfil de atendimento e aponta o que falta na base.' }))),
       el('div', { className: 'cartao-corpo', style: 'display:grid;gap:16px' },
         el('div', { className: 'linha-opcao' }, el('div', {}, el('b', { textContent: 'Aprender com o WhatsApp' }),
           el('small', { textContent: 'O Terminal (versão 2.4.0 ou mais nova) registra cada conversa que a atendente abre no WhatsApp. A conversa fica no servidor só até ser analisada e depois é apagada; o que não for analisado em 7 dias também.' })), zap),
@@ -1231,15 +1236,23 @@ const SITUACAO_CRM = {
   outdated: ['Substituída por outra', 'disabled'],
 };
 const DECISAO_CRM = { responder: 'A IA sugere responder', humano: 'A IA sugere passar para uma atendente', nada: 'Não precisa responder' };
-E.crm = null; E.crmTextos = new Map();
+E.crm = null; E.crmTextos = new Map(); E.crmPara = new Map(); E.crmUsuarios = null;
+let usuariosCrmPedido = null;
+// Os usuários do CRM, uma vez por abertura da tela (a lista muda pouco).
+function carregarUsuariosCrm() {
+  usuariosCrmPedido ??= api('GET', '/neural/crm/users').then((l) => { E.crmUsuarios = l; }).catch((e) => { usuariosCrmPedido = null; recado(`Não deu para ler as atendentes do CRM: ${e.message}`, true); });
+  return usuariosCrmPedido;
+}
 
 async function carregarCrm() {
   try { E.crm = await api('GET', '/neural/crm'); } catch (e) { if (E.vista === 'crm') recado(e.message, true); return; }
   const n = E.crm.pending.length;
-  $('n-crm').textContent = mil(n); $('n-crm').hidden = !n;
+  $('n-aprovar').textContent = mil(n); $('n-aprovar').hidden = !n;
   // Não redesenha com alguém escrevendo: perderia o cursor.
   const ativo = document.activeElement;
-  if (E.vista === 'crm' && !(ativo && $('v-crm').contains(ativo) && ['TEXTAREA', 'INPUT', 'SELECT'].includes(ativo.tagName))) desenharCrm();
+  const editando = (id) => ativo && $(id).contains(ativo) && ['TEXTAREA', 'INPUT', 'SELECT'].includes(ativo.tagName);
+  if (E.vista === 'crm' && !editando('v-crm')) desenharCrm();
+  if (E.vista === 'aprovar' && !editando('v-aprovar')) desenharAprovar();
 }
 setInterval(() => { if (!document.hidden && E.eu) carregarCrm(); }, 10000);
 
@@ -1254,19 +1267,110 @@ function desenharCrm() {
   const c = E.crm;
   if (!c) { $('v-crm').replaceChildren(el('p', { className: 'nota', textContent: 'Carregando…' })); carregarCrm(); return; }
   const pend = c.pending, recentes = c.recent;
+  const irAprovar = botao(pend.length ? `Abrir as ${mil(pend.length)} mensagens para aprovar` : 'Abrir Mensagens para aprovar', null, 'btn mini');
+  irAprovar.onclick = () => ir('aprovar');
   $('v-crm').replaceChildren(...[
     cartaoLigacaoCrm(c),
     el('div', { className: 'cartao' },
-      el('div', { className: 'cartao-topo' }, el('div', {},
-        el('h2', { textContent: pend.length ? `Esperando aprovação (${pend.length})` : 'Nada esperando aprovação' }),
-        el('p', { textContent: c.enabled
-          ? 'Quando um cliente do funil do agente escreve, a IA espera ele terminar e escreve a resposta aqui. Confira, edite se quiser e aprove: só então ela vai para o WhatsApp do cliente, pelo CRM.'
-          : 'A IA está desligada para o CRM. Ligue no quadro acima para ela começar a escrever as respostas.' }))),
-      ...pend.map((r) => cartaoCrm(r, true))),
+      el('h2', { textContent: 'Respostas esperando aprovação' }),
+      el('p', { className: 'nota', textContent: 'Agora ficam na aba Mensagens para aprovar, separadas por atendente.' }),
+      el('div', { className: 'botoes' }, irAprovar)),
     recentes.length ? el('div', { className: 'cartao' }, el('h2', { textContent: 'Últimas tratadas' }), ...recentes.map((r) => cartaoCrm(r, false))) : null,
     el('details', { className: 'cartao' }, el('summary', { textContent: `Últimos avisos recebidos do CRM (${c.events.length})` }),
       el('p', { className: 'nota', textContent: 'O que o CRM mandou, do jeito que chegou. Serve para conferir se a ligação está funcionando.' }),
       ...(c.events.length ? c.events.map(cartaoAvisoCrm) : [el('p', { className: 'nota', textContent: 'Nenhum aviso recebido ainda.' })]))].filter(Boolean));
+}
+
+// ================================================== mensagens para aprovar
+// Só as respostas da IA para os clientes do CRM, agrupadas pela atendente dona do cliente. O que é aprovado
+// e enviado volta para a IA como exemplo (o servidor manda as últimas aprovadas, primeiro as da mesma atendente).
+const SEM_ATENDENTE = 'Sem atendente definida';
+E.aprovarFiltro = '';
+
+// A busca dos clientes perdidos: no funil Atendimento Portabilidade, quem escreveu por último e está sem resposta
+// há mais de um dia (até 15 dias). Roda sozinha a cada meia hora, das 8h às 18h, de segunda a sábado, se ligada.
+function cartaoPerdidos(c) {
+  const [quandoRodou, , , nota] = (c.lostLastRun || '').split('|');
+  const ligar = botao(c.lostEnabled ? 'Desligar a busca automática' : 'Ligar a busca automática', null, c.lostEnabled ? 'btn claro mini' : 'btn mini');
+  ligar.onclick = () => agirCrm(ligar, () => api('PUT', '/neural/crm/lost', { enabled: !c.lostEnabled }), c.lostEnabled ? 'Busca automática desligada.' : 'Busca automática ligada: roda a cada meia hora, das 8h às 18h.');
+  // Período da busca (dias de Brasília, inclusive). Padrão: de 15 dias atrás até ontem.
+  const dia = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  E.perdidosDe ??= dia(15); E.perdidosAte ??= dia(1);
+  const de = el('input', { type: 'date', className: 'campo', value: E.perdidosDe, min: dia(60), max: dia(0), style: 'width:auto;color-scheme:dark', 'aria-label': 'Data de início da busca' });
+  const ate = el('input', { type: 'date', className: 'campo', value: E.perdidosAte, min: dia(60), max: dia(0), style: 'width:auto;color-scheme:dark', 'aria-label': 'Data de fim da busca' });
+  de.onchange = () => { E.perdidosDe = de.value; };
+  ate.onchange = () => { E.perdidosAte = ate.value; };
+  const agora = botao('Buscar neste período', null, 'btn mini');
+  agora.title = 'Procura os clientes que escreveram por último entre as duas datas e ficaram sem resposta. Cada conversa lida usa a IA (no máximo 25 por busca).';
+  agora.onclick = async () => {
+    if (!de.value || !ate.value) { recado('Preencha a data de início e a data de fim.', true); return; }
+    if (de.value > ate.value) { recado('A data de início precisa ser antes da data de fim.', true); return; }
+    agora.disabled = true; agora.textContent = 'Buscando… (pode levar alguns minutos)';
+    try { const r = await api('POST', '/neural/crm/lost/scan', { from: de.value, to: ate.value }); recado(r.message); }
+    catch (e) { recado(e.message, true); }
+    finally { agora.disabled = false; agora.textContent = 'Buscar neste período'; await carregarCrm(); }
+  };
+  const periodo = el('div', { className: 'botoes', style: 'align-items:end' },
+    el('label', { style: 'display:grid;gap:4px' }, 'Data de início', de),
+    el('label', { style: 'display:grid;gap:4px' }, 'Data de fim', ate),
+    agora);
+  return el('div', { className: 'cartao' },
+    el('div', { className: 'cartao-topo' }, el('div', {},
+      el('h2', { textContent: 'Clientes perdidos' }),
+      el('p', { textContent: 'A IA procura no funil Atendimento Portabilidade os clientes que escreveram por último e estão sem resposta há mais de um dia (até 15 dias para trás). Ela lê a conversa, vê quem é a responsável no CRM e escreve a retomada no jeito dela. Quem só mandou "ok" ou "obrigado" fica de fora.' })),
+      selo(c.lostEnabled ? 'active' : 'disabled', c.lostEnabled ? 'Busca automática ligada' : 'Busca automática desligada')),
+    el('h4', { textContent: 'Buscar agora, escolhendo o período' }),
+    el('p', { className: 'nota', textContent: 'A IA procura os clientes que mandaram a última mensagem entre as duas datas (incluindo os dois dias) e ficaram sem resposta. Quem escreveu há menos de 1 hora fica de fora: a atendente pode estar respondendo. Dá para olhar até 60 dias para trás.' }),
+    periodo,
+    el('h4', { textContent: 'Busca automática' }),
+    el('p', { className: 'nota', textContent: 'Ligada, roda sozinha a cada meia hora, das 8h às 18h, de segunda a sábado, olhando de 15 dias atrás até 24 horas atrás.' }),
+    el('div', { className: 'botoes' }, ligar),
+    quandoRodou ? el('p', { className: 'nota', textContent: `Última busca ${quando(quandoRodou)}: ${nota}` }) : el('p', { className: 'nota', textContent: 'A busca ainda não rodou.' }));
+}
+
+function desenharAprovar() {
+  const c = E.crm;
+  if (!c) { $('v-aprovar').replaceChildren(el('p', { className: 'nota', textContent: 'Carregando…' })); carregarCrm(); return; }
+  const nomeDe = (r) => r.attendant || SEM_ATENDENTE;
+  const grupos = new Map();
+  for (const r of c.pending) { const n = nomeDe(r); if (!grupos.has(n)) grupos.set(n, []); grupos.get(n).push(r); }
+  const nomes = [...grupos.keys()].sort((a, b) => (a === SEM_ATENDENTE) - (b === SEM_ATENDENTE) || grupos.get(b).length - grupos.get(a).length || a.localeCompare(b));
+  if (E.aprovarFiltro && !grupos.has(E.aprovarFiltro)) E.aprovarFiltro = '';
+  const aprendeu = new Map((c.learned || []).map((l) => [l.attendant || SEM_ATENDENTE, l]));
+  const totalAprendido = (c.learned || []).reduce((s, l) => s + l.approved, 0);
+
+  const filtro = el('div', { className: 'segmento', role: 'group', 'aria-label': 'Mostrar as mensagens de qual atendente', style: 'flex-wrap:wrap' },
+    ...[['', `Todas (${mil(c.pending.length)})`], ...nomes.map((n) => [n, `${n} (${mil(grupos.get(n).length)})`])].map(([v, rotulo]) => {
+      const b = el('button', { type: 'button', textContent: rotulo, 'aria-pressed': String(E.aprovarFiltro === v) });
+      b.onclick = () => { E.aprovarFiltro = v; desenharAprovar(); };
+      return b;
+    }));
+
+  const mostrar = E.aprovarFiltro ? [E.aprovarFiltro] : nomes;
+  const blocos = mostrar.map((n) => {
+    const l = aprendeu.get(n);
+    const dela = n === SEM_ATENDENTE ? 'sem atendente' : `de ${n}`;
+    const aprendido = l
+      ? `A IA já aprendeu com ${plural(l.approved, 'resposta aprovada', 'respostas aprovadas')} ${dela}${l.edited ? `, ${mil(l.edited)} delas corrigida(s) por você` : ''}.`
+      : 'Ainda nenhuma resposta aprovada para esta atendente: a IA usa o jeito geral da equipe.';
+    return el('div', { className: 'cartao' },
+      el('div', { className: 'cartao-topo' }, el('div', {},
+        el('h2', { textContent: n }),
+        el('p', { textContent: `${plural(grupos.get(n).length, 'mensagem esperando aprovação', 'mensagens esperando aprovação')}. ${aprendido}` }))),
+      ...grupos.get(n).map((r) => cartaoCrm(r, true)));
+  });
+
+  $('v-aprovar').replaceChildren(...[
+    el('div', { className: 'cartao' },
+      el('div', { className: 'cartao-topo' }, el('div', {},
+        el('h2', { textContent: 'Como funciona' }),
+        el('p', { textContent: 'A IA escreve a resposta no jeito da atendente de quem é o cliente. Confira, corrija se precisar e aprove: só então a mensagem vai para o cliente, pelo CRM, e ele ganha a etiqueta "Atendida pela IA". Cada resposta aprovada vira exemplo para as próximas; quando você corrige o texto, a IA aprende o jeito certo.' }))),
+      el('p', { className: 'nota', textContent: totalAprendido ? `Até agora a IA aprendeu com ${plural(totalAprendido, 'resposta aprovada', 'respostas aprovadas')}.` : 'Ainda nenhuma resposta aprovada: a primeira já começa a ensinar.' }),
+      c.enabled ? null : el('p', { className: 'aviso', textContent: 'A IA está desligada para o CRM. Ligue em Clientes do CRM para ela voltar a escrever.' })),
+    cartaoPerdidos(c),
+    c.pending.length ? el('div', { className: 'cartao' }, filtro) : null,
+    ...(c.pending.length ? blocos : [el('div', { className: 'cartao' }, vazio('Nenhuma mensagem esperando', 'Quando a IA escrever uma resposta para um cliente do CRM, ela aparece aqui, na atendente dona do cliente.'))]),
+  ].filter(Boolean));
 }
 
 function cartaoAvisoCrm(e) {
@@ -1309,7 +1413,8 @@ function cartaoCrm(r, editavel) {
   const [rotulo, classe] = SITUACAO_CRM[r.status] || [r.status, 'liso'];
   const nome = r.contact || r.phone || `Conversa ${r.conversationId}`;
   const partes = [
-    el('header', {}, selo(classe, rotulo), el('b', { textContent: nome }), r.contact && r.phone ? el('small', { textContent: r.phone }) : null, el('small', { textContent: quando(r.sentAt || r.createdAt) })),
+    el('header', {}, selo(classe, rotulo), r.kind === 'perdido' ? selo('pending', 'Cliente perdido') : null, el('b', { textContent: nome }), r.attendant ? el('small', { textContent: `Atendente: ${r.attendant}` }) : null,
+      r.waitingSince ? el('small', { textContent: `sem resposta desde ${quando(r.waitingSince)}` }) : null, r.contact && r.phone ? el('small', { textContent: r.phone }) : null, el('small', { textContent: quando(r.sentAt || r.createdAt) })),
     el('div', { className: 'citacao' }, el('b', { textContent: 'Cliente escreveu' }), r.incoming),
   ];
   if (editavel) {
@@ -1319,17 +1424,38 @@ function cartaoCrm(r, editavel) {
     aprovar.onclick = async () => { if (await agirCrm(aprovar, () => api('POST', `/neural/crm/replies/${r.id}/approve`, { message: campo.value }), `Enviada para ${nome}.`)) E.crmTextos.delete(r.id); };
     const sugerido = r.decision === 'humano';
     const humano = botao(sugerido ? 'Passar para atendente (sugerido)' : 'Passar para atendente', null, sugerido ? 'btn mini' : 'btn claro mini');
-    humano.title = 'Manda o texto da caixa ao cliente (se houver) e passa a conversa para uma atendente no CRM.';
+    humano.title = 'Manda o texto da caixa ao cliente (se houver) e devolve a conversa para a atendente escolhida ao lado, no CRM.';
+    // A conversa volta para a atendente que já é dona do cliente; a lista vem do CRM, com ela já escolhida.
+    const para = el('select', { className: 'campo', style: 'width:auto;min-width:200px', 'aria-label': `Atendente que recebe a conversa de ${nome}` },
+      el('option', { value: '', textContent: E.crmUsuarios ? '— escolha a atendente —' : 'Carregando atendentes…' }));
+    const preencherPara = () => {
+      if (!E.crmUsuarios) return;
+      const dona = semAcento(r.attendant).trim();
+      const achada = E.crmUsuarios.find((u) => semAcento(u.name).trim() === dona)
+        || (dona && E.crmUsuarios.filter((u) => semAcento(u.name).trim().startsWith(`${dona} `)).length === 1 ? E.crmUsuarios.find((u) => semAcento(u.name).trim().startsWith(`${dona} `)) : null);
+      const escolhido = E.crmPara.get(r.id) ?? achada?.id ?? '';
+      para.replaceChildren(el('option', { value: '', textContent: '— escolha a atendente —' }),
+        ...E.crmUsuarios.map((u) => el('option', { value: u.id, textContent: u.id === achada?.id ? `${u.name} (dona do cliente)` : u.name, selected: u.id === escolhido })));
+    };
+    para.onchange = () => E.crmPara.set(r.id, para.value);
+    preencherPara();
+    if (!E.crmUsuarios && r.kind !== 'perdido') carregarUsuariosCrm().then(preencherPara);
     humano.onclick = async () => {
-      if (!confirm(`Passar a conversa de ${nome} para uma atendente no CRM?${campo.value.trim() ? '\n\nO texto da caixa vai para o cliente antes.' : ''}`)) return;
-      if (await agirCrm(humano, () => api('POST', `/neural/crm/replies/${r.id}/human`, { message: campo.value }), `Conversa de ${nome} passada para atendente.`)) E.crmTextos.delete(r.id);
+      if (!para.value) { recado('Escolha a atendente que recebe a conversa.', true); para.focus(); return; }
+      const quem = para.selectedOptions[0].textContent.replace(' (dona do cliente)', '');
+      if (!confirm(`Passar a conversa de ${nome} para ${quem} no CRM?${campo.value.trim() ? '\n\nO texto da caixa vai para o cliente antes.' : ''}`)) return;
+      if (await agirCrm(humano, () => api('POST', `/neural/crm/replies/${r.id}/human`, { message: campo.value, userId: para.value }), `Conversa de ${nome} passada para ${quem}.`)) { E.crmTextos.delete(r.id); E.crmPara.delete(r.id); }
     };
     const recusar = botao('Recusar', null);
     recusar.onclick = async () => { if (await agirCrm(recusar, () => api('POST', `/neural/crm/replies/${r.id}/reject`), 'Resposta recusada. Nada foi enviado.')) E.crmTextos.delete(r.id); };
     if (r.decision) partes.push(el('p', { className: 'nota', textContent: DECISAO_CRM[r.decision] || '' }));
-    partes.push(el('b', { textContent: 'Resposta para o cliente (você pode editar)' }), campo, el('div', { className: 'botoes' }, aprovar, humano, recusar));
+    // O perdido já é da atendente no CRM: não há para quem passar. Recusar deixa com ela, sem mandar nada.
+    const botoesDela = r.kind === 'perdido' ? [aprovar, recusar] : [aprovar, humano, para, recusar];
+    if (r.kind === 'perdido' && r.decision === 'humano') partes.push(el('p', { className: 'aviso', textContent: 'A IA acha que só a atendente pode responder este cliente. Se concordar, recuse e avise a atendente.' }));
+    partes.push(el('b', { textContent: 'Resposta para o cliente (você pode editar)' }), campo, el('div', { className: 'botoes' }, ...botoesDela));
   } else if (r.reply) {
     partes.push(el('div', { className: 'citacao' }, el('b', { textContent: r.status === 'sent' || r.status === 'human' ? 'Enviado' : 'Resposta escrita' }), r.reply));
+    if (r.draft && r.draft.trim() !== r.reply.trim()) partes.push(el('details', {}, el('summary', { textContent: 'O que a IA tinha escrito (corrigido antes de enviar)' }), el('div', { className: 'citacao', style: 'white-space:pre-wrap', textContent: r.draft })));
   }
   if (r.reason) partes.push(el('p', { className: 'nota', textContent: `Motivo da IA: ${r.reason}${r.reviewedBy ? ` · ${r.reviewedBy}` : ''}` }));
   if (r.error) partes.push(el('p', { className: r.status === 'human' ? 'nota' : 'erro', textContent: r.error }));

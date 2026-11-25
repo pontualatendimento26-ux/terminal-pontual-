@@ -82,6 +82,36 @@
                     </StackPanel>
                 </Button>
                 <TextBlock x:Name="ClockText" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource Tinta}" VerticalAlignment="Center" Margin="0,0,10,0" Text="--:--" />
+                <!-- Volume do som: sempre visível. No modo bloqueado não há o controle de volume do Windows. -->
+                <Grid VerticalAlignment="Center">
+                    <Button x:Name="VolumeButton" Style="{StaticResource BotaoLimpo}" Width="44" Height="44" Click="OnVolume"
+                            AutomationProperties.Name="Volume do som" ToolTip="Volume do som">
+                        <Viewbox Width="20" Height="20">
+                            <Canvas Width="24" Height="24">
+                                <Path Data="M4 9.5v5h3.5l4.5 4v-13l-4.5 4H4Z" Stroke="{StaticResource Suave}" StrokeThickness="2" StrokeLineJoin="Round" />
+                                <Path x:Name="VolumeWaves" Data="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" Stroke="{StaticResource Suave}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                <Path x:Name="VolumeCross" Data="M16 9.5l5 5M21 9.5l-5 5" Stroke="{StaticResource Rubi700}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed" />
+                            </Canvas>
+                        </Viewbox>
+                    </Button>
+                    <Popup x:Name="VolumePopup" PlacementTarget="{Binding ElementName=VolumeButton}" Placement="Top" VerticalOffset="-8"
+                           StaysOpen="False" AllowsTransparency="True">
+                        <Border Width="300" Background="White" BorderBrush="{StaticResource Linha}" BorderThickness="1" CornerRadius="12" Padding="14">
+                            <StackPanel>
+                                <DockPanel>
+                                    <TextBlock x:Name="VolumePercent" DockPanel.Dock="Right" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource Tinta}" />
+                                    <TextBlock Text="Volume do som" FontSize="13" Foreground="{StaticResource Suave}" VerticalAlignment="Center" />
+                                </DockPanel>
+                                <Slider x:Name="VolumeSlider" Margin="0,12,0,0" Minimum="0" Maximum="100" SmallChange="2" LargeChange="10"
+                                        IsMoveToPointEnabled="True" ValueChanged="OnVolumeChanged" AutomationProperties.Name="Volume do som" />
+                                <Button x:Name="MuteButton" Margin="0,12,0,0" Style="{StaticResource BotaoClaro}" MinHeight="38" FontSize="14"
+                                        Click="OnMute" Content="Silenciar" />
+                                <TextBlock x:Name="VolumeMissing" Margin="0,10,0,0" FontSize="13" Foreground="{StaticResource Suave}" TextWrapping="Wrap" Visibility="Collapsed"
+                                           Text="Nenhuma saída de som encontrada. Confira se o fone ou a caixa de som está ligado no computador." />
+                            </StackPanel>
+                        </Border>
+                    </Popup>
+                </Grid>
                 <Button x:Name="HelpButton" Style="{StaticResource BotaoLimpo}" Width="44" Height="44" Click="OnHelp"
                         AutomationProperties.Name="Chamar o TI" ToolTip="Chamar o TI">
                     <Viewbox Width="20" Height="20">

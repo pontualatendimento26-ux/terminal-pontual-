@@ -52,6 +52,7 @@ class MapaNeural {
       this.nos.set(dado.id, {
         ...dado, filhos: [], x: velho ? velho.x : null, y: velho ? velho.y : null, tx: 0, ty: 0, ang: 0, prof: 0,
         dx: velho ? velho.dx : (guardado ? Number(guardado[0]) || 0 : 0), dy: velho ? velho.dy : (guardado ? Number(guardado[1]) || 0 : 0),
+        giro: velho ? velho.giro : (guardado ? Number(guardado[2]) || 0 : 0),
       });
     }
     for (const no of this.nos.values()) {
@@ -77,7 +78,7 @@ class MapaNeural {
   ehFolha(no) { return !['nucleo', 'ramo', 'grupo'].includes(no.tipo); }
 
   // ------------------------------------------------------------- organização
-  // Árvore radial: cada ramo ocupa uma fatia do círculo proporcional ao que tem dentro.
+  // Árvore em cachos em volta do núcleo.
   organizar() {
     const raiz = this.nos.get('ia');
     if (!raiz) { this.visiveis = []; return; }
@@ -90,46 +91,150 @@ class MapaNeural {
     passa(raiz);
 
     const mostrados = (no) => (this.recolhidos.has(no.id) ? [] : no.filhos.filter((f) => f.passa));
-    const peso = (no) => {
-      const fs = mostrados(no);
-      no.peso = fs.length ? fs.reduce((s, f) => s + peso(f), 0) : 1;
-      if (no.prof === 1) no.peso = Math.max(no.peso, 2.2);
-      return no.peso;
-    };
     const fundo = (no, prof) => { no.prof = prof; let m = prof; for (const f of mostrados(no)) m = Math.max(m, fundo(f, prof + 1)); return m; };
-    const maisFundo = fundo(raiz, 0);
-    peso(raiz);
+    fundo(raiz, 0);
 
-    const base = [0, 250, 450, 650, 850];
-    const precisa = (24 * raiz.peso) / (Math.PI * 2);
-    const k = Math.max(1, precisa / base[Math.max(maisFundo, 1)]);
-    const raio = (prof) => base[prof] * (prof === 1 ? Math.sqrt(k) : k);
-    this.aneis = []; for (let p = 1; p <= maisFundo; p++) this.aneis.push(raio(p));
-
-    this.visiveis = [];
-    const por = (no, inicio, fatia, ox, oy) => {
-      no.ang = inicio + fatia / 2;
+    // Cada nó abre o que tem para fora: pontas numa coluna, grupos num arco.
+    // Primeiro mede-se, de baixo para cima, o espaço (raio) que cada cacho ocupa; depois os cachos são
+    // postos lado a lado sem se encostar, e os ramos ficam igualmente espaçados num anel em volta do núcleo.
+    const raioDe = (no) => (no.tipo === 'nucleo' ? 62 : no.tipo === 'ramo' ? 24 : no.tipo === 'grupo' ? 14 : no.tipo === 'attendant' ? 11 : 8.5);
+    const medir = (no) => {
+      no.r = raioDe(no);
       const fs = mostrados(no);
-      let r = raio(no.prof);
-      if (no.prof >= 2 && !fs.length && no.irmaos > 5) r += no.indice % 2 ? 34 : -8;
-      // Deslocamento feito com o mouse: o nó e tudo o que pende dele saem juntos do lugar calculado.
+      no.plano = [];
+      if (!fs.length) { no.C = no.r + 8; return; }
+      fs.forEach(medir);
+      if (fs.every((f) => this.ehFolha(f))) {
+        // Pontas em coluna, uma embaixo da outra, do lado de fora do nó (o nome de cada uma sai para fora e
+        // não cai em cima de outra). Coluna levemente arqueada; com muitas pontas, mais colunas lado a lado.
+        const passo = fs.some((f) => f.tipo === 'attendant') ? 44 : 40, porColuna = 16, entreColunas = 360;
+        const colunas = Math.ceil(fs.length / porColuna), cada = Math.ceil(fs.length / colunas);
+        let alto = 0;
+        for (let c = 0; c < colunas; c++) {
+          const lista = fs.slice(c * cada, (c + 1) * cada), h = (lista.length - 1) * passo;
+          alto = Math.max(alto, h);
+          lista.forEach((f, i) => {
+            const y = -h / 2 + i * passo, yn = h ? y / (h / 2) : 0;
+            no.plano.push({ f, coluna: true, x: no.r + 150 + c * entreColunas + 46 * (1 - yn * yn), y });
+          });
+        }
+        no.C = Math.max(alto / 2 + 30, 90);   // estimativa; a conferência de colisão abaixo afasta o que encostar
+        return;
+      }
+      // Cachos num arco: a distância cresce até todos caberem em meia volta (no núcleo, na volta inteira).
+      const folga = no.tipo === 'nucleo' ? 90 : 110, cheio = no.tipo === 'nucleo', limite = cheio ? Math.PI * 2 : Math.PI * 1.3;
+      const largura = (f, d) => 2 * Math.asin(Math.min(0.999, (f.C + folga / 2) / d));
+      // Fora do núcleo, sobra espaço entre o nó e os grupos para os nomes deles.
+      let d = Math.max(no.r + Math.max(...fs.map((f) => f.C)) + folga + (cheio ? 0 : 200), cheio ? 400 : 0);
+      // No núcleo, o anel também cresce até haver um mínimo de espaço entre ramos vizinhos.
+      const vao = cheio ? Math.min((limite / fs.length) * 0.8, 0.5) : 0;
+      const precisa = (d) => (cheio
+        ? fs.reduce((s, f, i) => s + Math.max(vao, (largura(f, d) + largura(fs[(i + 1) % fs.length], d)) / 2), 0)
+        : fs.reduce((s, f) => s + largura(f, d), 0));
+      while (precisa(d) > limite) d *= 1.04;
+      const larguras = fs.map((f) => largura(f, d)), total = larguras.reduce((s, x) => s + x, 0);
+      if (cheio) {
+        // Em volta do núcleo, os ramos ficam o mais igualmente espaçados possível sem um cacho invadir o outro:
+        // cada intervalo é o maior entre o mínimo necessário e um valor comum L, escolhido para fechar a volta.
+        const minimo = fs.map((f, i) => (larguras[i] + larguras[(i + 1) % fs.length]) / 2);
+        let baixo = 0, alto = limite;
+        for (let n = 0; n < 40; n++) { const L = (baixo + alto) / 2; if (minimo.reduce((s, m) => s + Math.max(m, L), 0) > limite) alto = L; else baixo = L; }
+        let t = 0;
+        fs.forEach((f, i) => { no.plano.push({ f, d, t }); t += Math.max(minimo[i], baixo); });
+      } else {
+        let t = -total / 2;
+        fs.forEach((f, i) => { no.plano.push({ f, d, t: t + larguras[i] / 2 }); t += larguras[i]; });
+      }
+      // Afastamento extra pedido pela conferência de colisão: os ângulos ficam, a distância cresce.
+      const mult = no.mult || 1;
+      for (const item of no.plano) item.d *= mult;
+      d *= mult;
+      no.C = d + Math.max(...fs.map((f) => f.C));
+      no.distFilhos = d;
+    };
+
+    // ox/oy: deslocamento feito com o mouse; o nó e tudo o que pende dele saem juntos do lugar calculado.
+    const por = (no, bx, by, ang, ox, oy) => {
       ox += no.dx || 0; oy += no.dy || 0;
-      no.tx = Math.cos(no.ang) * r + ox; no.ty = Math.sin(no.ang) * r + oy;
+      no.ang = ang; no.tx = bx + ox; no.ty = by + oy; no.bx = bx; no.by = by;
       if (no.x === null) { const pai = this.nos.get(no.pai); no.x = pai ? (pai.x ?? pai.tx) : no.tx; no.y = pai ? (pai.y ?? pai.ty) : no.ty; }
-      no.r = no.tipo === 'nucleo' ? 62 : no.tipo === 'ramo' ? 24 : no.tipo === 'grupo' ? 14 : no.tipo === 'attendant' ? 11 : 8.5;
       no.ocultos = this.recolhidos.has(no.id) ? no.filhos.filter((f) => f.passa).length : 0;
       this.visiveis.push(no);
-      let a = inicio;
-      fs.forEach((f, i) => { f.indice = i; f.irmaos = fs.length; const parte = fatia * (f.peso / no.peso); por(f, a, parte, ox, oy); a += parte; });
+      const lado = Math.cos(ang) >= 0 ? 1 : -1;   // a coluna de pontas fica do lado para onde o nó aponta
+      for (const { f, d, t, coluna, x, y } of no.plano) {
+        if (coluna) { const a = Math.atan2(y, x * lado); por(f, bx + x * lado, by + y, a, ox, oy); continue; }
+        const a = ang + t; por(f, bx + Math.cos(a) * d, by + Math.sin(a) * d, a, ox, oy);
+      }
     };
+
+    // Caixas ocupadas por um cacho (círculos e nomes), na posição calculada (sem os arrastos do mouse).
+    const caixas = (no, lista = []) => {
+      const r = no.r + 10;
+      if (this.ehFolha(no)) {
+        const direita = Math.cos(no.ang) >= 0;
+        lista.push(direita ? [no.bx - r, no.by - 16, no.bx + r + 195, no.by + 16] : [no.bx - r - 195, no.by - 16, no.bx + r, no.by + 16]);
+      } else lista.push([no.bx - r - 90, no.by - r - 30, no.bx + r + 90, no.by + r + 30]);
+      for (const { f } of no.plano) caixas(f, lista);
+      return lista;
+    };
+    const envolve = (l) => l.reduce((a, c) => [Math.min(a[0], c[0]), Math.min(a[1], c[1]), Math.max(a[2], c[2]), Math.max(a[3], c[3])]);
+    const bate = (a, b) => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+    const colidem = (la, lb) => bate(envolve(la), envolve(lb)) && la.some((a) => lb.some((b) => bate(a, b)));
+
+    // Monta, confere se algum cacho encosta no vizinho e, se encostar, afasta os filhos daquele nó e monta de novo.
+    for (const no of this.nos.values()) no.mult = 1;
+    for (let volta = 0; volta < 40; volta++) {
+      medir(raiz);
+      this.visiveis = [];
+      por(raiz, 0, 0, -Math.PI / 2, 0, 0);
+      let mexeu = false;
+      for (const pai of this.visiveis) {
+        if (pai.plano.length < 2 || pai.plano[0].coluna) continue;
+        const grupos = pai.plano.map(({ f }) => caixas(f));
+        let encosta = false;
+        for (let i = 0; i < grupos.length && !encosta; i++) for (let j = i + 1; j < grupos.length && !encosta; j++) encosta = colidem(grupos[i], grupos[j]);
+        if (encosta) { pai.mult *= 1.08; mexeu = true; }
+      }
+      if (!mexeu) break;
+    }
+    this.aneis = raiz.distFilhos ? [raiz.distFilhos] : [];
     raiz.tx = 0; raiz.ty = 0;
-    por(raiz, -Math.PI / 2, Math.PI * 2, 0, 0);
-    raiz.tx = 0; raiz.ty = 0;
+    this.aplicarGiros(raiz);
+  }
+
+  // Giro feito segurando o mouse: tudo o que pende de um nó gira em volta dele (no núcleo, o mapa inteiro).
+  aplicarGiros(raiz) {
+    const vis = new Set(this.visiveis);
+    const girar = (no) => {
+      const fs = no.filhos.filter((f) => vis.has(f));
+      if (no.giro) {
+        const c = Math.cos(no.giro), s = Math.sin(no.giro);
+        const rodar = (n) => {
+          const x = n.tx - no.tx, y = n.ty - no.ty;
+          n.tx = no.tx + x * c - y * s; n.ty = no.ty + x * s + y * c; n.ang += no.giro;
+          for (const f of n.filhos) if (vis.has(f)) rodar(f);
+        };
+        fs.forEach(rodar);
+      }
+      fs.forEach(girar);
+    };
+    girar(raiz);
+  }
+
+  // Soma dos giros acima de um nó (para o arrasto seguir o mouse mesmo com o ramo girado).
+  giroAcima(no) { let g = 0; for (let p = this.nos.get(no.pai); p; p = this.nos.get(p.pai)) g += p.giro || 0; return g; }
+
+  // Gira os filhos de um nó; chamado a cada quadro enquanto o botão fica pressionado.
+  girar(no, ang) {
+    no.giro = ((no.giro || 0) + ang) % (Math.PI * 2);
+    this.organizar();
   }
 
   // ------------------------------------------------------- posições do mouse
   // Move um nó com o mouse. O deslocamento fica no nó, vale para o que pende dele e sobrevive à reorganização.
   deslocar(no, dx, dy) {
+    const g = -this.giroAcima(no), c = Math.cos(g), s = Math.sin(g);
+    [dx, dy] = [dx * c - dy * s, dx * s + dy * c];
     no.dx = (no.dx || 0) + dx; no.dy = (no.dy || 0) + dy;
     this.organizar();
     const puxar = (n) => { n.x = n.tx; n.y = n.ty; for (const f of n.filhos) puxar(f); };
@@ -138,20 +243,20 @@ class MapaNeural {
 
   lerPosicoes() {
     try {
-      const lido = JSON.parse(localStorage.getItem('neural.mapa.posicoes') || '{}');
+      const lido = JSON.parse(localStorage.getItem('neural.mapa.posicoes.v2') || '{}');
       return lido && typeof lido === 'object' && !Array.isArray(lido) ? lido : {};
     } catch { return {}; }
   }
 
   guardarPosicoes() {
     this.posicoes = {};
-    for (const no of this.nos.values()) if (no.dx || no.dy) this.posicoes[no.id] = [Math.round(no.dx), Math.round(no.dy)];
-    try { localStorage.setItem('neural.mapa.posicoes', JSON.stringify(this.posicoes)); } catch { /* sem armazenamento: vale só até recarregar */ }
+    for (const no of this.nos.values()) if (no.dx || no.dy || no.giro) this.posicoes[no.id] = [Math.round(no.dx), Math.round(no.dy), Math.round((no.giro || 0) * 1000) / 1000];
+    try { localStorage.setItem('neural.mapa.posicoes.v2', JSON.stringify(this.posicoes)); } catch { /* sem armazenamento: vale só até recarregar */ }
   }
 
   // Desfaz os arrastos: cada círculo volta ao lugar calculado, e o mapa é enquadrado.
   arrumar() {
-    for (const no of this.nos.values()) { no.dx = 0; no.dy = 0; }
+    for (const no of this.nos.values()) { no.dx = 0; no.dy = 0; no.giro = 0; }
     this.guardarPosicoes();
     this.organizar();
     this.ajustar();
@@ -187,13 +292,13 @@ class MapaNeural {
     for (const no of this.visiveis) { minX = Math.min(minX, no.tx); maxX = Math.max(maxX, no.tx); minY = Math.min(minY, no.ty); maxY = Math.max(maxY, no.ty); }
     const folga = 150;
     const z = Math.min(this.largura / (maxX - minX + folga * 2), this.altura / (maxY - minY + folga * 2));
-    const alvo = { x: (minX + maxX) / 2, y: (minY + maxY) / 2, z: Math.min(Math.max(z, 0.12), 1.15) };
+    const alvo = { x: (minX + maxX) / 2, y: (minY + maxY) / 2, z: Math.min(Math.max(z, 0.05), 1.15) };
     if (naHora) { this.cam = alvo; this.camAlvo = null; } else this.camAlvo = alvo;
   }
 
   zoom(fator, px = this.largura / 2, py = this.altura / 2) {
     const antes = this.paraMundo(px, py);
-    this.cam.z = Math.min(Math.max(this.cam.z * fator, 0.1), 3.2);
+    this.cam.z = Math.min(Math.max(this.cam.z * fator, 0.05), 3.2);
     const depois = this.paraMundo(px, py);
     this.cam.x += antes.x - depois.x; this.cam.y += antes.y - depois.y;
     this.camAlvo = null;
@@ -231,15 +336,25 @@ class MapaNeural {
       if (e.button !== 0) return;
       c.setPointerCapture(e.pointerId);
       // Segurar um círculo (menos o núcleo) e arrastar muda o lugar dele; segurar o fundo move o mapa.
+      // Segurar parado um ramo, grupo ou o núcleo por um instante faz o que pende dele girar devagar (Shift: ao contrário).
       const p = local(e), no = this.noEm(p.x, p.y);
       preso = { ...p, arrastou: false, no: no && no.tipo !== 'nucleo' ? no : null };
+      if (no && !this.ehFolha(no) && no.filhos.some((f) => this.visiveis.includes(f))) {
+        const este = preso;
+        este.espera = setTimeout(() => {
+          if (preso !== este || este.arrastou) return;
+          este.girando = no; this.girando = { no, sentido: e.shiftKey ? -1 : 1 };
+          c.style.cursor = 'progress'; this.aoPassar(null);
+        }, 380);
+      }
     });
     c.addEventListener('pointermove', (e) => {
       const p = local(e);
+      if (preso && preso.girando) return;
       if (preso) {
         const dx = p.x - preso.x, dy = p.y - preso.y;
         if (!preso.arrastou && Math.hypot(dx, dy) < 4) return;
-        preso.arrastou = true; this.camAlvo = null;
+        preso.arrastou = true; this.camAlvo = null; clearTimeout(preso.espera);
         if (preso.no) this.deslocar(preso.no, dx / this.cam.z, dy / this.cam.z);
         else { this.cam.x -= dx / this.cam.z; this.cam.y -= dy / this.cam.z; }
         preso.x = p.x; preso.y = p.y;
@@ -254,9 +369,11 @@ class MapaNeural {
     });
     const soltar = (e) => {
       if (!preso) return;
-      const foiClique = !preso.arrastou, moveuNo = preso.arrastou && Boolean(preso.no);
-      preso = null; c.style.cursor = 'grab';
-      if (moveuNo) this.guardarPosicoes();
+      clearTimeout(preso.espera);
+      const girou = Boolean(preso.girando);
+      const foiClique = !preso.arrastou && !girou, moveuNo = preso.arrastou && Boolean(preso.no);
+      preso = null; this.girando = null; c.style.cursor = 'grab';
+      if (moveuNo || girou) this.guardarPosicoes();
       if (!foiClique || e.type === 'pointercancel') return;
       const p = local(e), no = this.noEm(p.x, p.y);
       if (no && !this.ehFolha(no) && no.tipo !== 'nucleo') this.alternar(no.id);
@@ -316,6 +433,9 @@ class MapaNeural {
   desenhar(agora) {
     const { ctx } = this, z = this.cam.z;
     if (!this.calmo) this.tempo = agora;
+    const passo = Math.min(Math.max(agora - (this.ultimoQuadro || agora), 0), 50);
+    this.ultimoQuadro = agora;
+    if (this.girando) this.girar(this.girando.no, this.girando.sentido * passo * 0.00035);   // ~1 volta a cada 18 s
 
     if (this.camAlvo) {
       const a = this.camAlvo, f = this.calmo ? 1 : 0.12;
@@ -392,6 +512,11 @@ class MapaNeural {
     const zFolha = this.visiveis.length <= 45 ? 0.4 : 0.72;
     // Rótulo que cairia em cima de outro não é desenhado (os dos ramos e do nó escolhido têm prioridade).
     const ocupados = [];
+    // Nenhum nome por cima do círculo de um ramo, grupo ou do núcleo.
+    for (const no of this.visiveis) if (!this.ehFolha(no)) {
+      const p = this.paraTela(no.x, no.y), r = no.r * z + 3;
+      ocupados.push([p.x - r, p.y - r, p.x + r, p.y + r]);
+    }
     const ordem = (no) => (no.id === this.sel || no.id === this.sobre ? 0 : no.tipo === 'ramo' ? 1 : no.tipo === 'grupo' ? 2 : 3);
     for (const no of this.visiveis.slice().sort((a, b) => ordem(a) - ordem(b))) {
       if (no.tipo === 'nucleo') continue;
@@ -408,7 +533,26 @@ class MapaNeural {
         ctx.font = `${forte ? '600' : '500'} 12px Inter, system-ui, sans-serif`;
         ctx.fillStyle = forte ? '#ffffff' : no.estado === 'disabled' ? '#5f6f8c' : '#a9b9d4';
       }
-      const largura = ctx.measureText(rotulo).width, x0 = direita ? p.x + folga : p.x - folga - largura;
+      const largura = ctx.measureText(rotulo).width;
+      if (!this.ehFolha(no)) {
+        // Ramo e grupo: nome centralizado numa etiqueta escura, do lado de dentro (o leque abre para fora).
+        // Encostada no círculo, do lado virado para o pai (de onde vem a linha), longe dos filhos.
+        const alto = no.tipo === 'ramo' ? 22 : 19, ux = -Math.cos(no.ang), uy = -Math.sin(no.ang);
+        const recuo = (no.r * z + 3) * (Math.abs(ux) + Math.abs(uy)) + 4 + Math.abs(ux) * (largura / 2 + 9) + Math.abs(uy) * (alto / 2);
+        const cx = p.x + ux * recuo, y = p.y + uy * recuo;
+        const caixa = [cx - largura / 2 - 9, y - alto / 2, cx + largura / 2 + 9, y + alto / 2];
+        if (!forte && ocupados.some((o) => caixa[0] < o[2] && caixa[2] > o[0] && caixa[1] < o[3] && caixa[3] > o[1])) continue;
+        ocupados.push(caixa);
+        const cor = ctx.fillStyle;
+        ctx.shadowBlur = 0; ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(caixa[0], caixa[1], caixa[2] - caixa[0], alto, alto / 2); else ctx.rect(caixa[0], caixa[1], caixa[2] - caixa[0], alto);
+        ctx.fillStyle = 'rgba(6, 10, 20, 0.84)'; ctx.fill();
+        ctx.strokeStyle = this.cor(no); ctx.globalAlpha = forte ? 0.9 : 0.4; ctx.lineWidth = 1; ctx.stroke(); ctx.globalAlpha = 1;
+        ctx.fillStyle = cor; ctx.textAlign = 'center'; ctx.fillText(rotulo, cx, y + 0.5);
+        ctx.shadowBlur = 8;
+        continue;
+      }
+      const x0 = direita ? p.x + folga : p.x - folga - largura;
       const caixa = [x0 - 4, p.y - 9, x0 + largura + 4, p.y + 9];
       if (!forte && ocupados.some((o) => caixa[0] < o[2] && caixa[2] > o[0] && caixa[1] < o[3] && caixa[3] > o[1])) continue;
       ocupados.push(caixa);

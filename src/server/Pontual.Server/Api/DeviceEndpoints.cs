@@ -131,6 +131,7 @@ public static class DeviceEndpoints
         db.ObservedHosts.RemoveRange(await db.ObservedHosts.Where(o => o.DeviceId == id).ToListAsync(ct));
         db.AssistantMessages.RemoveRange(await db.AssistantMessages.Where(m => m.DeviceId == id).ToListAsync(ct));
         db.SavedTexts.RemoveRange(await db.SavedTexts.Where(s => s.DeviceId == id).ToListAsync(ct));
+        db.StickyNotes.RemoveRange(await db.StickyNotes.Where(n => n.DeviceId == id).ToListAsync(ct));
         db.AssistantProfiles.RemoveRange(await db.AssistantProfiles.Where(p => p.DeviceId == id).ToListAsync(ct));
         db.WhatsAppCaptures.RemoveRange(await db.WhatsAppCaptures.Where(c => c.DeviceId == id).ToListAsync(ct));
         db.CoverageReplies.RemoveRange(await db.CoverageReplies.Where(r => r.DeviceId == id).ToListAsync(ct));

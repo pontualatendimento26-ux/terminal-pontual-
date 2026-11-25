@@ -1,0 +1,16 @@
+global.window={matchMedia:()=>({matches:false})};global.ResizeObserver=class{observe(){}disconnect(){}};global.requestAnimationFrame=()=>0;global.cancelAnimationFrame=()=>{};global.localStorage={getItem:()=>null,setItem:()=>{}};global.document={hidden:true};
+eval(require('fs').readFileSync('mapa.js','utf8')+';global.MapaNeural=MapaNeural;');
+const html=require('fs').readFileSync('teste.html','utf8');
+const nos=[{id:'ia',tipo:'nucleo',rotulo:'IA Pontual'}];
+const add=(id,pai,tipo,rotulo,extra={})=>nos.push({id,pai,tipo,rotulo,estado:'active',...extra});
+const ramo=(t,rot,grupos)=>{add('r:'+t,'ia','ramo',rot,{ramo:t});grupos.forEach(([g,n],gi)=>{const gid=g?('g:'+t+gi):'r:'+t;if(g)add(gid,'r:'+t,'grupo',g,{ramo:t});for(let i=0;i<n;i++)add(t+gi+'_'+i,gid,t==='attendant'?'attendant':t,'x'+i,{ramo:t});});};
+ramo('script','Roteiros',[[null,9]]);ramo('document','Documentos',[[null,2]]);
+ramo('knowledge','Conhecimentos operacionais',[['Geral',24],['Inter',8],['C6',6],['Pan',5],['BMG',7],['Daycoval',4],['Safra',3],['Itaú',5],['Mercantil',4],['Olé',6],['Facta',3],['PicPay',4],['Banrisul',2]]);
+ramo('system','Sistemas',[['Sistema CRM',10],['Nexus',8]]);ramo('attendant','Atendentes',[['PC',8],['Cel',6]]);
+ramo('suggestion','Aprendizado',[['Correções',12],['Novos',9],['Dúvidas',6],['Lacuna',7]]);
+add('r:manual','ia','ramo','Manual',{ramo:'manual'});add('m:manual','r:manual','manual','Comportamento',{ramo:'manual'});
+const cv={getContext:()=>({}),getBoundingClientRect:()=>({width:1400,height:900,left:0,top:0}),addEventListener(){},style:{}};
+const m=new MapaNeural(cv);m.setDados({nos});m.recolhidos.clear();
+let t=Date.now();for(let i=0;i<20;i++)m.organizar();console.log('ms/organizar',(Date.now()-t)/20);
+for(const n of m.visiveis) if(!m.ehFolha(n)) console.log(n.id, 'mult',n.mult.toFixed(2),'d',Math.round(n.distFilhos||0),'C',Math.round(n.C));
+let xs=m.visiveis.map(n=>n.tx),ys=m.visiveis.map(n=>n.ty);console.log('largura',Math.round(Math.max(...xs)-Math.min(...xs)),'altura',Math.round(Math.max(...ys)-Math.min(...ys)));

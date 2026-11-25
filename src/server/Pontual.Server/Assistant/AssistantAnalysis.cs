@@ -7,11 +7,11 @@ using Pontual.Server.Data;
 
 namespace Pontual.Server.Assistant;
 
-public sealed record AnalysisResult(int MessagesRead, int ConversationsRead, int NewSuggestions, int UpdatedSuggestions, bool More);
+public sealed record AnalysisResult(int MessagesRead, int ConversationsRead, int NewSuggestions, int UpdatedSuggestions, bool More, int CrmRead = 0);
 
 /// <summary>
-/// A IA lê o que há de novo de uma atendente (as conversas dela com os clientes no WhatsApp e as perguntas
-/// que fez à assistente) e devolve duas coisas: o perfil de atendimento dela, para a supervisão, e sugestões
+/// A IA lê o que há de novo de uma atendente (as conversas dela com os clientes no WhatsApp, o que ela escreveu
+/// aos clientes pelo CRM e as perguntas que fez à assistente) e devolve duas coisas: o perfil de atendimento dela, para a supervisão, e sugestões
 /// de conhecimento (lacunas, informações novas, conteúdo a revisar).
 /// Só o que ainda não foi analisado é enviado; o perfil anterior vai junto para ser atualizado, não refeito.
 /// As conversas do WhatsApp são apagadas depois de lidas. As sugestões ficam pendentes: nada chega à
@@ -19,7 +19,7 @@ public sealed record AnalysisResult(int MessagesRead, int ConversationsRead, int
 /// </summary>
 public static class AssistantAnalysis
 {
-    /// <summary>Com menos falas novas que isto (e nenhuma conversa de WhatsApp), a análise automática espera juntar mais.</summary>
+    /// <summary>Com menos falas novas que isto (e nenhuma conversa de WhatsApp), a análise automática espera juntar mais. Vale também para as mensagens do CRM.</summary>
     public const int MinNewMessages = 4;
 
     /// <summary>Conversa de WhatsApp que ninguém analisou neste prazo é apagada sem ser lida.</summary>
@@ -40,10 +40,12 @@ public static class AssistantAnalysis
         """
         Você apoia a supervisão da Pontual Consig, um correspondente bancário de crédito consignado. As atendentes da Pontual atendem os clientes pelo WhatsApp, operam os portais dos bancos e tiram dúvidas com uma assistente interna de IA, que responde com base na base de conhecimento da empresa (roteiros, documentos e conhecimentos).
 
-        Você recebe o material recente de UMA atendente: as conversas dela com clientes no WhatsApp e as perguntas que fez à assistente. Pode vir só um dos dois. Com isso você faz duas entregas.
+        Você recebe o material recente de UMA atendente: as conversas dela com clientes no WhatsApp, os atendimentos dela no CRM (o sistema interno, por onde ela também fala com os clientes pelo WhatsApp) e as perguntas que fez à assistente. Pode vir só uma parte. Com isso você faz duas entregas.
+
+        Nos atendimentos do CRM, as falas marcadas "Atendente" são dela. As marcadas "Pontual" são de outra pessoa da equipe, mensagens automáticas ou falas anteriores já analisadas: servem de contexto e não contam para o perfil dela.
 
         1. O perfil de atendimento dela, que a supervisão lê para decidir treinamento e para orientar a assistente a ajudá-la melhor.
-        Descreva o que o material mostra. Em "atendimento": como ela atende os clientes no WhatsApp (clareza, tom, se conduz a conversa até o próximo passo, se pede os dados e documentos certos, se o que afirma bate com a base). Em "resumo" e "estilo": com quais bancos e operações ela trabalha e como costuma perguntar à assistente. Aponte dificuldades recorrentes e o que ela já domina. Se houver um perfil anterior, atualize-o com o que o material novo acrescenta, mantendo o que continua valendo; em "bancos", some as ocorrências novas às contagens anteriores. Quando não houver conversa de WhatsApp, mantenha o "atendimento" anterior (ou diga que ainda não há conversas analisadas). Com pouco material, diga que a amostra é pequena em vez de tirar conclusões fortes. Escreva de forma respeitosa e objetiva: é um retrato de trabalho, não um julgamento da pessoa. Quando ela disser ao cliente algo que contraria a base, registre o fato em "dificuldades" com o assunto, sem transcrever a conversa.
+        Descreva o que o material mostra. Em "atendimento": como ela atende os clientes, no WhatsApp e no CRM (clareza, tom, se conduz a conversa até o próximo passo, se pede os dados e documentos certos, se o que afirma bate com a base). Em "resumo" e "estilo": com quais bancos e operações ela trabalha e como costuma perguntar à assistente. Aponte dificuldades recorrentes e o que ela já domina. Se houver um perfil anterior, atualize-o com o que o material novo acrescenta, mantendo o que continua valendo; em "bancos", some as ocorrências novas às contagens anteriores. Quando não houver conversa com cliente (nem de WhatsApp nem do CRM), mantenha o "atendimento" anterior (ou diga que ainda não há conversas analisadas). Com pouco material, diga que a amostra é pequena em vez de tirar conclusões fortes. Escreva de forma respeitosa e objetiva: é um retrato de trabalho, não um julgamento da pessoa. Quando ela disser ao cliente algo que contraria a base, registre o fato em "dificuldades" com o assunto, sem transcrever a conversa.
 
         2. Sugestões para melhorar a base de conhecimento, apenas quando o material der motivo:
         - "gap": apareceu uma dúvida, de cliente ou da atendente, que a base não cobre.
@@ -159,7 +161,8 @@ public static class AssistantAnalysis
                 .Take(BatchMessages + 1)
                 .ToListAsync(ct);
             var captures = await db.WhatsAppCaptures.Where(c => c.DeviceId == deviceId).OrderBy(c => c.UpdatedAt).ToListAsync(ct);
-            if (fresh.Count == 0 && captures.Count == 0)
+            var typed = (await CrmLearning.PendingAsync(db, ct)).GetValueOrDefault(deviceId) ?? [];
+            if (fresh.Count == 0 && captures.Count == 0 && typed.Count == 0)
             {
                 return new AnalysisResult(0, 0, 0, 0, false);
             }
@@ -204,7 +207,13 @@ public static class AssistantAnalysis
                 read.Add(capture);
             }
 
-            var more = batch.Count < fresh.Count || read.Count < captures.Count;
+            // O que ela escreveu aos clientes pelo CRM, com o espaço que sobrou no lote.
+            var crm = typed.Count > 0
+                ? await CrmLearning.BuildAsync(db, typed, insight?.CrmAnalyzedThroughEventId ?? 0,
+                    Math.Max(BatchChars - conversations.Length - whatsapp.Length, BatchChars / 6), ct)
+                : null;
+
+            var more = batch.Count < fresh.Count || read.Count < captures.Count || crm is { More: true };
             var settings = await db.TextSettings.AsNoTracking().ToDictionaryAsync(s => s.Key, s => s.Value, ct);
             var modelId = AssistantEndpoints.ModelOf(settings);
 
@@ -254,7 +263,9 @@ public static class AssistantAnalysis
 
             input.Append("</sugestoes_pendentes>\n\n<atendimentos_no_whatsapp>\n")
                 .Append(read.Count > 0 ? whatsapp : "Nenhuma conversa nova.\n")
-                .Append("</atendimentos_no_whatsapp>\n\n<perguntas_a_assistente>\n")
+                .Append("</atendimentos_no_whatsapp>\n\n<atendimentos_no_crm>\n")
+                .Append(crm is { Conversations: > 0 } ? crm.Text : "Nenhuma conversa nova.\n")
+                .Append("</atendimentos_no_crm>\n\n<perguntas_a_assistente>\n")
                 .Append(batch.Count > 0 ? conversations : "Nenhuma pergunta nova.\n")
                 .Append("</perguntas_a_assistente>");
 
@@ -287,6 +298,12 @@ public static class AssistantAnalysis
             }
 
             insight.WhatsAppAnalyzed += read.Count;
+            if (crm is not null)
+            {
+                insight.CrmAnalyzedThroughEventId = crm.Through;
+                insight.CrmAnalyzed += crm.Conversations;
+            }
+
             insight.UpdatedAt = now;
             insight.Model = modelId;
             insight.LastError = "";
@@ -333,18 +350,35 @@ public static class AssistantAnalysis
                 created++;
             }
 
-            var what = (batch.Count, read.Count) switch
+            var crmRead = crm?.Conversations ?? 0;
+            var parts = new List<string>();
+            if (batch.Count > 0)
             {
-                (> 0, > 0) => $"{batch.Count} falas com a assistente e {read.Count} conversas de WhatsApp de {device.Label}",
-                (_, > 0) => $"{read.Count} conversas de WhatsApp de {device.Label}",
-                _ => $"{batch.Count} falas de {device.Label} com a assistente",
+                parts.Add($"{batch.Count} falas com a assistente");
+            }
+
+            if (read.Count > 0)
+            {
+                parts.Add($"{read.Count} conversas de WhatsApp");
+            }
+
+            if (crmRead > 0)
+            {
+                parts.Add($"{crmRead} conversas do CRM");
+            }
+
+            var what = parts.Count switch
+            {
+                0 or 1 when read.Count == 0 && crmRead == 0 => $"{batch.Count} falas de {device.Label} com a assistente",
+                1 => $"{parts[0]} de {device.Label}",
+                _ => $"{string.Join(", ", parts.Take(parts.Count - 1))} e {parts[^1]} de {device.Label}",
             };
             var actor = admin is null
                 ? new AuditInfo(ActorType.System, null, "Sistema", "assistant.analysis", $"Sistema analisou {what}", "device", deviceId)
                 : AuditInfo.By(admin, "assistant.analysis", $"{admin.Name} mandou analisar {what}", "device", deviceId);
             await audit.SaveAsync(db, actor, cancellationToken: ct);
 
-            return new AnalysisResult(batch.Count, read.Count, created, updated, more);
+            return new AnalysisResult(batch.Count, read.Count, created, updated, more, crmRead);
         }
         finally
         {
@@ -438,14 +472,22 @@ public sealed class AnalysisWorker(IServiceProvider services, ILogger<AnalysisWo
             .ToDictionaryAsync(g => g.DeviceId, g => g.At, ct);
         var analyzedAt = await db.AttendantInsights.AsNoTracking().ToDictionaryAsync(i => i.DeviceId, i => i.UpdatedAt, ct);
         var approved = await db.Devices.AsNoTracking().Where(d => d.Approved).Select(d => d.Id).ToListAsync(ct);
+        var crm = await CrmLearning.PendingAsync(db, ct);
 
         foreach (var deviceId in approved)
         {
-            var hasMaterial = pending.GetValueOrDefault(deviceId) >= AssistantAnalysis.MinNewMessages || whatsapp.GetValueOrDefault(deviceId) > 0;
+            var typed = crm.GetValueOrDefault(deviceId);
+            var hasMaterial = pending.GetValueOrDefault(deviceId) >= AssistantAnalysis.MinNewMessages || whatsapp.GetValueOrDefault(deviceId) > 0
+                || typed?.Count >= AssistantAnalysis.MinNewMessages;
             var last = lastMessage.GetValueOrDefault(deviceId);
             if (lastCapture.TryGetValue(deviceId, out var captured) && captured > last)
             {
                 last = captured;
+            }
+
+            if (typed is { Count: > 0 } && typed[^1].At > last)
+            {
+                last = typed[^1].At;
             }
 
             if (!hasMaterial || now - last < Quiet || (analyzedAt.TryGetValue(deviceId, out var at) && now - at < BetweenAnalyses))

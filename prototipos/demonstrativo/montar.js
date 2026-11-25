@@ -29,4 +29,8 @@ const saida = path.join(raiz, 'dist/Demonstrativo-Terminal');
 fs.mkdirSync(saida, { recursive: true });
 fs.writeFileSync(path.join(saida, 'Demonstrativo-Terminal.html'), casca);
 for (const f of ['Abrir no localhost.cmd', 'servir.ps1']) fs.copyFileSync(path.join(__dirname, f), path.join(saida, f));
+// A Central serve esta cópia em /demonstrativo (vai junto na próxima atualização da Central).
+const naCentral = path.join(raiz, 'src/server/Pontual.Server/wwwroot/demonstrativo');
+fs.mkdirSync(naCentral, { recursive: true });
+fs.writeFileSync(path.join(naCentral, 'index.html'), casca);
 console.log('Pronto:', saida, Math.round(casca.length / 1024) + ' KB');

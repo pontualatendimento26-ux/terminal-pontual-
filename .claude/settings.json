@@ -45,5 +45,11 @@
     "StopFailure": [
       { "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/tools/agent-events/forward.mjs\"", "async": true, "timeout": 10 }] }
     ]
+
+  },
+  "env": {
+    "CLAUDE_CODE_SUBAGENT_MODEL": "haiku",
+    "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1"
   }
 }
+

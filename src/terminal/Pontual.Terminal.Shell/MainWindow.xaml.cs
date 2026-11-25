@@ -201,6 +201,7 @@ public partial class MainWindow : Window
         CloseAssistant();
         CloseCalculator();
         ClosePdfTools();
+        CloseNotes();
         StopShortcuts();
         if (_hwndSource is not null)
         {
@@ -489,8 +490,8 @@ public partial class MainWindow : Window
         }
 
         object data = _local
-            ? new { hosted = true, local = true, locked = _locked, hostname = Environment.MachineName, config = _config, calc = true, pdf = true }
-            : new { token = _enrollment.Token, hostname = Environment.MachineName, hosted = true, locked = _locked, apps = true, calc = true, pdf = true };
+            ? new { hosted = true, local = true, locked = _locked, hostname = Environment.MachineName, config = _config, calc = true, pdf = true, notes = true }
+            : new { token = _enrollment.Token, hostname = Environment.MachineName, hosted = true, locked = _locked, apps = true, calc = true, pdf = true, notes = true };
 
         // Só a página do próprio Terminal, e só o quadro principal, recebe o objeto (ele carrega o token).
         // O serializador escapa <, >, & e aspas, então o JSON pode ir direto para o script.
@@ -583,7 +584,7 @@ public partial class MainWindow : Window
                         while (wanted && !ct.IsCancellationRequested)
                         {
                             var frame = await Task.Run(() => ScreenCapture.Jpeg(maxWidth: 3200, maxBytes: 1_900_000), ct);
-                            wanted = await api.SendScreenAsync(frame, ct);
+                            wanted = await api.SendScreenAsync(frame, ct, controlDebug: RemoteControl.DebugLine());
                             _screenWanted = wanted;
                             if (wanted)
                             {
@@ -1018,6 +1019,10 @@ public partial class MainWindow : Window
                     // Fora do tratamento da mensagem: a janela de desligar é modal.
                     Dispatcher.BeginInvoke(() => ShowPowerMenu(this));
                     break;
+                default:
+                    // Notas adesivas (MainWindow.Notes.cs): abrir a lista, mostrar ou fechar a janela de uma nota.
+                    HandleNoteMessage(root, typeElement.GetString(), null);
+                    break;
             }
         }
         catch (Exception ex)
@@ -1205,11 +1210,15 @@ public partial class MainWindow : Window
         }
         else if (_programs.TryGetValue(id, out var program))
         {
-            BringToFront(program);
+            // Sem janela (navegador em segundo plano), abre de novo.
+            StartProgram(program.Item);
         }
         else if (TryRunningApp(id, out var app))
         {
-            BringToFront(app.Process);
+            if (!BringToFront(app.Process))
+            {
+                ReopenApp(app.App);
+            }
         }
     }
 
@@ -1502,9 +1511,10 @@ public partial class MainWindow : Window
     /// <param name="argument">Endereço passado ao navegador (pesquisa pedida pela assistente).</param>
     private string? StartProgram(ConfigItem item, string? argument = null)
     {
-        if (argument is null && _programs.TryGetValue(item.Id, out var running))
+        // Já aberto e com janela: vem para a frente. Aberto SEM janela (o Edge e o Chrome continuam ligados em segundo
+        // plano depois de a atendente fechar a janela): segue e abre de novo, senão o clique no ícone não faz nada.
+        if (argument is null && _programs.TryGetValue(item.Id, out var running) && BringToFront(running))
         {
-            BringToFront(running);
             return null;
         }
 
@@ -1551,7 +1561,8 @@ public partial class MainWindow : Window
 
         if (_programs.ContainsKey(item.Id))
         {
-            // Navegador já aberto: a pesquisa vira uma aba nova nele, e o processo novo sai sozinho.
+            // Navegador já aberto: a pesquisa vira uma aba nova nele (ou ele abre uma janela nova, se estava sem
+            // nenhuma), e o processo novo sai sozinho.
             process.Dispose();
             return null;
         }
@@ -1588,25 +1599,30 @@ public partial class MainWindow : Window
         }
     }
 
-    private static void BringToFront(RunningProgram program)
+    /// <summary>Traz a janela do programa para a frente. Devolve false se ele não tem janela para mostrar.</summary>
+    private static bool BringToFront(RunningProgram program)
     {
         try
         {
             program.Process.Refresh();
             var handle = program.Process.MainWindowHandle;
-            if (handle != IntPtr.Zero)
+            if (handle == IntPtr.Zero)
             {
-                if (NativeMethods.IsIconic(handle))
-                {
-                    NativeMethods.ShowWindow(handle, NativeMethods.SwRestore);
-                }
-
-                NativeMethods.SetForegroundWindow(handle);
+                return false;
             }
+
+            if (NativeMethods.IsIconic(handle))
+            {
+                NativeMethods.ShowWindow(handle, NativeMethods.SwRestore);
+            }
+
+            NativeMethods.SetForegroundWindow(handle);
+            return true;
         }
         catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
         {
             // O processo acabou de sair; o evento Exited cuida do resto.
+            return false;
         }
     }
 

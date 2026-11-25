@@ -104,12 +104,19 @@ public sealed class ServerApi : IDisposable
         return await ReadAsync<ScreenRequest>(response, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Envia uma imagem da tela (JPEG). Devolve se o TI continua vendo; com falso, o terminal para de enviar.</summary>
-    public async Task<bool> SendScreenAsync(byte[] jpeg, CancellationToken ct = default)
+    /// <summary>Envia uma imagem da tela (JPEG). Devolve se o TI continua vendo; com falso, o terminal para de enviar.
+    /// <paramref name="controlDebug"/> é um resumo do controle (quantos comandos o SendInput aceitou) que a Central mostra ao TI.</summary>
+    public async Task<bool> SendScreenAsync(byte[] jpeg, CancellationToken ct = default, string? controlDebug = null)
     {
         using var content = new ByteArrayContent(jpeg);
         content.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
-        using var response = await _http.PostAsync("device/screen", content, ct).ConfigureAwait(false);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "device/screen") { Content = content };
+        if (!string.IsNullOrEmpty(controlDebug))
+        {
+            request.Headers.TryAddWithoutValidation("X-Control-Debug", controlDebug);
+        }
+
+        using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
         return (await ReadAsync<ScreenRequest>(response, ct).ConfigureAwait(false)).Wanted;
     }
 

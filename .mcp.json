@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "trello": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@delorenj/mcp-server-trello@1.8.1"],
+      "env": {
+        "TRELLO_API_KEY": "${TRELLO_CLAUDE_KEY}",
+        "TRELLO_TOKEN": "${TRELLO_CLAUDE_TOKEN}",
+        "TRELLO_BOARD_ID": "6b05de9fb7916d2d837d0d10"
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#05070d;height:100%}canvas{width:1400px;height:900px;display:block}</style></head><body>
+<canvas id="c"></canvas><script src="mapa.js"></script><script>
+const nos=[{id:'ia',tipo:'nucleo',rotulo:'IA Pontual'}];
+const add=(id,pai,tipo,rotulo,extra={})=>nos.push({id,pai,tipo,rotulo,estado:'active',...extra});
+const ramo=(t,rot,grupos)=>{add('r:'+t,'ia','ramo',rot,{ramo:t});grupos.forEach(([g,n],gi)=>{const gid=g?('g:'+t+gi):'r:'+t;if(g)add(gid,'r:'+t,'grupo',g,{ramo:t});for(let i=0;i<n;i++)add(t+gi+'_'+i,gid,t==='attendant'?'attendant':t,['Definir: cliente pode receber o valor','Prazos observados, horário-limite do banco','Checklist antes de digitar e enviar','Cliente ansioso ou irritado, como agir','Nunca pedir nem usar a senha do cliente'][i%5]+' '+i,{ramo:t});});};
+ramo('script','Roteiros',[[null,9]]);
+ramo('document','Documentos',[[null,2]]);
+ramo('knowledge','Conhecimentos operacionais',[['Geral',24],['Inter',8],['C6',6],['Pan',5],['BMG',7],['Daycoval',4],['Safra',3],['Itaú',5],['Mercantil',4],['Olé',6],['Facta',3],['PicPay',4],['Banrisul',2]]);
+ramo('system','Sistemas da Pontual',[['Sistema CRM',10],['Nexus',8]]);
+ramo('attendant','Atendentes',[['Atendentes PC',8],['Atendentes celular',6]]);
+ramo('suggestion','Aprendizado',[['Correções',12],['Novos roteiros',9],['Dúvidas',6],['Lacuna de conhecimento',7]]);
+add('r:manual','ia','ramo','Manual de comunicação',{ramo:'manual'});add('m:manual','r:manual','manual','Comportamento',{ramo:'manual'});
+const m=new MapaNeural(document.getElementById('c'));m.setDados({nos});m.expandirTudo();m.ajustar(true);
+setTimeout(()=>{for(const n of m.visiveis){n.x=n.tx;n.y=n.ty;} if(location.hash){const [id,zz]=location.hash.slice(1).split('@');const k=m.no(id);m.cam={x:k.tx+(zz?-150:250)*Math.sign(Math.cos(k.ang)),y:k.ty,z:+(zz||1)};m.camAlvo=null;}},50);
+</script></body></html>

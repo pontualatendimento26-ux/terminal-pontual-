@@ -146,7 +146,7 @@ function zerarEstado() {
   Object.assign(S, {
     me: null, secao: 'visao', visao: 'lista', sel: null, aba: 'resumo', fTipo: 'Todos',
     devices: null, alerts: null, notifs: null, items: null, observed: null, chrome: null, aplicativos: null, audit: null, admins: null,
-    erro: {}, mut: 0, hist: { id: null, linhas: null, erro: null },
+    erro: {}, mut: 0, hist: { id: null, linhas: null, erro: null }, notas: { id: null, linhas: null, erro: null, cor: 'yellow' },
     rascunho: new Map(), erroLinha: new Map(), novas: new Set(), notifInicial: true,
     verificacao: null, assin: {}, pendente: false, focoAntes: null, marcando: false,
   });
@@ -246,6 +246,37 @@ async function carregarHistorico(id) {
   } catch (e) {
     if (S.hist.id === id && e.status !== 401) S.hist.erro = e.message;
   }
+}
+
+// Notas adesivas da atendente (aba "Notas" da máquina). Cada leitura fica na auditoria, então só busca ao abrir a aba
+// e depois de enviar ou retirar um recado; não entra na atualização automática da Central.
+async function carregarNotas(id) {
+  if (!pode('usage.read.individual')) return;
+  if (S.notas.id !== id) S.notas = { id, linhas: null, erro: null, cor: S.notas.cor };
+  try {
+    const linhas = await api('GET', `/devices/${encodeURIComponent(id)}/notes`);
+    if (S.notas.id === id) { S.notas.linhas = Array.isArray(linhas) ? linhas : []; S.notas.erro = null; }
+  } catch (e) {
+    if (S.notas.id === id && e.status !== 401) S.notas.erro = e.message;
+  }
+}
+// O texto de uma nota chega em blocos (parágrafo ou item de lista) com trechos formatados; nunca é HTML.
+const CORES_NOTA = [['yellow', 'Amarelo'], ['green', 'Verde'], ['pink', 'Rosa'], ['purple', 'Roxo'], ['blue', 'Azul'], ['gray', 'Cinza'], ['charcoal', 'Grafite']];
+function textoDaNota(conteudo) {
+  const filhos = [];
+  let lista = null;
+  for (const b of Array.isArray(conteudo) ? conteudo : []) {
+    const linha = el(b && b.t === 'li' ? 'li' : 'div');
+    for (const r of b && Array.isArray(b.r) ? b.r : []) {
+      if (!r || typeof r.s !== 'string') continue;
+      let no = document.createTextNode(r.s);
+      for (const [bit, tag] of [[8, 's'], [4, 'u'], [2, 'i'], [1, 'b']]) if (r.f & bit) no = el(tag, {}, no);
+      linha.append(no);
+    }
+    if (!linha.childNodes.length) linha.append(el('br'));
+    if (b && b.t === 'li') { if (!lista) { lista = el('ul'); filhos.push(lista); } lista.append(linha); } else { lista = null; filhos.push(linha); }
+  }
+  return filhos;
 }
 
 // Executa uma ação do administrador: bloqueia o botão, recarrega o que mudou,
@@ -831,6 +862,9 @@ async function abrirTela(d, nome) {
   // que os aplica no Windows da atendente. Nada é gravado. A atendente vê uma plaquinha na tela dela.
   const controleCaminho = `/devices/${encodeURIComponent(d.id)}/control`;
   const btnAssumir = $('tela-assumir'), btnSoltar = $('tela-soltar'), avisoControle = $('tela-controle-aviso');
+  // Captura os eventos no QUADRO (a moldura, que nunca troca de conteúdo), não na imagem: a imagem é
+  // trocada ~8 vezes por segundo e isso faz o navegador perder os movimentos do mouse feitos em cima dela.
+  const quadro = img.parentElement;
   const podeControlar = pode('screen.control');
   let controlando = false, fila = [], flushTimer = null, ultimoMove = 0, ultimoEnvio = 0;
   btnAssumir.hidden = !podeControlar;
@@ -848,6 +882,7 @@ async function abrirTela(d, nome) {
     return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) };
   };
 
+  let enviados = 0;
   const flush = async () => {
     if (!controlando) return;
     const agora = Date.now();
@@ -855,13 +890,17 @@ async function abrirTela(d, nome) {
     const lote = fila; fila = []; ultimoEnvio = agora;
     try {
       await api('POST', `${controleCaminho}/input`, lote);
+      enviados += lote.length;
+      if (controlando) avisoControle.textContent = `Controlando a tela da atendente. Comandos enviados: ${enviados}. Clique e digite sobre a imagem.`;
     } catch (e) {
-      if (e && e.status === 410) pararControle('O controle foi encerrado. Clique em "Assumir o controle" de novo.');
+      if (e && e.status === 410) { pararControle('O controle foi encerrado. Clique em "Assumir o controle" de novo.'); return; }
+      // Qualquer outro erro era engolido antes; agora aparece, para não falhar calado.
+      if (controlando) avisoControle.textContent = `Erro ao enviar comando (${(e && e.status) || '?'}): ${(e && e.message) || 'desconhecido'}`;
     }
   };
 
   const onMove = (ev) => { const t = Date.now(); if (t - ultimoMove < 40) return; ultimoMove = t; const p = posicao(ev); fila.push({ type: 'move', x: p.x, y: p.y }); };
-  const onDown = (ev) => { ev.preventDefault(); const p = posicao(ev); fila.push({ type: 'move', x: p.x, y: p.y }, { type: 'down', button: ev.button }); img.focus(); };
+  const onDown = (ev) => { ev.preventDefault(); const p = posicao(ev); fila.push({ type: 'move', x: p.x, y: p.y }, { type: 'down', button: ev.button }); quadro.focus(); };
   const onUp = (ev) => { ev.preventDefault(); fila.push({ type: 'up', button: ev.button }); };
   const onWheel = (ev) => { ev.preventDefault(); fila.push({ type: 'wheel', delta: ev.deltaY < 0 ? 120 : -120 }); };
   const onMenu = (ev) => ev.preventDefault();
@@ -874,9 +913,9 @@ async function abrirTela(d, nome) {
 
   const ouvintes = (ligar) => {
     const m = ligar ? 'addEventListener' : 'removeEventListener';
-    img[m]('mousemove', onMove); img[m]('mousedown', onDown); img[m]('mouseup', onUp);
-    img[m]('wheel', onWheel, { passive: false }); img[m]('contextmenu', onMenu);
-    img[m]('keydown', onKey); img[m]('keyup', onKeyUp);
+    quadro[m]('mousemove', onMove); quadro[m]('mousedown', onDown); quadro[m]('mouseup', onUp);
+    quadro[m]('wheel', onWheel, { passive: false }); quadro[m]('contextmenu', onMenu);
+    quadro[m]('keydown', onKey); quadro[m]('keyup', onKeyUp);
   };
 
   async function assumirControle() {
@@ -887,8 +926,9 @@ async function abrirTela(d, nome) {
     btnAssumir.hidden = true; btnSoltar.hidden = false;
     avisoControle.hidden = false;
     avisoControle.textContent = 'Você está mexendo no mouse e no teclado da atendente — o que fizer sai no nome dela. Clique na imagem e use o teclado. Uma plaquinha avisa a atendente na tela dela.';
-    img.style.cursor = 'crosshair';
-    ouvintes(true); img.focus();
+    quadro.style.cursor = 'crosshair';
+    quadro.tabIndex = 0; // para receber o teclado
+    ouvintes(true); quadro.focus();
     flushTimer = setInterval(flush, 50);
   }
 
@@ -898,7 +938,7 @@ async function abrirTela(d, nome) {
     ouvintes(false);
     if (flushTimer) { clearInterval(flushTimer); flushTimer = null; }
     fila = [];
-    img.style.cursor = '';
+    quadro.style.cursor = '';
     btnSoltar.hidden = true; btnAssumir.hidden = !(podeControlar && vivo);
     avisoControle.hidden = true;
     api('DELETE', controleCaminho).catch(() => {});
@@ -938,6 +978,9 @@ async function abrirTela(d, nome) {
       const r = await fetch(`/api/v1${caminho}`, { credentials: 'same-origin', cache: 'no-store' });
       if (!vivo) break;
       if (r.status === 200) {
+        // Diagnóstico do controle que o Terminal devolve: mostra ao TI sem precisar do log da máquina.
+        const dbg = r.headers.get('X-Control-Debug');
+        if (controlando && dbg) avisoControle.textContent = `Controlando. Na máquina da atendente: ${dbg}. (ok = comandos que o Windows aceitou)`;
         await trocar(URL.createObjectURL(await r.blob()));
         if (controlando) atraso = 120; // controlando: atualiza mais rápido para o TI ver o que faz
       } else if (r.status === 204) {
@@ -1134,6 +1177,7 @@ function mudarAba(aba) {
   S.aba = aba;
   if (aba === 'historico') carregarHistorico(S.sel).then(desenharGaveta);
   if (aba === 'acesso' && !S.items) carregar('items').then(desenharGaveta);
+  if (aba === 'notas') carregarNotas(S.sel).then(desenharGaveta);
   desenharGaveta();
   $('gaveta-corpo').scrollTop = 0;
 }
@@ -1158,7 +1202,8 @@ function desenharGaveta() {
   const d = maquina(S.sel);
   if (!d) { if (S.devices) fecharGaveta(); return; }
   const e = estadoDe(d), nome = nomeDe(d), apps = d.appsInUse || [];
-  const guias = [['resumo', 'Resumo', true], ['acesso', 'Sites e programas', pode('apps.read')], ['historico', 'Histórico', pode('usage.read')]].filter((g) => g[2]);
+  const guias = [['resumo', 'Resumo', true], ['acesso', 'Sites e programas', pode('apps.read')], ['historico', 'Histórico', pode('usage.read')],
+    ['notas', 'Notas', pode('usage.read.individual') && d.state !== 'pending']].filter((g) => g[2]);
   if (!guias.some((g) => g[0] === S.aba)) S.aba = 'resumo';
 
   if (mudou('gaveta-topo', [d.id, nome, d.hostname, d.state, S.aba, guias.length])) {
@@ -1284,6 +1329,48 @@ function desenharGaveta() {
       corpo.push(el('ul', { className: `tempo${longo ? ' longo' : ''}` }, ...h.linhas.map((l) => el('li', {}, el('time', { dateTime: texto(l.at), textContent: quandoCurto(l.at) }), el('span', { textContent: texto(l.text) })))),
         el('p', { className: 'aviso-linha' }, ic('info', 18), 'Os 100 registros mais recentes desta máquina.'));
     }
+  }
+
+  if (S.aba === 'notas') {
+    const n = S.notas.id === d.id ? S.notas : { linhas: null, erro: null, cor: 'yellow' };
+    if (pode('devices.manage')) {
+      const chave = `recado:${d.id}`;
+      const campo = el('textarea', { className: 'campo', rows: 3, maxLength: 2000, placeholder: `Escreva um recado para ${primeiro(nome)}`, 'aria-label': `Recado para ${nome}`, 'data-k': 'recado-texto', value: S.rascunho.get(chave) || '' });
+      campo.oninput = () => S.rascunho.set(chave, campo.value);
+      const cores = el('div', { className: 'nota-cores', role: 'radiogroup', 'aria-label': 'Cor do recado' }, ...CORES_NOTA.map(([cor, rotulo]) => {
+        const b = el('button', { type: 'button', className: `nota-${cor}`, role: 'radio', 'aria-checked': String(n.cor === cor), 'aria-label': rotulo, title: rotulo, 'data-k': `recado-cor:${cor}` });
+        b.onclick = () => { S.notas.cor = cor; desenharGaveta(); };
+        return b;
+      }));
+      const enviar = el('button', { type: 'button', className: 'btn', 'data-k': 'recado-enviar' }, 'Colar na tela');
+      enviar.onclick = async () => {
+        const recadoTexto = campo.value.trim();
+        if (!recadoTexto) { recado('Escreva o recado antes de colar.', true); campo.focus(); return; }
+        const feito = await agir(enviar, () => api('POST', `/devices/${encodeURIComponent(d.id)}/notes`, { text: recadoTexto, color: S.notas.cor }),
+          { ok: `Recado colado na tela de ${primeiro(nome)}. Aparece em até 20 segundos, se o computador estiver ligado.` });
+        if (feito) { S.rascunho.delete(chave); await carregarNotas(d.id); desenharGaveta(); }
+      };
+      corpo.push(el('div', { className: 'nota-enviar' }, el('strong', { textContent: 'Colar um recado na tela' }), campo, el('div', { className: 'nota-enviar-fim' }, cores, enviar)));
+    }
+    if (!n.linhas) corpo.push(el('p', { className: 'vazio', textContent: n.erro ? `Não foi possível carregar as notas. ${n.erro}` : 'Carregando…' }));
+    else if (!n.linhas.length) corpo.push(el('p', { className: 'vazio', textContent: `${primeiro(nome)} ainda não tem notas adesivas.` }));
+    else corpo.push(el('div', { className: 'notas-lista' }, ...n.linhas.map((nota) => {
+      const cor = CORES_NOTA.some(([c]) => c === nota.color) ? nota.color : 'yellow';
+      const topo = el('div', { className: 'nota-topo' }, el('span', { textContent: nota.from ? `Recado de ${texto(nota.from)}` : 'Nota da atendente' }),
+        el('span', { textContent: `${nota.open ? 'Aberta na tela' : 'Só na lista'} · ${quando(nota.updatedAt)}` }));
+      if (nota.from && pode('devices.manage')) {
+        const tirar = el('button', { type: 'button', className: 'redondo', 'aria-label': 'Retirar este recado', title: 'Retirar este recado', 'data-k': `nota-tirar:${nota.id}` }, ic('trash', 16));
+        tirar.onclick = async () => {
+          if (!await confirmar({ titulo: 'Retirar este recado?', texto: `O recado some da tela e da lista de notas de ${primeiro(nome)}.`, botao: 'Retirar recado' })) return;
+          const feito = await agir(tirar, () => api('DELETE', `/devices/${encodeURIComponent(d.id)}/notes/${encodeURIComponent(nota.id)}`), { ok: 'Recado retirado.' });
+          if (feito) { await carregarNotas(d.id); desenharGaveta(); }
+        };
+        topo.append(tirar);
+      }
+      const partes = textoDaNota(nota.content);
+      return el('div', { className: `nota-cartao nota-${cor}` }, topo, el('div', { className: 'nota-corpo' }, ...(partes.length ? partes : [el('em', { textContent: 'Nota vazia' })])));
+    })));
+    corpo.push(el('p', { className: 'aviso-linha' }, ic('lock', 18), 'A atendente é avisada, na lista de notas dela, de que o TI pode ler as notas. Cada vez que esta aba é aberta fica registrado na auditoria. Pela Central só dá para retirar os recados enviados pelo TI.'));
   }
 
   const alvo = $('gaveta-corpo'), rolagem = alvo.scrollTop;

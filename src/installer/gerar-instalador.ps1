@@ -12,20 +12,21 @@
 #
 # Atualizacao pelo botao "Atualizar" do Terminal (so com -Bloqueio): o pacote vai para a Central em
 # /baixar/atualizacao/, ASSINADO com a chave guardada neste computador (fora do repositorio):
-#   %APPDATA%\Pontual\chave-atualizacao-terminal.xml
+#   F:\Pontual-Chaves\chave-atualizacao-terminal.xml   (no F:, a pedido do dono; nada no C:)
 # Na primeira vez a chave e criada. GUARDE UMA COPIA DELA: sem ela os computadores ja instalados
 # recusam as atualizacoes e cada um tera de ser reinstalado pelo instalador.
 
 param([string]$Versao = '', [switch]$Bloqueio, [string]$Chave = '')
 
 if (-not $Versao) { $Versao = if ($Bloqueio) { '2.0.0' } else { '1.0.0' } }
-if (-not $Chave) { $Chave = Join-Path $env:APPDATA 'Pontual\chave-atualizacao-terminal.xml' }
+if (-not $Chave) { $Chave = 'F:\Pontual-Chaves\chave-atualizacao-terminal.xml' }
 $Scripts = if ($Bloqueio) { 'Instalar-Bloqueio.ps1', 'Remover-Bloqueio.ps1', 'Bloqueio-Comum.ps1', 'Atualizar-Terminal.ps1' } else { 'Instalar.ps1', 'Desinstalar.ps1' }
 
 $ErrorActionPreference = 'Stop'
 $Raiz = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $Saida = Join-Path $Raiz 'dist'
-$Trabalho = Join-Path $env:TEMP ("pontual-instalador-" + [Guid]::NewGuid().ToString('N'))
+# Pasta de trabalho no mesmo disco do projeto (F:), nunca no TEMP do C: (pedido do dono; o C: ja encheu uma vez).
+$Trabalho = Join-Path $Saida ("_trabalho-instalador-" + [Guid]::NewGuid().ToString('N'))
 $Publicado = Join-Path $Trabalho 'app'
 $Pacote = Join-Path $Trabalho 'pacote'
 $Dotnet = 'C:\Program Files\dotnet\dotnet.exe'

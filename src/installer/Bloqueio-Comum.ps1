@@ -26,6 +26,9 @@ $ProgramasFixos = @(
     'msedge.exe', 'AcroRd32.exe', 'Acrobat.exe',
     # Arquivos de texto (.txt): Bloco de Notas (pedido do dono em 24/11/2026).
     'notepad.exe',
+    # Imagens baixadas (pedido do dono em 25/11/2026): Paint (botao direito > Editar), Fotos (dois cliques),
+    # Paint 3D e a janela "Abrir com" do Windows, que so oferece os programas desta mesma lista.
+    'mspaint.exe', 'Microsoft.Photos.exe', 'Photos.exe', 'PaintStudio.View.exe', 'OpenWith.exe',
     # Planilhas: Excel ou LibreOffice, se estiverem instalados.
     'EXCEL.EXE', 'soffice.exe', 'soffice.bin', 'scalc.exe',
     # Navegadores: as atendentes usam os perfis deles (um WhatsApp em cada). O Terminal vigia os enderecos.

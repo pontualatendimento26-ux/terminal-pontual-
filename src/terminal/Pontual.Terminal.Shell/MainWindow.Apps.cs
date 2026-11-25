@@ -91,7 +91,11 @@ public partial class MainWindow
 
         if (_apps.TryGetValue(app.Path, out var running))
         {
-            BringToFront(running.Process);
+            if (!BringToFront(running.Process))
+            {
+                ReopenApp(app);
+            }
+
             return;
         }
 
@@ -278,20 +282,53 @@ public partial class MainWindow
         });
     }
 
-    private static void BringToFront(Process process)
+    /// <summary>Traz a janela do aplicativo para a frente. Devolve false se ele não tem janela para mostrar.</summary>
+    private static bool BringToFront(Process process)
     {
         try
         {
             process.Refresh();
             var handle = process.MainWindowHandle;
-            if (handle != IntPtr.Zero)
+            if (handle == IntPtr.Zero)
             {
-                OtherWindows.BringToFront(handle);
+                return false;
             }
+
+            OtherWindows.BringToFront(handle);
+            return true;
         }
         catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
         {
             // O processo acabou de sair; o evento Exited cuida do resto.
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Aplicativo que o Terminal já acompanha, mas que ficou sem janela (navegador ligado em segundo plano depois de a
+    /// atendente fechar a janela): pede a abertura de novo. O aplicativo que já está ligado recebe o pedido e mostra a
+    /// janela; o processo novo sai sozinho e o acompanhamento continua no antigo.
+    /// </summary>
+    private void ReopenApp(AppEntry app)
+    {
+        if ((app.Aumid ?? StoreApps.AumidFor(app.Exe)) is { } aumid && StoreApps.ActivateAumid(aumid, out _) is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(app.Path)
+            {
+                UseShellExecute = false,
+                WorkingDirectory = Path.GetDirectoryName(app.Path) ?? "",
+            })?.Dispose();
+        }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
+        {
+            Log.Error($"reabrir {app.Name}", ex);
+            ShowToast($"Não foi possível abrir {app.Name}. O TI foi avisado.");
+            Record(DeviceEvent.AppFailed, app.Name, ex.Message);
         }
     }
 

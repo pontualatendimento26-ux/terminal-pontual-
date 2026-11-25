@@ -51,7 +51,7 @@ public static class DbInitializer
             "TextSettings", "AssistantScripts", "AssistantProfiles", "AssistantMessages",
             "KnowledgeLinks", "KnowledgeSuggestions", "AssistantFeedback", "AttendantInsights", "WhatsAppCaptures", "CoverageReplies",
             "ChromeSites", "ChromeDeviceSites", "AppDecisions", "DeviceApps", "AssistantUsage", "ScreenRecordings", "CrmEvents", "CrmReplies",
-            "NexusConsultas", "SavedTexts",
+            "NexusConsultas", "SavedTexts", "StickyNotes",
         ];
 
         foreach (var statement in Statements(db))

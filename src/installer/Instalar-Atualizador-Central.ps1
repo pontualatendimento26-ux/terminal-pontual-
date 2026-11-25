@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) { throw 'Rode como administrador.' }
 
-if (-not $Chave) { $Chave = Join-Path $env:APPDATA 'Pontual\chave-atualizacao-terminal.xml' }
+if (-not $Chave) { $Chave = 'F:\Pontual-Chaves\chave-atualizacao-terminal.xml' }
 $Raiz = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $Dist = Join-Path $Raiz 'dist'
 $Viva = Join-Path $Dist 'Central-do-TI'

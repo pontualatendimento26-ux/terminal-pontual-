@@ -12,6 +12,13 @@ namespace Pontual.Terminal.Shell;
 /// </summary>
 internal static class RemoteControl
 {
+    private static int _ok, _falhas, _total;
+    private static int _ultimoErro;
+    private static DateTime _ultimoLog = DateTime.MinValue;
+
+    /// <summary>Resumo curto para a Central mostrar ao TI, sem precisar abrir o log da máquina.</summary>
+    public static string DebugLine() => $"total={_total} ok={_ok} falhas={_falhas} erroWin32={_ultimoErro}";
+
     /// <summary>Aplica a lista na ordem em que o TI fez.</summary>
     public static void Apply(IReadOnlyList<InputCommand> events)
     {
@@ -19,12 +26,22 @@ internal static class RemoteControl
         {
             try
             {
+                _total++;
                 Apply(command);
             }
-            catch
+            catch (Exception ex)
             {
-                // Um comando estranho não pode derrubar o laço: segue para o próximo.
+                _falhas++;
+                Log.Error("controle-aplicar", ex);
             }
+        }
+
+        // Resumo no log a cada ~2 s: quantos comandos chegaram, quantos o SendInput aceitou e o último erro do Windows.
+        // Serve para o diagnóstico: se chegam comandos mas sent=0, o Windows está recusando a injeção nesta máquina.
+        if (DateTime.UtcNow - _ultimoLog > TimeSpan.FromSeconds(2))
+        {
+            _ultimoLog = DateTime.UtcNow;
+            Log.Info($"controle: total={_total} enviados_ok={_ok} falhas={_falhas} ultimoErroWin32={_ultimoErro}");
         }
     }
 
@@ -80,6 +97,20 @@ internal static class RemoteControl
         _ => MouseeventfLeftUp,
     };
 
+    private static void Dispatch(Input[] inputs)
+    {
+        var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
+        if (sent == inputs.Length)
+        {
+            _ok++;
+        }
+        else
+        {
+            _falhas++;
+            _ultimoErro = Marshal.GetLastWin32Error();
+        }
+    }
+
     private static void Mouse(uint flags, int x, int y, int data)
     {
         var input = new Input
@@ -87,7 +118,7 @@ internal static class RemoteControl
             Type = InputMouse,
             U = new InputUnion { Mouse = new MouseInput { Dx = x, Dy = y, MouseData = (uint)data, DwFlags = flags } },
         };
-        SendInput(1, [input], Marshal.SizeOf<Input>());
+        Dispatch([input]);
     }
 
     private static void Key(ushort vk, bool down)
@@ -97,7 +128,7 @@ internal static class RemoteControl
             Type = InputKeyboard,
             U = new InputUnion { Keyboard = new KeybdInput { WVk = vk, DwFlags = down ? 0 : KeyeventfKeyup } },
         };
-        SendInput(1, [input], Marshal.SizeOf<Input>());
+        Dispatch([input]);
     }
 
     private static void Unicode(char ch)
@@ -108,7 +139,7 @@ internal static class RemoteControl
             Type = InputKeyboard,
             U = new InputUnion { Keyboard = new KeybdInput { WVk = 0, WScan = ch, DwFlags = KeyeventfUnicode | flags } },
         };
-        SendInput(2, [Make(0), Make(KeyeventfKeyup)], Marshal.SizeOf<Input>());
+        Dispatch([Make(0), Make(KeyeventfKeyup)]);
     }
 
     private const uint InputMouse = 0;

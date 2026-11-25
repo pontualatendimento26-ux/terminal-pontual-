@@ -33,15 +33,35 @@ public sealed class CrmTests
     private sealed class FakeCrm : HttpMessageHandler
     {
         public List<(string Method, string Path, string Body)> Calls { get; } = [];
+        public bool TagCreated { get; set; }
+        /// <summary>Conversas da tela do CRM (rota /api/chat/contacts), em JSON.</summary>
+        public object[] Chats { get; set; } = [];
+        /// <summary>Histórico de cada chat|linha (rota /api/chat/messages).</summary>
+        public Dictionary<string, object[]> History { get; } = [];
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
             var path = request.RequestUri!.AbsolutePath;
             Calls.Add((request.Method.Method, path, body));
+            if (path == "/api/tags" && request.Method == HttpMethod.Post)
+            {
+                TagCreated = true;
+            }
+
+            var query = System.Web.HttpUtility.ParseQueryString(request.RequestUri.Query);
             object answer = path switch
             {
                 "/login" => new { success = true, token = "token-do-agente" },
+                "/api/sessions" => new object[] { new { id = "Kamila_4", canal_id = 4 }, new { id = "Pedro_7", canal_id = 7 } },
+                "/api/chat/contacts" => new { success = true, chats = query["page"] == "1" ? Chats : [], temMais = false },
+                "/api/chat/messages" => new { success = true, messages = History.GetValueOrDefault($"{query["chatId"]}|{query["botId"]}", []) },
+                "/api/chat/send" => new { success = true },
+                "/api/tags" when request.Method == HttpMethod.Get => TagCreated
+                    ? new object[] { new { id = 3, name = "Quente" }, new { id = 7, name = "Atendida pela IA" } }
+                    : new object[] { new { id = 3, name = "Quente" } },
+                "/api/tags" or "/api/chat/tags/toggle" => new { success = true },
+                "/api/agente-externo/v1/usuarios" => new object[] { new { id = "8", nome = "Kamila Oliveira Borges" }, new { id = "12", nome = "Sarah Lima" } },
                 _ when path.EndsWith("/mensagens", StringComparison.Ordinal) => new { success = true, id = "3EB0" },
                 _ when path.EndsWith("/atendimento", StringComparison.Ordinal) => new { success = true, responsavel = new { id = "8", nome = "Kamila Ribeiro" } },
                 _ => new { success = false, message = "rota desconhecida" },
@@ -190,11 +210,174 @@ public sealed class CrmTests
         var sent = Assert.Single(crm.Calls, c => c.Path.EndsWith("/mensagens", StringComparison.Ordinal));
         Assert.Equal("/api/agente-externo/v1/conversas/284841/mensagens", sent.Path);
         Assert.Contains("Me envia o seu CPF", JsonDocument.Parse(sent.Body).RootElement.GetProperty("texto").GetString());
-        Assert.Equal("sent", (await approved.Json()).GetProperty("status").GetString());
+        var approvedJson = await approved.Json();
+        Assert.Equal("sent", approvedJson.GetProperty("status").GetString());
+        Assert.Equal("", approvedJson.GetProperty("error").GetString());
+
+        // O cliente ganhou a etiqueta, criada no CRM porque ainda não existia.
+        Assert.Contains(crm.Calls, c => c.Method == "POST" && c.Path == "/api/tags" && c.Body.Contains("Atendida pela IA"));
+        var tagged = JsonDocument.Parse(Assert.Single(crm.Calls, c => c.Path == "/api/chat/tags/toggle").Body).RootElement;
+        Assert.Equal(("5561999990000@c.us", "Sarah", 7, "add"),
+            (tagged.GetProperty("chatId").GetString(), tagged.GetProperty("botId").GetString(), tagged.GetProperty("tagId").GetInt32(), tagged.GetProperty("action").GetString()));
 
         // Aprovar de novo não manda outra vez.
         var again = await owner.PostAsJsonAsync($"/api/v1/neural/crm/replies/{id}/approve", new { message = "x" });
         Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+    }
+
+    [Fact]
+    public async Task Resposta_fica_na_atendente_do_cliente_e_a_aprovada_vira_exemplo()
+    {
+        var (app, model, _, owner, webhook) = await SetupAsync();
+        using var _app = app;
+        var anonymous = app.CreateClient();
+
+        // A Kamila já falou com este cliente pelo CRM: a resposta é dela.
+        await anonymous.PostAsJsonAsync(webhook, new
+        {
+            conversa = new { id = "70", linha = new { id = "Sarah", numero = "556182378969" } },
+            contato = new { nome = "Lucinea", telefone = "5521983574865" },
+            mensagem = new { texto = "Oi Lucinea, tudo bem?", direcao = "enviada" },
+            remetente = new { nome = "Kamila Oliveira Borges", papel = "atendente" },
+            funil = new { id = CrmAgent.TestFunnel },
+        });
+        await anonymous.PostAsJsonAsync(webhook, Aviso("70", "Como faço para simular o crédito consignado?"));
+        model.Decisions.Enqueue(Decide("responder", "Prezada cliente, segue a informação."));
+        await WriteAsync(app, "70");
+        Assert.DoesNotContain("respostas_aprovadas", model.Requests[0].Input);
+
+        var pending = Assert.Single((await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray());
+        Assert.Equal("Kamila Oliveira Borges", pending.GetProperty("attendant").GetString());
+        var id = pending.GetProperty("id").GetString();
+        await owner.PostAsJsonAsync($"/api/v1/neural/crm/replies/{id}/approve", new { message = "Oi Lucinea! Me manda seu CPF que eu simulo pra você 😊" });
+
+        var overview = await owner.GetAsync("/api/v1/neural/crm").Json();
+        var learned = Assert.Single(overview.GetProperty("learned").EnumerateArray());
+        Assert.Equal(("Kamila Oliveira Borges", 1, 1), (learned.GetProperty("attendant").GetString(), learned.GetProperty("approved").GetInt32(), learned.GetProperty("edited").GetInt32()));
+
+        // Na próxima, a IA recebe a aprovada como exemplo, com o que ela tinha escrito antes da correção.
+        await anonymous.PostAsJsonAsync(webhook, Aviso("70", "Mandei o CPF, e agora?"));
+        model.Decisions.Enqueue(Decide("responder", "Já estou vendo aqui!"));
+        await WriteAsync(app, "70");
+        var input = model.Requests[1].Input;
+        Assert.Contains("<respostas_aprovadas>", input);
+        Assert.Contains("[Kamila Oliveira Borges]", input);
+        Assert.Contains("A IA tinha escrito: Prezada cliente", input);
+        Assert.Contains("Me manda seu CPF que eu simulo", input);
+    }
+
+    private static readonly TimeZoneInfo Brasilia = TimeZoneInfo.FindSystemTimeZoneById(OperatingSystem.IsWindows() ? "E. South America Standard Time" : "America/Sao_Paulo");
+
+    private static object Canal(string bot, DateTime brasilia, bool fromMe, string wpp, int responsavel = 8) =>
+        new { bot_id = bot, from_me = fromMe, ts = brasilia.ToString("yyyy-MM-ddTHH:mm:ss.ffffff"), responsavel_id = responsavel, ultima = new { wpp } };
+
+    private static object Msg(string wpp, DateTime utc, bool fromMe, string body, string who = "", string type = "chat") =>
+        new { wpp_id = wpp, timestamp = new DateTimeOffset(utc).ToUnixTimeMilliseconds(), is_from_me = fromMe, body, sent_by_name = who, type };
+
+    [Fact]
+    public async Task Acha_os_clientes_perdidos_e_responde_no_jeito_da_dona()
+    {
+        var (app, model, crm, owner, _) = await SetupAsync();
+        using var _app = app;
+        var now = DateTime.UtcNow;
+        DateTime Br(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(utc, Brasilia);
+        var tresDias = now.AddDays(-3);
+        crm.Chats =
+        [
+            new { chat_id = "5521983574865@c.us", name = "LUCINEA", last_message_at = tresDias.ToString("O"), canais = new[] { Canal("Kamila_4", Br(tresDias), false, "W1") } },
+            new { chat_id = "5561000000001@c.us", name = "SÓ OK", last_message_at = tresDias.ToString("O"), canais = new[] { Canal("Kamila_4", Br(tresDias), false, "W2") } },
+            new { chat_id = "5561000000002@c.us", name = "HOJE", last_message_at = now.AddHours(-2).ToString("O"), canais = new[] { Canal("Kamila_4", Br(now.AddHours(-2)), false, "W3") } },
+            new { chat_id = "5561000000003@c.us", name = "OUTRO FUNIL", last_message_at = tresDias.ToString("O"), canais = new[] { Canal("Pedro_7", Br(tresDias), false, "W4") } },
+        ];
+        crm.History["5521983574865@c.us|Kamila_4"] =
+        [
+            Msg("A0", tresDias.AddDays(-1), true, "Oii Lucinea, tudo bem? 😊", "Kamila Oliveira Borges"),
+            Msg("S1", tresDias.AddMinutes(-1), true, "A automação adicionou a etiqueta", "Sistema", "notification_template"),
+            Msg("W1", tresDias, false, "Como faço para simular o crédito consignado?"),
+        ];
+        crm.History["5561000000001@c.us|Kamila_4"] = [Msg("W2", tresDias, false, "ok")];
+
+        model.Decisions.Enqueue(Decide("responder", "Oii Lucinea! Desculpa a demora 😊 Me manda seu CPF que eu simulo pra você?"));
+        model.Decisions.Enqueue(Decide("nada", "", "só agradeceu"));
+        var scan = await (await owner.PostAsync("/api/v1/neural/crm/lost/scan", null)).Json();
+        Assert.Equal(1, scan.GetProperty("created").GetInt32());
+
+        // A IA leu só os dois de 3 dias, no funil 4; soube que a dona é a Kamila e viu o jeito dela na conversa.
+        Assert.Equal(2, model.Requests.Count);
+        Assert.Contains("<atendente>Kamila Oliveira Borges</atendente>", model.Requests[0].Input);
+        Assert.Contains("(Kamila Oliveira Borges) Oii Lucinea", model.Requests[0].Input);
+        Assert.DoesNotContain("automação", model.Requests[0].Input);
+        Assert.Contains(model.Requests[0].CachedInstructions!, i => i.Contains("MODO CLIENTE SEM RESPOSTA"));
+
+        var pending = Assert.Single((await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray());
+        Assert.Equal(("perdido", "Kamila Oliveira Borges"), (pending.GetProperty("kind").GetString(), pending.GetProperty("attendant").GetString()));
+
+        // Buscar de novo não lê as mesmas conversas outra vez.
+        await owner.PostAsync("/api/v1/neural/crm/lost/scan", null);
+        Assert.Equal(2, model.Requests.Count);
+
+        // Aprovado: sai pela tela de conversa do CRM, na linha do cliente, e ele ganha a etiqueta.
+        var id = pending.GetProperty("id").GetString();
+        var ok = await owner.PostAsJsonAsync($"/api/v1/neural/crm/replies/{id}/approve", new { message = "Oii Lucinea! Desculpa a demora 😊 Me manda seu CPF?" });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        var sent = Assert.Single(crm.Calls, c => c.Path == "/api/chat/send");
+        Assert.Contains("5521983574865@c.us", sent.Body);
+        Assert.Contains("Kamila_4", sent.Body);
+        var tag = JsonDocument.Parse(Assert.Single(crm.Calls, c => c.Path == "/api/chat/tags/toggle").Body).RootElement;
+        Assert.Equal(("5521983574865@c.us", "Kamila_4"), (tag.GetProperty("chatId").GetString(), tag.GetProperty("botId").GetString()));
+    }
+
+    [Fact]
+    public async Task Busca_dos_perdidos_respeita_o_periodo_escolhido()
+    {
+        var (app, model, crm, owner, _) = await SetupAsync();
+        using var _app = app;
+        var now = DateTime.UtcNow;
+        DateTime Br(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(utc, Brasilia);
+        var hoje = Br(now).Date;
+        var duasHoras = now.AddHours(-2);
+        var dezDias = now.AddDays(-10);
+        crm.Chats =
+        [
+            new { chat_id = "1@c.us", name = "DUAS HORAS", last_message_at = duasHoras.ToString("O"), canais = new[] { Canal("Kamila_4", Br(duasHoras), false, "W1") } },
+            new { chat_id = "2@c.us", name = "DEZ DIAS", last_message_at = dezDias.ToString("O"), canais = new[] { Canal("Kamila_4", Br(dezDias), false, "W2") } },
+        ];
+        crm.History["1@c.us|Kamila_4"] = [Msg("W1", duasHoras, false, "Oi, alguém aí?")];
+        crm.History["2@c.us|Kamila_4"] = [Msg("W2", dezDias, false, "Quero portabilidade")];
+
+        // Datas erradas: nada é lido.
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PostAsJsonAsync("/api/v1/neural/crm/lost/scan", new { from = hoje.ToString("yyyy-MM-dd"), to = hoje.AddDays(-1).ToString("yyyy-MM-dd") })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PostAsJsonAsync("/api/v1/neural/crm/lost/scan", new { from = hoje.AddDays(-90).ToString("yyyy-MM-dd"), to = hoje.ToString("yyyy-MM-dd") })).StatusCode);
+        Assert.Empty(model.Requests);
+
+        // Só hoje: entra quem escreveu há 2 horas (a busca automática esperaria um dia), e o de 10 dias fica de fora.
+        model.Decisions.Enqueue(Decide("responder", "Oi! Desculpa a demora, estou aqui."));
+        var scan = await (await owner.PostAsJsonAsync("/api/v1/neural/crm/lost/scan", new { from = hoje.ToString("yyyy-MM-dd"), to = hoje.ToString("yyyy-MM-dd") })).Json();
+        Assert.Equal(1, scan.GetProperty("created").GetInt32());
+        Assert.Contains("Oi, alguém aí?", Assert.Single(model.Requests).Input);
+        Assert.StartsWith($"De {hoje:dd/MM} a {hoje:dd/MM}", scan.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task Perdido_que_a_atendente_ja_respondeu_nao_recebe_a_resposta_da_ia()
+    {
+        var (app, model, crm, owner, _) = await SetupAsync();
+        using var _app = app;
+        var tresDias = DateTime.UtcNow.AddDays(-3);
+        var br = TimeZoneInfo.ConvertTimeFromUtc(tresDias, Brasilia);
+        crm.Chats = [new { chat_id = "55@c.us", name = "ANA", last_message_at = tresDias.ToString("O"), canais = new[] { Canal("Kamila_4", br, false, "W1") } }];
+        crm.History["55@c.us|Kamila_4"] = [Msg("W1", tresDias, false, "Oi, e a minha portabilidade?")];
+        model.Decisions.Enqueue(Decide("responder", "Oi Ana! Desculpa a demora."));
+        await owner.PostAsync("/api/v1/neural/crm/lost/scan", null);
+        var id = (await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending")[0].GetProperty("id").GetString();
+
+        // Enquanto a resposta esperava, a Kamila respondeu pelo CRM.
+        crm.History["55@c.us|Kamila_4"] = [Msg("W1", tresDias, false, "Oi, e a minha portabilidade?"), Msg("K1", DateTime.UtcNow, true, "Oi Ana!", "Kamila Oliveira Borges")];
+        var refused = await owner.PostAsJsonAsync($"/api/v1/neural/crm/replies/{id}/approve", new { message = "Oi Ana!" });
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Contains("Kamila Oliveira Borges já respondeu", await refused.Content.ReadAsStringAsync());
+        Assert.DoesNotContain(crm.Calls, c => c.Path == "/api/chat/send");
+        Assert.Empty((await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray());
     }
 
     [Fact]
@@ -223,6 +406,17 @@ public sealed class CrmTests
     }
 
     [Fact]
+    public void Acha_a_atendente_pelo_nome_do_crm()
+    {
+        CrmClient.User[] users = [new("8", "Kamila Oliveira Borges"), new("12", "Sarah Lima"), new("13", "Sarah Souza"), new("14", "Sarah")];
+        Assert.Equal("8", CrmAgent.MatchUser(users, "kamila oliveira borges"));
+        Assert.Equal("8", CrmAgent.MatchUser(users, "Kamila"));
+        Assert.Equal("14", CrmAgent.MatchUser(users, "Sarah"));
+        Assert.Null(CrmAgent.MatchUser(users, "Externo"));
+        Assert.Null(CrmAgent.MatchUser(users, ""));
+    }
+
+    [Fact]
     public async Task Passar_para_atendente_chama_o_crm()
     {
         var (app, model, crm, owner, webhook) = await SetupAsync();
@@ -232,9 +426,19 @@ public sealed class CrmTests
         await WriteAsync(app, "8");
         var id = (await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending")[0].GetProperty("id").GetString();
 
-        var human = await owner.PostAsJsonAsync($"/api/v1/neural/crm/replies/{id}/human", new { message = "Claro, já te passo para uma especialista." });
+        // Sem saber de quem é o cliente, não passa (o CRM sortearia) e nada vai ao cliente.
+        var refused = await owner.PostAsJsonAsync($"/api/v1/neural/crm/replies/{id}/human", new { message = "Claro, já te passo para uma especialista." });
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.DoesNotContain(crm.Calls, c => c.Path.EndsWith("/mensagens", StringComparison.Ordinal) || c.Path.EndsWith("/atendimento", StringComparison.Ordinal));
+
+        // Escolhida a atendente, a conversa vai para ela, com o ID dela.
+        var users = await owner.GetAsync("/api/v1/neural/crm/users").Json();
+        Assert.Equal("Kamila Oliveira Borges", users[0].GetProperty("name").GetString());
+        var human = await owner.PostAsJsonAsync($"/api/v1/neural/crm/replies/{id}/human", new { message = "Claro, já te passo para uma especialista.", userId = "8" });
         Assert.Equal(HttpStatusCode.OK, human.StatusCode);
-        Assert.Contains(crm.Calls, c => c.Method == "PUT" && c.Path == "/api/agente-externo/v1/conversas/8/atendimento" && c.Body.Contains("\"humano\""));
+        var handOver = Assert.Single(crm.Calls, c => c.Method == "PUT" && c.Path == "/api/agente-externo/v1/conversas/8/atendimento");
+        Assert.Contains("\"humano\"", handOver.Body);
+        Assert.Equal("8", JsonDocument.Parse(handOver.Body).RootElement.GetProperty("usuario_id").GetString());
         Assert.Contains("Kamila Ribeiro", (await human.Json()).GetProperty("error").GetString());
     }
 

@@ -321,6 +321,10 @@ public sealed class TextSetting
     public const string CrmWebhookKey = "crm.webhookKey";
     /// <summary>"1" liga a IA nos clientes do CRM (ela escreve as respostas para aprovação); o padrão é desligada.</summary>
     public const string CrmEnabled = "crm.enabled";
+    /// <summary>"1" liga a busca dos clientes perdidos (ver <c>CrmLost</c>); o padrão é desligada.</summary>
+    public const string CrmLostEnabled = "crm.lostEnabled";
+    /// <summary>Quando a busca dos perdidos rodou por último e o que achou, para a tela.</summary>
+    public const string CrmLostLastRun = "crm.lostLastRun";
     /// <summary>Endereço da API de integração do Nexus, ex.: http://192.168.0.171:3001/api/integracao/v1.</summary>
     public const string NexusUrl = "nexus.url";
     /// <summary>Token da Central no Nexus, cifrado como a chave da IA (ver <c>AssistantSecrets</c>).</summary>
@@ -491,6 +495,10 @@ public sealed class AttendantInsight
     public string LastError { get; set; } = "";
     /// <summary>Quantas conversas de WhatsApp já entraram na análise.</summary>
     public int WhatsAppAnalyzed { get; set; }
+    /// <summary>Último aviso do CRM já analisado: a próxima análise lê só o que a atendente escreveu depois.</summary>
+    public long CrmAnalyzedThroughEventId { get; set; }
+    /// <summary>Quantas conversas do CRM já entraram na análise.</summary>
+    public int CrmAnalyzed { get; set; }
 }
 
 /// <summary>
@@ -806,6 +814,8 @@ public sealed class CrmEvent
     public string Phone { get; set; } = "";
     /// <summary>Quem escreveu: <see cref="CrmAuthor"/>.</summary>
     public string Author { get; set; } = "";
+    /// <summary>Nome de quem da equipe digitou (remetente.nome), como está cadastrado no CRM; vazio nas mensagens do cliente.</summary>
+    public string Sender { get; set; } = "";
     public string Text { get; set; } = "";
     /// <summary>Número da linha de WhatsApp da Pontual em que a conversa está (conversa.linha.numero), só dígitos.</summary>
     public string Line { get; set; } = "";
@@ -835,10 +845,21 @@ public sealed class CrmReply
     /// <summary>A conversa como a IA leu.</summary>
     public string Transcript { get; set; } = "";
     public string Reply { get; set; } = "";
+    /// <summary>"perdido": achado pela busca dos clientes sem resposta, e enviado pela tela de conversa do CRM. Vazio: veio pelo webhook do agente.</summary>
+    public string Kind { get; set; } = "";
+    /// <summary>Cliente perdido: o chat_id e a linha (bot_id) no CRM.</summary>
+    public string ChatId { get; set; } = "";
+    public string BotId { get; set; } = "";
+    /// <summary>Cliente perdido: a última mensagem dele que a resposta leva em conta. Se mudou no CRM, a resposta ficou velha.</summary>
+    public string LastWppId { get; set; } = "";
+    /// <summary>Cliente perdido: quando ele escreveu a última vez.</summary>
+    public DateTime? WaitingSince { get; set; }
+    /// <summary>O texto que a IA escreveu, antes de alguém editar: a diferença para o enviado é o que ela aprende.</summary>
+    public string Draft { get; set; } = "";
     /// <summary>"responder", "humano" ou "nada": o que a IA sugeriu.</summary>
     public string Decision { get; set; } = "";
     public string Reason { get; set; } = "";
-    /// <summary>A atendente que faltou e de quem é este cliente; vazio no funil de teste.</summary>
+    /// <summary>A atendente de quem é este cliente (a que faltou, ou a última que escreveu a ele no CRM); vazio se não deu para saber.</summary>
     public string Attendant { get; set; } = "";
     public required string Status { get; set; }
     /// <summary>Último aviso do cliente que esta resposta leva em conta: um aviso mais novo deixa a resposta velha.</summary>
@@ -864,4 +885,33 @@ public static class CrmReplyStatus
     public const string Skipped = "skipped";
     /// <summary>O cliente escreveu de novo antes da aprovação; outra resposta tomou o lugar desta.</summary>
     public const string Outdated = "outdated";
+}
+
+/// <summary>
+/// Uma nota adesiva da atendente (pedido do dono, 25/11/2026): como as Notas Autoadesivas do Windows, só que do Terminal.
+/// Fica guardada na Central, ligada ao computador, para não se perder se o PC for formatado. O TI pode ler as notas e
+/// colar um recado na tela da atendente (<see cref="FromAdminName"/> preenchido).
+/// </summary>
+public sealed class StickyNote
+{
+    /// <summary>Criado pelo Terminal (a nota nasce no computador, mesmo sem conexão) ou pela Central (recado).</summary>
+    public Guid Id { get; set; }
+    public Guid DeviceId { get; set; }
+    /// <summary>Um dos nomes de <c>NoteContent.Colors</c>.</summary>
+    public string Color { get; set; } = "yellow";
+    /// <summary>O texto, em blocos JSON já validados por <c>NoteContent</c>; nunca HTML.</summary>
+    public string Content { get; set; } = "[]";
+    /// <summary>Posição e tamanho da janela da nota na tela da atendente; zero = o Terminal escolhe.</summary>
+    public int X { get; set; }
+    public int Y { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+    /// <summary>A nota está aberta na tela (verdadeiro) ou só na lista de notas.</summary>
+    public bool Open { get; set; }
+    /// <summary>Quem do TI enviou o recado; vazio para as notas da própria atendente.</summary>
+    public string FromAdminName { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    /// <summary>Recado que o TI retirou: fica um tempo marcado para o Terminal saber que deve tirar da tela.</summary>
+    public DateTime? DeletedAt { get; set; }
 }

@@ -36,6 +36,7 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
     public DbSet<CrmReply> CrmReplies => Set<CrmReply>();
     public DbSet<NexusConsulta> NexusConsultas => Set<NexusConsulta>();
     public DbSet<AssistantUsage> AssistantUsage => Set<AssistantUsage>();
+    public DbSet<StickyNote> StickyNotes => Set<StickyNote>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -98,6 +99,8 @@ public sealed class PontualDb(DbContextOptions<PontualDb> options) : DbContext(o
         modelBuilder.Entity<SavedText>().HasIndex(s => new { s.DeviceId, s.Keyword }).IsUnique();
 
         modelBuilder.Entity<AssistantUsage>().HasIndex(u => u.At);
+
+        modelBuilder.Entity<StickyNote>().HasIndex(n => n.DeviceId);
 
         modelBuilder.Entity<ScreenRecording>(e =>
         {

@@ -100,6 +100,17 @@ public sealed class ScreenWatch(TimeProvider time)
 
     public byte[]? Latest(Guid deviceId) => Active(deviceId)?.Frame;
 
+    /// <summary>Guarda o resumo de diagnóstico do controle que o terminal mandou junto com a imagem.</summary>
+    public void SetDebug(Guid deviceId, string? debug)
+    {
+        if (Active(deviceId) is { } entry)
+        {
+            entry.ControlDebug = debug;
+        }
+    }
+
+    public string? Debug(Guid deviceId) => Active(deviceId)?.ControlDebug;
+
     /// <summary>Assume o controle. Falso se ninguém está vendo a tela: não se controla o que não se vê.</summary>
     public bool StartControl(Guid deviceId, string viewer)
     {
@@ -189,6 +200,9 @@ public sealed class ScreenWatch(TimeProvider time)
         /// <summary>Até quando o controle vale. <see cref="DateTime.MinValue"/> = ninguém controlando.</summary>
         public DateTime ControlUntil = DateTime.MinValue;
 
+        /// <summary>Resumo de diagnóstico que o terminal mandou (quantos comandos o SendInput aceitou).</summary>
+        public string? ControlDebug;
+
         public ConcurrentQueue<InputEvent> Input = new();
     }
 }
@@ -251,6 +265,12 @@ public static class ScreenEndpoints
         }
 
         context.Response.Headers.CacheControl = "no-store";
+        // Diagnóstico do controle para o painel mostrar ao TI, sem precisar do log da máquina.
+        if (watch.Debug(id) is { } debug)
+        {
+            context.Response.Headers["X-Control-Debug"] = debug;
+        }
+
         return watch.Latest(id) is { } frame ? Results.File(frame, "image/jpeg") : Results.NoContent();
     }
 
@@ -354,6 +374,12 @@ public static class ScreenEndpoints
         {
             // Ninguém pediu: a imagem nem é lida.
             return Results.Ok(new { wanted = false, controlling = false });
+        }
+
+        // Diagnóstico do controle que o terminal manda junto (quantos comandos o SendInput aceitou).
+        if (context.Request.Headers.TryGetValue("X-Control-Debug", out var debug))
+        {
+            watch.SetDebug(device.Id, debug.ToString());
         }
 
         // Uma tela inteira não cabe no limite geral de 256 KB; só esta rota aceita mais.

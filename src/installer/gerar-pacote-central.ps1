@@ -1,6 +1,6 @@
 # Publica a Central do TI e gera o pacote ASSINADO em dist\_central-nova (central.zip + versao.json).
 # Depois dispare a tarefa:  schtasks /Run /TN "Atualizar a Central do TI"
-# Usa a MESMA chave do Terminal (%APPDATA%\Pontual\chave-atualizacao-terminal.xml); o texto assinado
+# Usa a MESMA chave do Terminal (F:\Pontual-Chaves\chave-atualizacao-terminal.xml); o texto assinado
 # comeca com "Central do TI|", entao um pacote do Terminal nunca vale como pacote da Central e vice-versa.
 # A versao e automatica (data e hora: AAAA.MMDD.HHmm), sempre maior que a anterior.
 # Uso: powershell -ExecutionPolicy Bypass -File src\installer\gerar-pacote-central.ps1
@@ -8,12 +8,12 @@
 param([string]$Versao = '', [string]$Chave = '')
 
 $ErrorActionPreference = 'Stop'
-if (-not $Chave) { $Chave = Join-Path $env:APPDATA 'Pontual\chave-atualizacao-terminal.xml' }
+if (-not $Chave) { $Chave = 'F:\Pontual-Chaves\chave-atualizacao-terminal.xml' }
 if (-not $Versao) { $Versao = (Get-Date -Format 'yyyy.MMdd.HHmmss') }  # com segundos: a instalada já usa esse formato, e HHmm ficaria "menor"
 $versaoAssinada = ([version]$Versao).ToString()
 $Raiz = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $Saida = Join-Path $Raiz 'dist\_central-nova'
-$Trabalho = Join-Path $Raiz ('dist_trabalho-' + 'pontual-central-' + [Guid]::NewGuid().ToString('N'))
+$Trabalho = Join-Path $Raiz ('dist\_trabalho-' + 'pontual-central-' + [Guid]::NewGuid().ToString('N'))
 $Publicado = Join-Path $Trabalho 'app'
 $Dotnet = 'C:\Program Files\dotnet\dotnet.exe'
 if (-not (Test-Path $Dotnet)) { $Dotnet = 'dotnet' }

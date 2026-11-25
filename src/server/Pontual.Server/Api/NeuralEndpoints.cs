@@ -105,6 +105,7 @@ public static class NeuralEndpoints
             .ToDictionaryAsync(i => i.DeviceId, ct);
         var waiting = await AssistantAnalysis.PendingAsync(db, ct);
         var whatsapp = await AssistantAnalysis.WhatsAppPendingAsync(db, ct);
+        var crm = await CrmLearning.PendingAsync(db, ct);
         var coverage = await db.AssistantProfiles.AsNoTracking()
             .Select(p => new { p.DeviceId, p.Coverage, p.CoverageSchedule, p.AbsentOn }).ToDictionaryAsync(p => p.DeviceId, ct);
         var coveragePending = await db.CoverageReplies.AsNoTracking().Where(r => r.Status == CoverageStatus.Pending)
@@ -148,6 +149,8 @@ public static class NeuralEndpoints
                     messagesAnalyzed = insight?.MessagesAnalyzed ?? 0,
                     newMessages = waiting.GetValueOrDefault(d.Id),
                     whatsappPending = whatsapp.GetValueOrDefault(d.Id),
+                    // Mensagens que ela escreveu aos clientes pelo CRM e que a análise ainda não leu.
+                    crmPending = crm.GetValueOrDefault(d.Id)?.Count ?? 0,
                     coverage = covered?.Coverage ?? "",
                     absent = covered?.AbsentOn == Coverage.Day(now),
                     // Dias e horários em que a IA pode atender por ela, e se agora está dentro deles.
@@ -889,6 +892,7 @@ public static class NeuralEndpoints
         var questions = await db.AssistantMessages.AsNoTracking().CountAsync(m => m.DeviceId == deviceId && m.Role == AssistantRole.User, ct);
         var newMessages = await db.AssistantMessages.AsNoTracking().CountAsync(m => m.DeviceId == deviceId && m.Id > through, ct);
         var whatsappPending = await db.WhatsAppCaptures.AsNoTracking().CountAsync(c => c.DeviceId == deviceId, ct);
+        var crmPending = (await CrmLearning.PendingAsync(db, ct)).GetValueOrDefault(deviceId)?.Count ?? 0;
         var helpful = await db.AssistantFeedback.AsNoTracking().CountAsync(f => f.DeviceId == deviceId && f.Helpful, ct);
         var notHelpful = await db.AssistantFeedback.AsNoTracking().CountAsync(f => f.DeviceId == deviceId && !f.Helpful, ct);
         var suggestions = await db.KnowledgeSuggestions.AsNoTracking()
@@ -917,6 +921,8 @@ public static class NeuralEndpoints
             newMessages,
             whatsappPending,
             whatsappAnalyzed = insight?.WhatsAppAnalyzed ?? 0,
+            crmPending,
+            crmAnalyzed = insight?.CrmAnalyzed ?? 0,
             feedback = new { helpful, notHelpful },
             suggestions,
             instructions,
@@ -931,7 +937,7 @@ public static class NeuralEndpoints
         var admin = context.Admin();
         context.Demand(Permission.UsageReadIndividual);
 
-        int read = 0, conversations = 0, created = 0, updated = 0;
+        int read = 0, conversations = 0, crm = 0, created = 0, updated = 0;
         var more = true;
         try
         {
@@ -940,6 +946,7 @@ public static class NeuralEndpoints
                 var result = await AssistantAnalysis.RunAsync(db, model, configuration, audit, time, deviceId, admin, ct);
                 read += result.MessagesRead;
                 conversations += result.ConversationsRead;
+                crm += result.CrmRead;
                 created += result.NewSuggestions;
                 updated += result.UpdatedSuggestions;
                 more = result.More;
@@ -950,6 +957,6 @@ public static class NeuralEndpoints
             throw new ApiError(StatusCodes.Status502BadGateway, failure.Message);
         }
 
-        return Results.Ok(new { messagesRead = read, conversationsRead = conversations, newSuggestions = created, updatedSuggestions = updated, more });
+        return Results.Ok(new { messagesRead = read, conversationsRead = conversations, crmRead = crm, newSuggestions = created, updatedSuggestions = updated, more });
     }
 }

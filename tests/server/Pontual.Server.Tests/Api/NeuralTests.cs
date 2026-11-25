@@ -534,6 +534,77 @@ public sealed class NeuralTests
     }
 
     [Fact]
+    public async Task Mensagens_do_crm_entram_na_analise_de_quem_digitou()
+    {
+        var model = new FakeBrain
+        {
+            Json = """
+                {"perfil":{"resumo":"Atende portabilidade pelo CRM.","atendimento":"Pede o contracheque logo no começo.","estilo":"Direta.","experiencia":"intermediaria",
+                "bancos":[],"temas":["portabilidade"],"dificuldades":[],"pontos_fortes":[],"recomendacoes":[]},"sugestoes":[]}
+                """,
+        };
+        using var app = new TestApp { AssistantModel = model };
+        var owner = await app.OwnerAsync();
+        await owner.PutAsJsonAsync("/api/v1/assistant/settings", new { apiKey = Key });
+        var (sarah, _) = await app.ApprovedDeviceAsync(owner, "PC-01", "Sarah");
+        var (kamila, _) = await app.ApprovedDeviceAsync(owner, "PC-02", "Kamila");
+        var saved = await owner.PutAsJsonAsync("/api/v1/neural/crm/settings", new { url = "http://crm.test/", user = "IA_Pontual", password = "segredo", enabled = false }).Json();
+        var webhook = new Uri(saved.GetProperty("webhookUrl").GetString()!).AbsolutePath;
+        var crm = app.CreateClient();
+
+        // O formato do aviso do CRM: quem digitou vem em remetente.nome, com o nome completo cadastrado lá.
+        static object Aviso(string conversa, string texto, string papel, string nome) => new
+        {
+            mensagem = new { id = Guid.NewGuid().ToString("N"), direcao = papel == "cliente" ? "recebida" : "enviada", texto, interna = false },
+            remetente = new { id = "1", nome, papel },
+            conversa = new { id = conversa, canal = "whatsapp", linha = new { id = "L1", nome = "Sarah | IB 23 - 0775", numero = "556130000775" } },
+            contato = new { id = "9", nome = "JOSE", telefone = "5561999990000" },
+            funil = new { id = "4", nome = "Atendimento Portabilidade" },
+        };
+        async Task<JsonElement> PersonAsync(Guid id) => await owner.GetAsync($"/api/v1/neural/attendants/{id}").Json();
+
+        await crm.PostAsJsonAsync(webhook, Aviso("100", "Quero portar meu consignado", "cliente", "jose"));
+        await crm.PostAsJsonAsync(webhook, Aviso("100", "Olá! Recebemos sua mensagem.", "automacao", "Agente IA (interno)"));
+        await crm.PostAsJsonAsync(webhook, Aviso("100", "Me manda o contracheque, por favor", "atendente", "Sarah Lima Pereira"));
+        await crm.PostAsJsonAsync(webhook, Aviso("200", "Bom dia, tudo bem?", "atendente", "Kamila Oliveira Borges"));
+        await crm.PostAsJsonAsync(webhook, Aviso("300", "Respondi pelo celular", "atendente", "Externo"));
+
+        // Cada mensagem é de quem digitou; a automática e a mandada pelo celular (sem linha ligada) não são de ninguém.
+        Assert.Equal(1, (await PersonAsync(sarah)).GetProperty("crmPending").GetInt32());
+        Assert.Equal(1, (await PersonAsync(kamila)).GetProperty("crmPending").GetInt32());
+
+        var result = await owner.PostAsync($"/api/v1/neural/attendants/{sarah}/analyze", null).Json();
+        Assert.Equal(1, result.GetProperty("crmRead").GetInt32());
+        var input = Assert.Single(model.JsonRequests).Input;
+        Assert.Contains("<atendimentos_no_crm>\n<conversa numero=\"1\">", input);
+        Assert.Contains("] Cliente: Quero portar meu consignado\n", input);
+        Assert.Contains("] Atendente: Me manda o contracheque, por favor\n", input);
+        Assert.Contains("] Pontual: Olá! Recebemos sua mensagem.\n", input);
+        Assert.DoesNotContain("Bom dia, tudo bem?", input);
+        Assert.DoesNotContain("Respondi pelo celular", input);
+
+        var person = await PersonAsync(sarah);
+        Assert.Equal(0, person.GetProperty("crmPending").GetInt32());
+        Assert.Equal(1, person.GetProperty("crmAnalyzed").GetInt32());
+        Assert.StartsWith("Pede o contracheque", person.GetProperty("profile").GetProperty("atendimento").GetString());
+        Assert.Equal(1, (await PersonAsync(kamila)).GetProperty("crmPending").GetInt32());
+        Assert.Contains("mandou analisar 1 conversas do CRM de Sarah", (await owner.GetAsync("/api/v1/audit").Json()).GetRawText());
+
+        // Sem nada novo, a IA não é chamada; uma mensagem nova volta com as anteriores só de contexto.
+        await owner.PostAsync($"/api/v1/neural/attendants/{sarah}/analyze", null).Json();
+        Assert.Single(model.JsonRequests);
+        await crm.PostAsJsonAsync(webhook, Aviso("100", "Recebi, vou simular", "atendente", "Sarah Lima Pereira"));
+        await owner.PostAsync($"/api/v1/neural/attendants/{sarah}/analyze", null).Json();
+        Assert.Equal(2, model.JsonRequests.Count);
+        Assert.Contains("] Pontual: Me manda o contracheque, por favor\n", model.JsonRequests[1].Input);
+        Assert.Contains("] Atendente: Recebi, vou simular\n", model.JsonRequests[1].Input);
+
+        // Com a linha ligada à atendente na Central, o que foi mandado pelo celular nessa linha também é dela.
+        await owner.PutAsJsonAsync($"/api/v1/neural/attendants/{kamila}/crm-lines", new { lines = "5561 3000-0775" });
+        Assert.Equal(2, (await PersonAsync(kamila)).GetProperty("crmPending").GetInt32());
+    }
+
+    [Fact]
     public async Task Ligacoes_entre_conhecimentos_nao_se_repetem_e_somem_com_o_item()
     {
         using var app = new TestApp();
