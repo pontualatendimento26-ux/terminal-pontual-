@@ -35,10 +35,12 @@ public static class CrmEndpoints
         api.MapPost("/neural/crm/test", TestAsync).Panel(Access);
         api.MapPost("/neural/crm/replies/{id:guid}/approve", ApproveAsync).Panel(Access);
         api.MapPost("/neural/crm/replies/{id:guid}/reject", RejectAsync).Panel(Access);
+        api.MapPost("/neural/crm/replies/{id:guid}/finished", FinishedAsync).Panel(Access);
         api.MapPost("/neural/crm/replies/{id:guid}/human", HumanAsync).Panel(Access);
         api.MapGet("/neural/crm/users", UsersAsync).Panel(Access);
         api.MapPut("/neural/crm/lost", SaveLostAsync).Panel(Access);
         api.MapPost("/neural/crm/lost/scan", ScanLostAsync).Panel(Access);
+        api.MapDelete("/neural/crm/lost/period", ClearPeriodAsync).Panel(Access);
     }
 
     // ------------------------------------------------------------------ webhook
@@ -194,6 +196,8 @@ public static class CrmEndpoints
 
     /// <summary>Quantas respostas aprovadas entram como exemplo a cada resposta nova.</summary>
     private const int LearnedExamples = 8;
+    /// <summary>Quantas são olhadas para achar as que servem: as que passam o cliente para outra pessoa não viram exemplo.</summary>
+    private const int LearnedLookup = 60;
 
     /// <summary>
     /// O que a IA aprendeu com as aprovações: as últimas respostas aprovadas e enviadas, primeiro as da mesma
@@ -204,11 +208,14 @@ public static class CrmEndpoints
         var approved = db.CrmReplies.AsNoTracking()
             .Where(r => r.Status == CrmReplyStatus.Sent && r.ReviewedByName != "" && r.Reply != "" && r.Incoming != "");
         var mine = attendant.Length > 0
-            ? await approved.Where(r => r.Attendant == attendant).OrderByDescending(r => r.SentAt).Take(LearnedExamples).ToListAsync(ct)
+            ? Good(await approved.Where(r => r.Attendant == attendant).OrderByDescending(r => r.SentAt).Take(LearnedLookup).ToListAsync(ct), LearnedExamples)
             : [];
         var others = mine.Count < LearnedExamples
-            ? await approved.Where(r => r.Attendant != attendant).OrderByDescending(r => r.SentAt).Take(LearnedExamples - mine.Count).ToListAsync(ct)
+            ? Good(await approved.Where(r => r.Attendant != attendant).OrderByDescending(r => r.SentAt).Take(LearnedLookup).ToListAsync(ct), LearnedExamples - mine.Count)
             : [];
+        static List<CrmReply> Good(List<CrmReply> list, int count) =>
+            [.. list.Where(r => !CrmAgent.MentionsHandoff(r.Reply, r.Attendant)).Take(count)];
+
         if (mine.Count + others.Count == 0)
         {
             return "";
@@ -289,9 +296,19 @@ public static class CrmEndpoints
     {
         var settings = await db.TextSettings.AsNoTracking().Where(s => s.Key.StartsWith("crm.")).ToDictionaryAsync(s => s.Key, s => s.Value, ct);
         var key = settings.GetValueOrDefault(TextSetting.CrmWebhookKey, "");
-        var pending = await db.CrmReplies.AsNoTracking()
-            .Where(r => r.Status == CrmReplyStatus.Pending || r.Status == CrmReplyStatus.Failed)
-            .OrderBy(r => r.CreatedAt).Take(100).ToListAsync(ct);
+        var waiting = db.CrmReplies.AsNoTracking().Where(r => r.Status == CrmReplyStatus.Pending || r.Status == CrmReplyStatus.Failed);
+        // Com período escolhido, a lista só mostra os clientes perdidos daquelas datas; os outros continuam guardados.
+        var period = CrmLost.ReadPeriod(settings.GetValueOrDefault(TextSetting.CrmLostPeriod, ""));
+        var hidden = 0;
+        if (period is { } days)
+        {
+            var (start, end) = CrmLost.Bounds(days.From, days.To);
+            var total = await waiting.CountAsync(ct);
+            waiting = waiting.Where(r => r.Kind != CrmLost.Kind || r.WaitingSince >= start && r.WaitingSince < end);
+            hidden = total - await waiting.CountAsync(ct);
+        }
+
+        var pending = await waiting.OrderBy(r => r.CreatedAt).Take(100).ToListAsync(ct);
         var recent = await db.CrmReplies.AsNoTracking()
             .Where(r => r.Status != CrmReplyStatus.Pending && r.Status != CrmReplyStatus.Failed)
             .OrderByDescending(r => r.UpdatedAt).Take(40).ToListAsync(ct);
@@ -318,6 +335,8 @@ public static class CrmEndpoints
             learned,
             lostEnabled = settings.GetValueOrDefault(TextSetting.CrmLostEnabled, "") == "1",
             lostLastRun = settings.GetValueOrDefault(TextSetting.CrmLostLastRun, ""),
+            lostPeriod = period is { } p ? new { from = p.From.ToString("yyyy-MM-dd"), to = p.To.ToString("yyyy-MM-dd") } : null,
+            lostHidden = hidden,
         });
     }
 
@@ -518,6 +537,25 @@ public static class CrmEndpoints
         return Results.Ok(Dto(reply));
     }
 
+    /// <summary>A pessoa disse que este cliente perdido já foi finalizado: nada é enviado e a conversa vira exemplo para a IA.</summary>
+    private static async Task<IResult> FinishedAsync(Guid id, HttpContext context, PontualDb db, AuditWriter audit, TimeProvider time, CancellationToken ct)
+    {
+        var admin = context.Admin();
+        var reply = await OpenAsync(db, id, ct);
+        if (reply.Kind != CrmLost.Kind)
+        {
+            throw ApiError.BadRequest("Só os clientes perdidos podem ser marcados como finalizados.");
+        }
+
+        reply.Status = CrmReplyStatus.Skipped;
+        reply.Reason = $"{CrmLost.FinishedReason}: marcado por {admin.Name}.";
+        reply.ReviewedByName = admin.Name;
+        reply.UpdatedAt = time.GetUtcNow().UtcDateTime;
+        await audit.SaveAsync(db, AuditInfo.By(admin, "crm.finished",
+            $"{admin.Name} marcou como já finalizado um cliente perdido do CRM ({Label(reply)})"), cancellationToken: ct);
+        return Results.Ok(Dto(reply));
+    }
+
     private sealed record LostBody(bool? Enabled);
 
     private static async Task<IResult> SaveLostAsync(HttpContext context, PontualDb db, AuditWriter audit, CancellationToken ct)
@@ -533,7 +571,14 @@ public static class CrmEndpoints
     /// <summary>Roda a busca agora (botão da tela), mesmo fora do horário e com a busca automática desligada.</summary>
     private sealed record ScanBody(string? From, string? To);
 
-    private static async Task<IResult> ScanLostAsync(HttpContext context, IServiceScopeFactory scopes, TimeProvider time, ILogger<CrmLostWorker> logger, CancellationToken ct)
+    private static async Task<IResult> ClearPeriodAsync(HttpContext context, PontualDb db, CancellationToken ct)
+    {
+        await SetAsync(db, TextSetting.CrmLostPeriod, "", ct);
+        await db.SaveChangesAsync(ct);
+        return await OverviewAsync(context, db, ct);
+    }
+
+    private static async Task<IResult> ScanLostAsync(HttpContext context, PontualDb db, IServiceScopeFactory scopes, TimeProvider time, ILogger<CrmLostWorker> logger, CancellationToken ct)
     {
         var body = context.Request.HasJsonContentType() ? await context.ReadBodyAsync<ScanBody>() : new ScanBody(null, null);
         static DateTime? Day(string? text, string label) =>
@@ -556,6 +601,15 @@ public static class CrmEndpoints
         if ((from ?? to) is { } first && first < today.AddDays(-CrmLost.MaxDays))
         {
             throw ApiError.BadRequest($"A busca olha no máximo {CrmLost.MaxDays} dias para trás.");
+        }
+
+        // O período fica valendo para a lista e para a busca automática até alguém mostrar todas as datas.
+        if (from is not null || to is not null)
+        {
+            from ??= today.AddDays(-15);
+            to ??= today;
+            await SetAsync(db, TextSetting.CrmLostPeriod, $"{from:yyyy-MM-dd}|{to:yyyy-MM-dd}", ct);
+            await db.SaveChangesAsync(ct);
         }
 
         var result = await CrmLostWorker.RunAsync(scopes, time, logger, force: true, ct, from, to);

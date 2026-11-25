@@ -10,7 +10,7 @@ public static class DeviceEndpoints
     private static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(30);
 
     private sealed record ApproveBody(string? AttendantName);
-    private sealed record PatchBody(string? AttendantName, bool? ObservationMode, bool? StoreApps = null);
+    private sealed record PatchBody(string? AttendantName, bool? ObservationMode, bool? StoreApps = null, bool? LightMode = null);
     private sealed record MaintenanceBody(string? Reason, int? Minutes);
 
     public static void Map(RouteGroupBuilder api)
@@ -110,6 +110,12 @@ public static class DeviceEndpoints
         {
             device.StoreApps = store;
             changes.Add($"{(store ? "ligou" : "desligou")} os aplicativos da Microsoft Store em {device.Label}");
+        }
+
+        if (body.LightMode is { } light && light != device.LightMode)
+        {
+            device.LightMode = light;
+            changes.Add($"{(light ? "ligou" : "desligou")} o modo leve em {device.Label}");
         }
 
         if (changes.Count > 0)

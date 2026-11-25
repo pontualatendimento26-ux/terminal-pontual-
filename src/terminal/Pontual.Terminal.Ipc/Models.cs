@@ -14,9 +14,12 @@ public sealed record ConfigItem(string Id, string Name, string Kind, string Targ
 /// <param name="ChromeBlocked">Domínios que o TI bloqueou no Google Chrome: vão para a política do Chrome desta conta.</param>
 /// <param name="AppsAllowed">Aplicativos do computador (nome do .exe) que o TI liberou: abrem sem pedido (servidor antigo não manda).</param>
 /// <param name="AppsBlocked">Aplicativos do computador (nome do .exe) que o TI bloqueou: o Terminal não abre e fecha se estiver aberto.</param>
+/// <param name="LightMode">Modo leve, para computador fraco (servidor antigo não manda: fica falso).</param>
+/// <param name="StayConnected">No modo leve, domínios cuja aba nunca dorme (o do CRM).</param>
 public sealed record TerminalConfig(int Version, string? AttendantName, bool ObservationMode, IReadOnlyList<ConfigItem> Items,
     IReadOnlyList<string>? ChromeAllowed = null, IReadOnlyList<string>? ChromeBlocked = null,
-    IReadOnlyList<string>? AppsAllowed = null, IReadOnlyList<string>? AppsBlocked = null, bool StoreApps = false)
+    IReadOnlyList<string>? AppsAllowed = null, IReadOnlyList<string>? AppsBlocked = null, bool StoreApps = false,
+    bool LightMode = false, IReadOnlyList<string>? StayConnected = null)
 {
     public ConfigItem? Find(string id) => Items.FirstOrDefault(i => string.Equals(i.Id, id, StringComparison.Ordinal));
 }
@@ -59,8 +62,12 @@ public sealed record ControlBatch(bool Controlling, IReadOnlyList<InputCommand> 
 
 /// <summary>Como gravar a tela (decidido na Central). <c>Record</c> falso = não grava.</summary>
 /// <remarks>StartMinute/EndMinute: janela do dia (hora local, em minutos desde 0h) em que se grava; fora dela, nada. Ausentes (Central antiga) = o dia todo.</remarks>
-public sealed record RecordingPolicy(bool Record, int Fps, int MaxWidth, int Quality, int SegmentSeconds, int StartMinute = 0, int EndMinute = 1440)
+/// <remarks>FrameSeconds: de quantos em quantos segundos sai um quadro; acima de 1 (modo leve) vale no lugar de Fps.</remarks>
+public sealed record RecordingPolicy(bool Record, int Fps, int MaxWidth, int Quality, int SegmentSeconds, int StartMinute = 0, int EndMinute = 1440, int FrameSeconds = 1)
 {
+    /// <summary>Segundos entre um quadro e outro.</summary>
+    public double FrameInterval => FrameSeconds > 1 ? Math.Min(FrameSeconds, 5) : 1.0 / Math.Clamp(Fps, 1, 5);
+
     public bool InWindow(DateTime local)
     {
         var minute = local.Hour * 60 + local.Minute;

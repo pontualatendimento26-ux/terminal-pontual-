@@ -134,7 +134,16 @@ public static class TerminalEndpoints
             chromeBlocked,
             appsAllowed,
             appsBlocked,
-            device.Approved && device.StoreApps));
+            device.Approved && device.StoreApps,
+            device.Approved && device.LightMode,
+            device.Approved && device.LightMode ? await StayConnectedAsync(db, ct) : null));
+    }
+
+    /// <summary>O domínio do CRM, pelo endereço que o TI cadastrou: a aba dele recebe mensagens e não pode dormir.</summary>
+    private static async Task<IReadOnlyList<string>> StayConnectedAsync(PontualDb db, CancellationToken ct)
+    {
+        var url = await db.TextSettings.AsNoTracking().Where(s => s.Key == TextSetting.CrmUrl).Select(s => s.Value).FirstOrDefaultAsync(ct);
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Host.Length > 0 ? [uri.Host] : [];
     }
 
     private static async Task<IResult> EventsAsync(HttpContext context, PontualDb db, TimeProvider time, CancellationToken ct)

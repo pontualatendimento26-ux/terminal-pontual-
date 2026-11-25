@@ -81,7 +81,49 @@
                         <TextBlock x:Name="UpdateText" Text="Atualizar" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
-                <TextBlock x:Name="ClockText" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource Tinta}" VerticalAlignment="Center" Margin="0,0,10,0" Text="--:--" />
+                <!-- Relógio e data: clicar abre o calendário do mês, como no Windows. -->
+                <Grid VerticalAlignment="Center" Margin="0,0,6,0">
+                    <Button x:Name="ClockButton" Style="{StaticResource BotaoLimpo}" Padding="10,2" Click="OnClock"
+                            AutomationProperties.Name="Calendário" ToolTip="Abrir o calendário">
+                        <StackPanel>
+                            <TextBlock x:Name="ClockText" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource Tinta}" HorizontalAlignment="Center" Text="--:--" />
+                            <TextBlock x:Name="DateText" FontSize="11" Foreground="{StaticResource Suave}" HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Popup x:Name="CalendarPopup" PlacementTarget="{Binding ElementName=ClockButton}" Placement="Top" VerticalOffset="-8"
+                           HorizontalOffset="-120" StaysOpen="False" AllowsTransparency="True">
+                        <Border Width="340" Background="White" BorderBrush="{StaticResource Linha}" BorderThickness="1" CornerRadius="12" Padding="14">
+                            <StackPanel>
+                                <Button x:Name="CalendarToday" Style="{StaticResource BotaoLimpo}" HorizontalAlignment="Left" Padding="4,2" Click="OnCalendarToday"
+                                        AutomationProperties.Name="Voltar para hoje" ToolTip="Voltar para hoje">
+                                    <TextBlock x:Name="CalendarTodayText" FontSize="13" Foreground="{StaticResource Azul700}" FontWeight="Medium" />
+                                </Button>
+                                <DockPanel Margin="0,10,0,8">
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource BotaoLimpo}" Width="36" Height="36" Click="OnCalendarNext"
+                                            AutomationProperties.Name="Próximo mês" ToolTip="Próximo mês">
+                                        <Viewbox Width="16" Height="16">
+                                            <Canvas Width="24" Height="24">
+                                                <Path Data="M9 5l7 7-7 7" Stroke="{StaticResource Tinta}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Button>
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource BotaoLimpo}" Width="36" Height="36" Click="OnCalendarPrevious"
+                                            AutomationProperties.Name="Mês anterior" ToolTip="Mês anterior">
+                                        <Viewbox Width="16" Height="16">
+                                            <Canvas Width="24" Height="24">
+                                                <Path Data="M15 5 8 12l7 7" Stroke="{StaticResource Tinta}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Button>
+                                    <TextBlock x:Name="CalendarMonth" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource Tinta}" VerticalAlignment="Center" Margin="4,0,0,0" />
+                                </DockPanel>
+                                <UniformGrid x:Name="CalendarWeekdays" Columns="7" />
+                                <UniformGrid x:Name="CalendarDays" Columns="7" Margin="0,4,0,0" AutomationProperties.Name="Dias do mês" />
+                                <TextBlock x:Name="CalendarHolidays" Margin="2,10,2,0" FontSize="12" Foreground="{StaticResource Suave}" TextWrapping="Wrap" Visibility="Collapsed" />
+                            </StackPanel>
+                        </Border>
+                    </Popup>
+                </Grid>
                 <!-- Volume do som: sempre visível. No modo bloqueado não há o controle de volume do Windows. -->
                 <Grid VerticalAlignment="Center">
                     <Button x:Name="VolumeButton" Style="{StaticResource BotaoLimpo}" Width="44" Height="44" Click="OnVolume"

@@ -591,7 +591,7 @@ function cartaoCobertura(deviceId, r, editavel) {
   }
   if (r.reason) partes.push(el('p', { className: 'nota', textContent: `Motivo: ${r.reason}${r.reviewedBy ? ` · aprovada por ${r.reviewedBy}` : ''}` }));
   if (r.error) partes.push(el('p', { className: 'erro', textContent: r.error }));
-  partes.push(el('details', {}, el('summary', { textContent: 'Ver a conversa como estava' }), el('div', { className: 'citacao', textContent: r.transcript })));
+  partes.push(detalhesConversa('Ver a conversa como estava', r.transcript, `cobertura:${r.id}`));
   return el('div', { className: 'sugestao' }, ...partes);
 }
 
@@ -1236,7 +1236,7 @@ const SITUACAO_CRM = {
   outdated: ['Substituída por outra', 'disabled'],
 };
 const DECISAO_CRM = { responder: 'A IA sugere responder', humano: 'A IA sugere passar para uma atendente', nada: 'Não precisa responder' };
-E.crm = null; E.crmTextos = new Map(); E.crmPara = new Map(); E.crmUsuarios = null;
+E.crm = null; E.crmTextos = new Map(); E.crmPara = new Map(); E.crmUsuarios = null; E.abertos = new Map();
 let usuariosCrmPedido = null;
 // Os usuários do CRM, uma vez por abertura da tela (a lista muda pouco).
 function carregarUsuariosCrm() {
@@ -1276,9 +1276,9 @@ function desenharCrm() {
       el('p', { className: 'nota', textContent: 'Agora ficam na aba Mensagens para aprovar, separadas por atendente.' }),
       el('div', { className: 'botoes' }, irAprovar)),
     recentes.length ? el('div', { className: 'cartao' }, el('h2', { textContent: 'Últimas tratadas' }), ...recentes.map((r) => cartaoCrm(r, false))) : null,
-    el('details', { className: 'cartao' }, el('summary', { textContent: `Últimos avisos recebidos do CRM (${c.events.length})` }),
+    manterAberto(el('details', { className: 'cartao' }, el('summary', { textContent: `Últimos avisos recebidos do CRM (${c.events.length})` }),
       el('p', { className: 'nota', textContent: 'O que o CRM mandou, do jeito que chegou. Serve para conferir se a ligação está funcionando.' }),
-      ...(c.events.length ? c.events.map(cartaoAvisoCrm) : [el('p', { className: 'nota', textContent: 'Nenhum aviso recebido ainda.' })]))].filter(Boolean));
+      ...(c.events.length ? c.events.map(cartaoAvisoCrm) : [el('p', { className: 'nota', textContent: 'Nenhum aviso recebido ainda.' })])), 'avisos-crm')].filter(Boolean));
 }
 
 // ================================================== mensagens para aprovar
@@ -1286,6 +1286,17 @@ function desenharCrm() {
 // e enviado volta para a IA como exemplo (o servidor manda as últimas aprovadas, primeiro as da mesma atendente).
 const SEM_ATENDENTE = 'Sem atendente definida';
 E.aprovarFiltro = '';
+
+const diaMes = (iso) => iso.split('-').slice(1).reverse().join('/');
+// Com um período escolhido, a lista só tem os clientes daquelas datas; aqui diz isso e deixa voltar a ver todas.
+function avisoPeriodo(c) {
+  if (!c.lostPeriod) return null;
+  const todas = botao('Mostrar todas as datas', null, 'btn claro mini');
+  todas.title = 'A lista volta a mostrar os clientes de qualquer data, e a busca automática volta a olhar os últimos 15 dias.';
+  todas.onclick = () => agirCrm(todas, () => api('DELETE', '/neural/crm/lost/period'), 'Mostrando os clientes de todas as datas.');
+  return el('div', { className: 'botoes', style: 'align-items:center' },
+    el('p', { className: 'nota', style: 'margin:0', textContent: `Mostrando só os clientes de ${diaMes(c.lostPeriod.from)} a ${diaMes(c.lostPeriod.to)}.${c.lostHidden ? ` ${plural(c.lostHidden, 'cliente de outra data está escondido', 'clientes de outras datas estão escondidos')}.` : ''}` }), todas);
+}
 
 // A busca dos clientes perdidos: no funil Atendimento Portabilidade, quem escreveu por último e está sem resposta
 // há mais de um dia (até 15 dias). Roda sozinha a cada meia hora, das 8h às 18h, de segunda a sábado, se ligada.
@@ -1295,7 +1306,7 @@ function cartaoPerdidos(c) {
   ligar.onclick = () => agirCrm(ligar, () => api('PUT', '/neural/crm/lost', { enabled: !c.lostEnabled }), c.lostEnabled ? 'Busca automática desligada.' : 'Busca automática ligada: roda a cada meia hora, das 8h às 18h.');
   // Período da busca (dias de Brasília, inclusive). Padrão: de 15 dias atrás até ontem.
   const dia = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-  E.perdidosDe ??= dia(15); E.perdidosAte ??= dia(1);
+  E.perdidosDe ??= c.lostPeriod?.from || dia(15); E.perdidosAte ??= c.lostPeriod?.to || dia(1);
   const de = el('input', { type: 'date', className: 'campo', value: E.perdidosDe, min: dia(60), max: dia(0), style: 'width:auto;color-scheme:dark', 'aria-label': 'Data de início da busca' });
   const ate = el('input', { type: 'date', className: 'campo', value: E.perdidosAte, min: dia(60), max: dia(0), style: 'width:auto;color-scheme:dark', 'aria-label': 'Data de fim da busca' });
   de.onchange = () => { E.perdidosDe = de.value; };
@@ -1317,13 +1328,14 @@ function cartaoPerdidos(c) {
   return el('div', { className: 'cartao' },
     el('div', { className: 'cartao-topo' }, el('div', {},
       el('h2', { textContent: 'Clientes perdidos' }),
-      el('p', { textContent: 'A IA procura no funil Atendimento Portabilidade os clientes que escreveram por último e estão sem resposta há mais de um dia (até 15 dias para trás). Ela lê a conversa, vê quem é a responsável no CRM e escreve a retomada no jeito dela. Quem só mandou "ok" ou "obrigado" fica de fora.' })),
+      el('p', { textContent: 'A IA procura no funil Atendimento Portabilidade os clientes que escreveram por último e estão sem resposta há mais de um dia (até 15 dias para trás). Ela lê a conversa, vê quem é a responsável no CRM e escreve a retomada no jeito dela. Quem só mandou "ok" ou "obrigado" e quem já foi finalizado (Ganho ou Perdido no CRM, ou conversa já encerrada) fica de fora. Se aparecer algum, clique em "Já foi finalizado": a IA aprende.' })),
       selo(c.lostEnabled ? 'active' : 'disabled', c.lostEnabled ? 'Busca automática ligada' : 'Busca automática desligada')),
     el('h4', { textContent: 'Buscar agora, escolhendo o período' }),
     el('p', { className: 'nota', textContent: 'A IA procura os clientes que mandaram a última mensagem entre as duas datas (incluindo os dois dias) e ficaram sem resposta. Quem escreveu há menos de 1 hora fica de fora: a atendente pode estar respondendo. Dá para olhar até 60 dias para trás.' }),
     periodo,
+    avisoPeriodo(c),
     el('h4', { textContent: 'Busca automática' }),
-    el('p', { className: 'nota', textContent: 'Ligada, roda sozinha a cada meia hora, das 8h às 18h, de segunda a sábado, olhando de 15 dias atrás até 24 horas atrás.' }),
+    el('p', { className: 'nota', textContent: `Ligada, roda sozinha a cada meia hora, das 8h às 18h, de segunda a sábado, ${c.lostPeriod ? `olhando só o período escolhido (${diaMes(c.lostPeriod.from)} a ${diaMes(c.lostPeriod.to)}) e quem espera há mais de 24 horas.` : 'olhando de 15 dias atrás até 24 horas atrás.'}` }),
     el('div', { className: 'botoes' }, ligar),
     quandoRodou ? el('p', { className: 'nota', textContent: `Última busca ${quando(quandoRodou)}: ${nota}` }) : el('p', { className: 'nota', textContent: 'A busca ainda não rodou.' }));
 }
@@ -1379,8 +1391,8 @@ function cartaoAvisoCrm(e) {
     el('header', {}, selo(equipe ? 'disabled' : 'pending', equipe ? 'Pontual' : 'Cliente'),
       el('b', { textContent: e.contact || e.phone || (e.conversationId ? `Conversa ${e.conversationId}` : 'Aviso sem conversa') }), el('small', { textContent: quando(e.at) })),
     e.text ? el('div', { className: 'citacao', textContent: e.text }) : el('p', { className: 'nota aviso', textContent: 'Não deu para ler o texto deste aviso.' }),
-    el('details', {}, el('summary', { textContent: 'Ver o aviso completo' }),
-      el('pre', { className: 'citacao', style: 'white-space:pre-wrap;word-break:break-all;max-height:320px;overflow:auto', textContent: e.body })));
+    manterAberto(el('details', {}, el('summary', { textContent: 'Ver o aviso completo' }),
+      el('pre', { className: 'citacao', style: 'white-space:pre-wrap;word-break:break-all;max-height:320px;overflow:auto', textContent: e.body })), `aviso:${e.id}`));
 }
 
 function cartaoLigacaoCrm(c) {
@@ -1414,7 +1426,7 @@ function cartaoCrm(r, editavel) {
   const nome = r.contact || r.phone || `Conversa ${r.conversationId}`;
   const partes = [
     el('header', {}, selo(classe, rotulo), r.kind === 'perdido' ? selo('pending', 'Cliente perdido') : null, el('b', { textContent: nome }), r.attendant ? el('small', { textContent: `Atendente: ${r.attendant}` }) : null,
-      r.waitingSince ? el('small', { textContent: `sem resposta desde ${quando(r.waitingSince)}` }) : null, r.contact && r.phone ? el('small', { textContent: r.phone }) : null, el('small', { textContent: quando(r.sentAt || r.createdAt) })),
+      r.waitingSince ? el('small', { textContent: `sem resposta desde ${quando(r.waitingSince)}` }) : null, r.contact && r.phone ? el('small', { textContent: r.phone }) : null, el('small', { textContent: r.sentAt ? `enviada: ${quando(r.sentAt)}` : `IA escreveu: ${quando(r.createdAt)}` })),
     el('div', { className: 'citacao' }, el('b', { textContent: 'Cliente escreveu' }), r.incoming),
   ];
   if (editavel) {
@@ -1450,17 +1462,84 @@ function cartaoCrm(r, editavel) {
     recusar.onclick = async () => { if (await agirCrm(recusar, () => api('POST', `/neural/crm/replies/${r.id}/reject`), 'Resposta recusada. Nada foi enviado.')) E.crmTextos.delete(r.id); };
     if (r.decision) partes.push(el('p', { className: 'nota', textContent: DECISAO_CRM[r.decision] || '' }));
     // O perdido já é da atendente no CRM: não há para quem passar. Recusar deixa com ela, sem mandar nada.
-    const botoesDela = r.kind === 'perdido' ? [aprovar, recusar] : [aprovar, humano, para, recusar];
+    const finalizado = botao('Já foi finalizado', null, 'btn claro mini');
+    finalizado.title = 'Não envia nada, tira o cliente desta lista e ensina a IA a deixar de fora conversas parecidas.';
+    finalizado.onclick = async () => { if (await agirCrm(finalizado, () => api('POST', `/neural/crm/replies/${r.id}/finished`), `${nome} marcado como já finalizado. Nada foi enviado.`)) E.crmTextos.delete(r.id); };
+    const botoesDela = r.kind === 'perdido' ? [aprovar, finalizado, recusar] : [aprovar, humano, para, recusar];
     if (r.kind === 'perdido' && r.decision === 'humano') partes.push(el('p', { className: 'aviso', textContent: 'A IA acha que só a atendente pode responder este cliente. Se concordar, recuse e avise a atendente.' }));
     partes.push(el('b', { textContent: 'Resposta para o cliente (você pode editar)' }), campo, el('div', { className: 'botoes' }, ...botoesDela));
   } else if (r.reply) {
     partes.push(el('div', { className: 'citacao' }, el('b', { textContent: r.status === 'sent' || r.status === 'human' ? 'Enviado' : 'Resposta escrita' }), r.reply));
-    if (r.draft && r.draft.trim() !== r.reply.trim()) partes.push(el('details', {}, el('summary', { textContent: 'O que a IA tinha escrito (corrigido antes de enviar)' }), el('div', { className: 'citacao', style: 'white-space:pre-wrap', textContent: r.draft })));
+    if (r.draft && r.draft.trim() !== r.reply.trim()) partes.push(manterAberto(el('details', {}, el('summary', { textContent: 'O que a IA tinha escrito (corrigido antes de enviar)' }), el('div', { className: 'citacao', style: 'white-space:pre-wrap', textContent: r.draft })), `rascunho:${r.id}`));
   }
   if (r.reason) partes.push(el('p', { className: 'nota', textContent: `Motivo da IA: ${r.reason}${r.reviewedBy ? ` · ${r.reviewedBy}` : ''}` }));
   if (r.error) partes.push(el('p', { className: r.status === 'human' ? 'nota' : 'erro', textContent: r.error }));
-  partes.push(el('details', {}, el('summary', { textContent: 'Ver a conversa' }), el('div', { className: 'citacao', style: 'white-space:pre-wrap', textContent: r.transcript })));
+  partes.push(detalhesConversa('Ver a conversa', r.transcript, `conversa:${r.id}`));
   return el('div', { className: 'sugestao' }, ...partes);
+}
+
+// A conversa salva vem em texto ("[19/11 16:27] Cliente: ..." / "[19/11 16:32] Pontual: (Nome) ...").
+// Aqui ela vira balões: cliente à esquerda, equipe à direita com o nome de quem escreveu,
+// um separador a cada dia e as últimas mensagens do cliente marcadas como "sem resposta".
+function detalhesConversa(titulo, transcricao, chave) {
+  const caixa = el('div', { className: 'conversa' });
+  const detalhes = el('details', { className: 'ver-conversa' }, el('summary', { textContent: titulo }), caixa);
+  const preencher = () => { if (!caixa.childElementCount) caixa.append(...baloesDaConversa(transcricao || '')); };
+  const rolagem = `rolagem:${chave}`;
+  if (E.abertos.has(chave)) {
+    // Já estava aberta antes de a tela se redesenhar: volta aberta e na mesma altura da leitura.
+    preencher();
+    requestAnimationFrame(() => { caixa.scrollTop = E.abertos.get(rolagem) ?? caixa.scrollHeight; });
+  }
+  detalhes.addEventListener('toggle', () => {
+    if (!detalhes.open) { E.abertos.delete(rolagem); return; }
+    if (caixa.childElementCount) return;
+    preencher();
+    caixa.scrollTop = caixa.scrollHeight;
+  });
+  caixa.addEventListener('scroll', () => { if (caixa.isConnected && detalhes.open) E.abertos.set(rolagem, caixa.scrollTop); });
+  return manterAberto(detalhes, chave);
+}
+
+// A tela do CRM se redesenha a cada 10 segundos. O que a pessoa abriu continua aberto até ela mesma fechar.
+function manterAberto(detalhes, chave) {
+  detalhes.open = E.abertos.has(chave);
+  detalhes.addEventListener('toggle', () => { if (detalhes.open) E.abertos.set(chave, true); else E.abertos.delete(chave); });
+  return detalhes;
+}
+
+function baloesDaConversa(texto) {
+  const falas = [];
+  for (const linha of texto.split(/\r\n?|\n/)) {
+    const m = /^\[(\d{2}\/\d{2}) (\d{2}:\d{2})\] (Cliente|Pontual): ?(.*)$/.exec(linha);
+    if (m) {
+      let quem = '', corpo = m[4];
+      const nome = m[3] === 'Pontual' && /^\(([^)]{1,80})\) ?([\s\S]*)$/.exec(corpo);
+      if (nome) { quem = nome[1]; corpo = nome[2]; }
+      falas.push({ dia: m[1], hora: m[2], equipe: m[3] === 'Pontual', quem, texto: corpo });
+    } else if (falas.length) {
+      falas[falas.length - 1].texto += '\n' + linha;
+    } else if (linha.trim()) {
+      falas.push({ dia: '', hora: '', equipe: false, quem: '', texto: linha, cortada: true });
+    }
+  }
+  if (!falas.length) return [el('p', { className: 'nota', textContent: texto.trim() || 'Sem mensagens salvas.' })];
+
+  const ultimaDaEquipe = falas.map(f => f.equipe).lastIndexOf(true);
+  const saida = [];
+  let diaAtual = '';
+  falas.forEach((f, i) => {
+    if (f.cortada) { saida.push(el('div', { className: 'conversa-dia', textContent: '… começo da conversa cortado' })); }
+    if (f.dia && f.dia !== diaAtual) { diaAtual = f.dia; saida.push(el('div', { className: 'conversa-dia', textContent: f.dia })); }
+    const semResposta = !f.equipe && i > ultimaDaEquipe;
+    const topo = el('div', { className: 'balao-topo' },
+      el('b', { textContent: f.equipe ? (f.quem || 'Pontual') : 'Cliente' }),
+      el('small', { textContent: f.hora }));
+    if (semResposta) topo.append(el('span', { className: 'balao-alerta', textContent: 'sem resposta' }));
+    saida.push(el('div', { className: `balao-msg ${f.equipe ? 'equipe' : 'cliente'}${semResposta ? ' sem-resposta' : ''}` },
+      topo, el('div', { className: 'balao-texto', textContent: f.texto.trim() })));
+  });
+  return saida;
 }
 
 

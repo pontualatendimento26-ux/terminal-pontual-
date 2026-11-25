@@ -76,6 +76,12 @@ internal sealed class SiteTab(ConfigItem item, WebView2 view) : INotifyPropertyC
     /// <summary>Janela do monitor secundário em que a aba está; nulo quando está na janela principal.</summary>
     public MonitorWindow? Monitor { get; set; }
 
+    /// <summary>Modo leve: desde quando a aba não está na tela; nulo enquanto aparece em algum monitor.</summary>
+    public DateTime? HiddenSince { get; set; }
+
+    /// <summary>Modo leve: como a aba está descansando agora.</summary>
+    public TabRest Rest { get; set; }
+
     public string? LastObservedHost { get; set; }
 
     public DateTime LastObservedAt { get; set; }

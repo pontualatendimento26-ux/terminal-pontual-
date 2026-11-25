@@ -165,6 +165,31 @@ public sealed class CrmClient
         return (chats, more);
     }
 
+    /// <summary>
+    /// A etapa em que o cartão do cliente está no funil Atendimento Portabilidade ("Ganho", "Perdido", "Digitação"...).
+    /// Vazio se ele não tem cartão, se o cartão está em outro funil ou se o CRM não informou: aí quem decide é a conversa.
+    /// </summary>
+    public async Task<string> StageAsync(CrmAccess access, string phone, CancellationToken ct)
+    {
+        try
+        {
+            using var response = await SendAsync(access, HttpMethod.Get, $"/api/chat/cliente-funil/{Uri.EscapeDataString(phone)}", null, ct);
+            var json = await ReadAsync(response, ct);
+            if (json.ValueKind != JsonValueKind.Object || !json.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
+            {
+                return "";
+            }
+
+            static string Text(JsonElement scope, string name) =>
+                scope.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+            return CrmAgent.Fold(Text(data, "nome_canal")).Contains("portabilidade") ? Text(data, "nome_coluna").Trim() : "";
+        }
+        catch (CrmFailure)
+        {
+            return "";
+        }
+    }
+
     /// <summary>O histórico da conversa do cliente nesta linha.</summary>
     public async Task<JsonElement> MessagesAsync(CrmAccess access, string chatId, string botId, CancellationToken ct)
     {

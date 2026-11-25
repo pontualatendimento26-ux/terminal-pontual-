@@ -1284,6 +1284,18 @@ function desenharGaveta() {
         el('p', { id: 'loja-texto', textContent: loja
           ? 'Ligado: o Terminal mantém o Explorer do Windows rodando escondido (sem barra de tarefas e sem Iniciar), que é o que o Windows exige para abrir a Microsoft Store, as Notas Autoadesivas, a Calculadora e os outros aplicativos da Loja. O resultado de cada tentativa aparece no histórico do computador.'
           : 'Desligado: os aplicativos da Microsoft Store não abrem neste computador, porque o bloqueio troca a área de trabalho do Windows pelo Terminal. Precisa do Terminal 2.13.0 ou mais novo.' })));
+
+      // Modo leve, para computador fraco (Terminal 2.17.0 ou mais novo; o celular não tem).
+      if (!ehCelular(d)) {
+        const leve = d.lightMode === true;
+        const chaveLeve = el('button', { type: 'button', className: 'interruptor', role: 'switch', 'aria-checked': String(leve), 'aria-labelledby': 'leve-titulo', 'aria-describedby': 'leve-texto', disabled: !pode('devices.manage'), 'data-k': 'leve' });
+        chaveLeve.onclick = () => agir(chaveLeve, () => api('PATCH', `/devices/${encodeURIComponent(d.id)}`, { lightMode: !leve }),
+          { recarregar: ['devices'], ok: leve ? 'Modo leve desligado neste computador.' : 'Modo leve ligado neste computador. As abas e as vigias mudam em até 15 segundos; a gravação, em até 2 minutos.' });
+        corpo.push(el('div', { className: 'obs' }, el('strong', { id: 'leve-titulo', textContent: 'Modo leve (computador fraco)' }), chaveLeve,
+          el('p', { id: 'leve-texto', textContent: leve
+            ? 'Ligado: a gravação fica menor (1280 pontos, um quadro a cada 2 segundos) e os sites parados há 10 minutos dormem e acordam no clique. WhatsApp e CRM nunca dormem: só liberam memória e continuam recebendo mensagens. Os navegadores são conferidos a cada 10 segundos, então um site bloqueado pode aparecer por alguns segundos a mais.'
+            : 'Desligado: o Terminal trabalha normalmente. Ligue só em computador lento. Precisa do Terminal 2.17.0 ou mais novo.' })));
+      }
     }
     corpo.push(el('p', { className: 'aviso-linha' }, ic('lock', 18), 'Você vê o status e os aplicativos em uso. A tela pode ser vista ao vivo, em "Ver a tela", e fica gravada por 3 meses, em "Gravações". A barra do Terminal avisa a atendente, e cada abertura fica na auditoria. O que ela digita não é registrado.'));
     if (pode('devices.revoke')) {

@@ -47,6 +47,11 @@ public sealed class Device
     /// para abri-los. Começa desligado; o TI liga computador por computador.
     /// </summary>
     public bool StoreApps { get; set; }
+    /// <summary>
+    /// Modo leve, para computador fraco: gravação menor, abas paradas em economia e vigias mais espaçadas.
+    /// Começa desligado; o TI liga computador por computador.
+    /// </summary>
+    public bool LightMode { get; set; }
     public DateTime? LastSeenAt { get; set; }
     public DateTime? SessionStartedAt { get; set; }
     public string AppsInUseJson { get; set; } = "[]";
@@ -323,6 +328,8 @@ public sealed class TextSetting
     public const string CrmEnabled = "crm.enabled";
     /// <summary>"1" liga a busca dos clientes perdidos (ver <c>CrmLost</c>); o padrão é desligada.</summary>
     public const string CrmLostEnabled = "crm.lostEnabled";
+    /// <summary>O período escolhido na tela ("2026-11-01|2026-11-20", dias de Brasília); vazio quando não há.</summary>
+    public const string CrmLostPeriod = "crm.lostPeriod";
     /// <summary>Quando a busca dos perdidos rodou por último e o que achou, para a tela.</summary>
     public const string CrmLostLastRun = "crm.lostLastRun";
     /// <summary>Endereço da API de integração do Nexus, ex.: http://192.168.0.171:3001/api/integracao/v1.</summary>

@@ -12,5 +12,5 @@ add('r:manual','ia','ramo','Manual',{ramo:'manual'});add('m:manual','r:manual','
 const cv={getContext:()=>({}),getBoundingClientRect:()=>({width:1400,height:900,left:0,top:0}),addEventListener(){},style:{}};
 const m=new MapaNeural(cv);m.setDados({nos});m.recolhidos.clear();
 let t=Date.now();for(let i=0;i<20;i++)m.organizar();console.log('ms/organizar',(Date.now()-t)/20);
-for(const n of m.visiveis) if(!m.ehFolha(n)) console.log(n.id, 'mult',n.mult.toFixed(2),'d',Math.round(n.distFilhos||0),'C',Math.round(n.C));
+for(const n of m.visiveis) if(n.tipo==="ramo") console.log(n.id,"dist do nucleo",Math.round(Math.hypot(n.tx,n.ty)),"multAnel",n.multAnel.toFixed(2));
 let xs=m.visiveis.map(n=>n.tx),ys=m.visiveis.map(n=>n.ty);console.log('largura',Math.round(Math.max(...xs)-Math.min(...xs)),'altura',Math.round(Math.max(...ys)-Math.min(...ys)));

@@ -11,15 +11,16 @@ namespace Pontual.Terminal.Shell;
 public partial class MainWindow
 {
     private static readonly TimeSpan ChromeInterval = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ChromeIntervalLight = TimeSpan.FromSeconds(10);
 
-    /// <summary>A cada 10 voltas (30 s) as listas no registro são conferidas de novo: o instalador e a atualização regravam o Edge.</summary>
-    private const int PolicyCheckEvery = 10;
+    /// <summary>A cada 30 s as listas no registro são conferidas de novo: o instalador e a atualização regravam o Edge.</summary>
+    private static readonly TimeSpan PolicyCheckInterval = TimeSpan.FromSeconds(30);
 
     private readonly ChromeWatch _chromeWatch = new();
     private HostPolicy _chromeQuiet = HostPolicy.Empty;
     private HostPolicy _chromeBlocked = HostPolicy.Empty;
     private (string[] Chrome, string[] Edge, string[] Firefox)? _browserLists;
-    private int _policyTick;
+    private DateTime _policyCheckedAt = DateTime.UtcNow;
     private Task<(IReadOnlyList<BrowserAddress> Addresses, IReadOnlyList<BrowserRedirect> Redirected)>? _chromeReading;
 
     /// <summary>Chamado a cada configuração nova: o que não gera aviso e a lista de bloqueio de cada navegador.</summary>
@@ -63,15 +64,16 @@ public partial class MainWindow
         {
             try
             {
-                await Task.Delay(ChromeInterval, ct);
+                await Task.Delay(_lightMode ? ChromeIntervalLight : ChromeInterval, ct);
             }
             catch (OperationCanceledException)
             {
                 return;
             }
 
-            if (++_policyTick % PolicyCheckEvery == 0)
+            if (DateTime.UtcNow - _policyCheckedAt >= PolicyCheckInterval)
             {
+                _policyCheckedAt = DateTime.UtcNow;
                 ApplyBrowserPolicies();
             }
 

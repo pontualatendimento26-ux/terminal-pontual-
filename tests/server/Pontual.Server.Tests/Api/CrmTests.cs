@@ -36,6 +36,8 @@ public sealed class CrmTests
         public bool TagCreated { get; set; }
         /// <summary>Conversas da tela do CRM (rota /api/chat/contacts), em JSON.</summary>
         public object[] Chats { get; set; } = [];
+        /// <summary>Etapa do cartão de cada telefone (rota /api/chat/cliente-funil).</summary>
+        public Dictionary<string, string> Stages { get; } = [];
         /// <summary>Histórico de cada chat|linha (rota /api/chat/messages).</summary>
         public Dictionary<string, object[]> History { get; } = [];
 
@@ -57,6 +59,9 @@ public sealed class CrmTests
                 "/api/chat/contacts" => new { success = true, chats = query["page"] == "1" ? Chats : [], temMais = false },
                 "/api/chat/messages" => new { success = true, messages = History.GetValueOrDefault($"{query["chatId"]}|{query["botId"]}", []) },
                 "/api/chat/send" => new { success = true },
+                _ when path.StartsWith("/api/chat/cliente-funil/") => Stages.TryGetValue(path["/api/chat/cliente-funil/".Length..], out var etapa)
+                    ? new { success = true, data = new { nome_canal = "Atendimento Portabilidade", nome_coluna = etapa } }
+                    : new { success = false },
                 "/api/tags" when request.Method == HttpMethod.Get => TagCreated
                     ? new object[] { new { id = 3, name = "Quente" }, new { id = 7, name = "Atendida pela IA" } }
                     : new object[] { new { id = 3, name = "Quente" } },
@@ -266,6 +271,38 @@ public sealed class CrmTests
         Assert.Contains("Me manda seu CPF que eu simulo", input);
     }
 
+    [Theory]
+    [InlineData("Vou chamar a Kamila para verificar a sua situação.", false)]
+    [InlineData("Vou pedir para a especialista verificar o motivo.", false)]
+    [InlineData("Vou verificar com a equipe e já te retorno.", false)]
+    [InlineData("A Kamila vai te reenviar o link agora.", false)]
+    [InlineData("Vou verificar a sua situação e te dou o retorno por aqui.", true)]
+    [InlineData("Oi, aqui é a Kamila! Me manda seu CPF?", true)]
+    public async Task Resposta_que_passa_para_outra_pessoa_nao_vira_exemplo(string approved, bool becomesExample)
+    {
+        var (app, model, _, owner, webhook) = await SetupAsync();
+        using var _app = app;
+        var anonymous = app.CreateClient();
+        await anonymous.PostAsJsonAsync(webhook, new
+        {
+            conversa = new { id = "71", linha = new { id = "Sarah", numero = "556182378969" } },
+            contato = new { nome = "Rita", telefone = "5521983574865" },
+            mensagem = new { texto = "Oi Rita, tudo bem?", direcao = "enviada" },
+            remetente = new { nome = "Kamila Oliveira Borges", papel = "atendente" },
+            funil = new { id = CrmAgent.TestFunnel },
+        });
+        await anonymous.PostAsJsonAsync(webhook, Aviso("71", "Vai dar pra fazer mesmo?"));
+        model.Decisions.Enqueue(Decide("responder", approved));
+        await WriteAsync(app, "71");
+        var pending = Assert.Single((await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray());
+        await owner.PostAsJsonAsync($"/api/v1/neural/crm/replies/{pending.GetProperty("id").GetString()}/approve", new { message = approved });
+
+        await anonymous.PostAsJsonAsync(webhook, Aviso("71", "E agora?"));
+        model.Decisions.Enqueue(Decide("responder", "Já estou vendo aqui!"));
+        await WriteAsync(app, "71");
+        Assert.Equal(becomesExample, model.Requests[1].Input.Contains("<respostas_aprovadas>"));
+    }
+
     private static readonly TimeZoneInfo Brasilia = TimeZoneInfo.FindSystemTimeZoneById(OperatingSystem.IsWindows() ? "E. South America Standard Time" : "America/Sao_Paulo");
 
     private static object Canal(string bot, DateTime brasilia, bool fromMe, string wpp, int responsavel = 8) =>
@@ -328,6 +365,55 @@ public sealed class CrmTests
     }
 
     [Fact]
+    public async Task Cliente_ja_finalizado_fica_fora_dos_perdidos()
+    {
+        var (app, model, crm, owner, _) = await SetupAsync();
+        using var _app = app;
+        var quando = DateTime.UtcNow.AddDays(-3);
+        var br = TimeZoneInfo.ConvertTimeFromUtc(quando, Brasilia);
+        object Chat(string phone, string wpp) => new { chat_id = $"{phone}@c.us", name = phone, last_message_at = quando.ToString("O"), canais = new[] { Canal("Kamila_4", br, false, wpp) } };
+        void Conversa(string phone, string equipe, string cliente, string wpp) => crm.History[$"{phone}@c.us|Kamila_4"] =
+            [Msg("E" + wpp, quando.AddHours(-1), true, equipe, "Kamila Oliveira Borges"), Msg(wpp, quando, false, cliente)];
+
+        crm.Chats = [Chat("551", "W1"), Chat("552", "W2"), Chat("553", "W3"), Chat("554", "W4"), Chat("555", "W5")];
+        Conversa("551", "sem possibilidade no momento", "Tá certo. Obrigado 🙏", "W1"); // a atendente encerrou
+        Conversa("552", "Assinou?", "Ok", "W2"); // Ganho no CRM
+        crm.Stages["552"] = "Ganho";
+        Conversa("553", "sem possibilidade no momento", "Mas por quê?", "W3"); // perguntou: ainda espera resposta
+        Conversa("554", "Seu contrato foi pago", "Bom dia, quero fazer outro", "W4"); // Perdido, mas voltou com pedido novo
+        crm.Stages["554"] = "Perdido";
+        Conversa("555", "Qual banco?", "Ok", "W5"); // a Pontual perguntou: não encerrou
+
+        model.Decisions.Enqueue(Decide("responder", "Oii! Desculpa a demora."));
+        model.Decisions.Enqueue(Decide("responder", "Oii! Claro."));
+        model.Decisions.Enqueue(Decide("nada", "", "só confirmou"));
+        var scan = await (await owner.PostAsync("/api/v1/neural/crm/lost/scan", null)).Json();
+
+        // A IA só leu os três que não estavam finalizados, e soube a etapa de quem voltou.
+        Assert.Equal(2, scan.GetProperty("created").GetInt32());
+        Assert.Equal(3, model.Requests.Count);
+        Assert.Contains("2 já finalizado(s)", scan.GetProperty("message").GetString());
+        Assert.Contains(model.Requests, r => r.Input.Contains("<situacao_no_crm>Perdido</situacao_no_crm>"));
+
+        // "Já foi finalizado" não envia nada, sai da fila e vira exemplo na próxima leitura.
+        var pending = (await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray().ToList();
+        var marcado = pending.Single(p => p.GetProperty("phone").GetString() == "553").GetProperty("id").GetString();
+        Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"/api/v1/neural/crm/replies/{marcado}/finished", null)).StatusCode);
+        crm.Chats = [Chat("556", "W6")];
+        Conversa("556", "Oi", "Quero simular", "W6");
+        // E quem já esperava aprovação sai sozinho quando a conversa termina no CRM sem nova fala do cliente.
+        crm.Stages["554"] = "Ganho";
+        Conversa("554", "Seu contrato foi pago", "Obrigada", "W4");
+        model.Decisions.Enqueue(Decide("responder", "Oi!"));
+        await owner.PostAsync("/api/v1/neural/crm/lost/scan", null);
+        Assert.Contains("<ja_finalizados>", model.Requests[^1].Input);
+        Assert.Contains("Mas por quê?", model.Requests[^1].Input);
+        var resta = Assert.Single((await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray());
+        Assert.Equal("556", resta.GetProperty("phone").GetString());
+        Assert.DoesNotContain(crm.Calls, c => c.Path == "/api/chat/send");
+    }
+
+    [Fact]
     public async Task Busca_dos_perdidos_respeita_o_periodo_escolhido()
     {
         var (app, model, crm, owner, _) = await SetupAsync();
@@ -356,6 +442,55 @@ public sealed class CrmTests
         Assert.Equal(1, scan.GetProperty("created").GetInt32());
         Assert.Contains("Oi, alguém aí?", Assert.Single(model.Requests).Input);
         Assert.StartsWith($"De {hoje:dd/MM} a {hoje:dd/MM}", scan.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task Com_periodo_escolhido_so_entram_e_so_aparecem_clientes_daquelas_datas()
+    {
+        var (app, model, crm, owner, _) = await SetupAsync();
+        using var _app = app;
+        var now = DateTime.UtcNow;
+        DateTime Br(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(utc, Brasilia);
+        var tres = now.AddDays(-3);
+        var dez = now.AddDays(-10);
+        object Chat(string id, DateTime ultima, DateTime canal, string wpp) =>
+            new { chat_id = $"{id}@c.us", name = id, last_message_at = ultima.ToString("O"), canais = new[] { Canal("Kamila_4", Br(canal), false, wpp) } };
+        async Task<List<string?>> Lista() => (await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray().Select(p => p.GetProperty("phone").GetString()).ToList();
+
+        // Sem período: o de 3 dias entra.
+        crm.Chats = [Chat("1", tres, tres, "W1")];
+        crm.History["1@c.us|Kamila_4"] = [Msg("W1", tres, false, "Oi?")];
+        model.Decisions.Enqueue(Decide("responder", "Oi!"));
+        await owner.PostAsync("/api/v1/neural/crm/lost/scan", null);
+        Assert.Equal(["1"], await Lista());
+
+        // Período de 10 dias atrás: só entra o daquele dia. O 3 falou hoje em outra linha; no 4, a fala do cliente é de 3 dias (a lista do CRM dizia 10).
+        crm.Chats = [Chat("3", now.AddHours(-3), dez, "W3"), Chat("1", tres, tres, "W1"), Chat("4", dez, dez, "W4"), Chat("2", dez, dez, "W2")];
+        crm.History["2@c.us|Kamila_4"] = [Msg("W2", dez, false, "Quero portabilidade")];
+        crm.History["3@c.us|Kamila_4"] = [Msg("W3", dez, false, "Quero refin")];
+        crm.History["4@c.us|Kamila_4"] = [Msg("W4", tres, false, "Quero cartão")];
+        var dia = Br(dez).ToString("yyyy-MM-dd");
+        model.Decisions.Enqueue(Decide("responder", "Oi!"));
+        await owner.PostAsJsonAsync("/api/v1/neural/crm/lost/scan", new { from = dia, to = dia });
+        Assert.Equal(["2"], await Lista());
+        Assert.Equal(2, model.Requests.Count);
+        var overview = await owner.GetAsync("/api/v1/neural/crm").Json();
+        Assert.Equal(dia, overview.GetProperty("lostPeriod").GetProperty("from").GetString());
+        Assert.Equal(1, overview.GetProperty("lostHidden").GetInt32());
+
+        // A busca automática obedece ao mesmo período: não traz o novo cliente de 3 dias.
+        await owner.PutAsJsonAsync("/api/v1/neural/crm/lost", new { enabled = true });
+        crm.Chats = [Chat("5", tres, tres, "W5")];
+        crm.History["5@c.us|Kamila_4"] = [Msg("W5", tres, false, "Olá")];
+        await CrmLost.ScanAsync(app.Services.CreateScope().ServiceProvider, force: false, CancellationToken.None);
+        Assert.Equal(2, model.Requests.Count);
+
+        // Mostrar todas as datas: a lista e a busca automática voltam ao normal.
+        await owner.DeleteAsync("/api/v1/neural/crm/lost/period");
+        Assert.Equal(["1", "2"], (await Lista()).Order());
+        model.Decisions.Enqueue(Decide("responder", "Oi!"));
+        await CrmLost.ScanAsync(app.Services.CreateScope().ServiceProvider, force: false, CancellationToken.None);
+        Assert.Equal(3, model.Requests.Count);
     }
 
     [Fact]

@@ -121,7 +121,11 @@ public partial class MainWindow : Window
             WindowState = WindowState.Maximized;
         }
 
-        _clock.Tick += (_, _) => UpdateClock();
+        _clock.Tick += (_, _) =>
+        {
+            UpdateClock();
+            RestIdleTabs();
+        };
         _toastTimer.Tick += (_, _) => HideToast();
         Loaded += OnLoaded;
         Deactivated += (_, _) => HideToast();
@@ -879,6 +883,7 @@ public partial class MainWindow : Window
         ApplyAppsConfig(config);
         ApplyLightshot();
         ApplyStoreShell(config);
+        ApplyLightMode(config);
         if (!_local && config is not null && !string.IsNullOrWhiteSpace(config.AttendantName))
         {
             _attendantName = config.AttendantName;
@@ -1652,6 +1657,7 @@ public partial class MainWindow : Window
             var current = tab.Monitor is { } host ? host.Active == tab : _active == tab;
             tab.IsSelected = current;
             tab.View.Visibility = current && overlay is null && tab.BlockedHost is null ? Visibility.Visible : Visibility.Collapsed;
+            TrackRest(tab);
         }
 
         foreach (var monitor in _monitors)

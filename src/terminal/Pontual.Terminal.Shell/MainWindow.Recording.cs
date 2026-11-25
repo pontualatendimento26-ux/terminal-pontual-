@@ -190,7 +190,7 @@ public partial class MainWindow
     private void RecordSegment(RecordingPolicy policy, CancellationToken ct)
     {
         var fps = Math.Clamp(policy.Fps, 1, 5);
-        var interval = 1.0 / fps;
+        var interval = policy.FrameInterval;
         // O último pedaço do dia termina exatamente quando a janela fecha (18h).
         var length = Math.Min(Math.Clamp(policy.SegmentSeconds, 10, 600), policy.SecondsLeft(DateTime.Now));
 

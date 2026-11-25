@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
@@ -103,6 +103,7 @@ public partial class TerminalBar : UserControl
         }
 
         ClockText.Text = text;
+        ShowDate();
 
         // Uma vez por minuto o ícone confere o som: o volume pode ter mudado pelo teclado ou pela barra do outro monitor.
         ShowVolumeIcon(SystemVolume.Read());

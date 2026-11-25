@@ -404,8 +404,11 @@ public static class RecordingEndpoints
     /// <summary>Fim do envio do vídeo do dia. <c>Parts</c>: [[início em segundos no vídeo, duração], ...].</summary>
     public sealed record DayFinish(DateTime StartedAt, long Total, double[][]? Parts);
 
-    /// <summary>Como o Terminal grava: 1 quadro por segundo, até 1920 pixels de largura, qualidade 50, trechos de 60 s.</summary>
-    public sealed record Policy(bool Record, int Fps, int MaxWidth, int Quality, int SegmentSeconds, int StartMinute, int EndMinute);
+    /// <summary>
+    /// Como o Terminal grava: 1 quadro por segundo, até 1920 pixels de largura, qualidade 50, trechos de 60 s.
+    /// No modo leve do computador: até 1280 pixels e 1 quadro a cada 2 s (FrameSeconds; Terminal anterior à 2.17.0 ignora).
+    /// </summary>
+    public sealed record Policy(bool Record, int Fps, int MaxWidth, int Quality, int SegmentSeconds, int StartMinute, int EndMinute, int FrameSeconds = 1);
 
     public sealed record SettingsBody(bool? Enabled);
 
@@ -432,7 +435,8 @@ public static class RecordingEndpoints
     {
         var device = context.Device();
         var record = device.Approved && await EnabledAsync(db, ct);
-        return Results.Ok(new Policy(record, Fps: 1, MaxWidth: 1920, Quality: 50, SegmentSeconds: 60, StartMinute: 7 * 60, EndMinute: 18 * 60));
+        return Results.Ok(new Policy(record, Fps: 1, MaxWidth: device.LightMode ? 1280 : 1920, Quality: 50, SegmentSeconds: 60,
+            StartMinute: 7 * 60, EndMinute: 18 * 60, FrameSeconds: device.LightMode ? 2 : 1));
     }
 
     private static async Task<IResult> UploadAsync(HttpContext context, PontualDb db, RecordingStore store, TimeProvider time, CancellationToken ct)

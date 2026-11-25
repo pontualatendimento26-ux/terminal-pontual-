@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Pontual.Server.Data;
 
 namespace Pontual.Server.Assistant;
@@ -291,6 +292,28 @@ public static class CrmAgent
         return new string(decomposed.Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).ToArray());
     }
 
+    private static readonly Regex HandoffWords = new(
+        @"\b(chamar|acionar|avisar|encaminhar|transferir|passar|pedir|verificar|confirmar|ver|falar|checar)\b.{0,40}\b(a|o|as|os|pra|para|com|nossa|nosso|uma|um|alguem)\b ?(nossa |nosso )?"
+        + @"(equipe|especialista|atendente|colega|responsavel|supervisao|supervisora|alguem)\b|\b(equipe|especialista|atendente)\b.{0,25}\b(vai|ira) te\b",
+        RegexOptions.Compiled | RegexOptions.Singleline);
+
+    /// <summary>
+    /// O texto fala da atendente em terceira pessoa ou diz que vai passar para outra ("vou chamar a Kamila", "vou pedir para
+    /// a especialista"). Para o cliente quem escreve é a própria atendente, então isso não serve de exemplo para a IA.
+    /// </summary>
+    internal static bool MentionsHandoff(string text, string attendant)
+    {
+        var folded = Fold(text);
+        if (HandoffWords.IsMatch(folded))
+        {
+            return true;
+        }
+
+        // "a Kamila", "para o Clayton"; "aqui é a Kamila" e "sou a Kamila" são ela mesma se apresentando.
+        var first = Fold(attendant).Split(' ', 2)[0];
+        return first.Length > 2 && Regex.IsMatch(folded, $@"(?<!\b(?:e|sou) )\b(?:a|o|com|pra|para|pela|pelo) {Regex.Escape(first)}\b");
+    }
+
     /// <summary>Uma fala da conversa para a IA e para a tela de aprovação.</summary>
     public sealed record Line(DateTime At, string Author, string Text);
 
@@ -320,12 +343,14 @@ public static class CrmAgent
 
         "responder": escreva em "mensagem" a resposta para o cliente. Vale para cumprimentar e conduzir a conversa; entender o que o cliente quer (portabilidade, refinanciamento, empréstimo novo, cartão) e de qual convênio ele é (SIAPE, INSS, Exército, CLT); pedir os dados e documentos que a base manda pedir (CPF, contracheque, extrato, print); explicar uma etapa do processo exatamente como está na base de conhecimento; lembrar o próximo passo que a conversa já mostra.
 
-        "humano": a conversa precisa de uma atendente. Use quando o cliente pede para falar com uma pessoa; quando a resposta depende de valor, simulação, taxa, parcela, saldo, prazo de pagamento ou situação de proposta deste cliente que não está na conversa; para cancelamento, desistência, reclamação forte ou ameaça (Reclame Aqui, Procon, advogado); e quando a base não cobre o assunto. Em "mensagem", escreva uma frase curta e verdadeira para o cliente antes da passagem, como "Vou chamar uma especialista para te ajudar com isso, só um instante". Pode deixar vazio se não couber.
+        "humano": a conversa precisa de uma atendente. Use quando o cliente pede para falar com uma pessoa; quando a resposta depende de valor, simulação, taxa, parcela, saldo, prazo de pagamento ou situação de proposta deste cliente que não está na conversa; para cancelamento, desistência, reclamação forte ou ameaça (Reclame Aqui, Procon, advogado); e quando a base não cobre o assunto. Em "mensagem", escreva uma frase curta e verdadeira em primeira pessoa, como a própria atendente, por exemplo "Vou verificar isso aqui para você e já te retorno". Se o cliente pediu para falar com uma pessoa, ou se não couber, deixe vazio.
 
         "nada": não precisa responder. É o caso de "ok", "obrigado", figurinha, emoji, mensagem automática, propaganda, ou quando a última fala já é da Pontual e o cliente não perguntou nada novo.
 
         Como escrever:
-        - Você fala pela equipe da Pontual Consignados. Não se apresente com nome de pessoa e não invente nome de atendente.
+        - Você escreve como a atendente que cuida deste cliente, sempre em primeira pessoa ("vou verificar", "já te retorno", "recebi sim"). Não se apresente com nome de pessoa e não invente nome de atendente.
+        - Para o cliente não existe passagem. Nunca diga que vai chamar, avisar, acionar, passar ou confirmar com a atendente, uma especialista, uma colega, a equipe ou alguém pelo nome, e nunca fale da atendente em terceira pessoa. Assim não: "Vou chamar a Kamila para verificar a sua situação". Assim sim: "Vou verificar a sua situação e te dou o retorno por aqui". Vale para qualquer atendente, mesmo que uma resposta anterior ou um exemplo aprovado tenha feito diferente. A passagem de verdade é a ação "humano" e o "motivo", que o cliente não vê.
+        - Não diga que já consultou, já verificou ou já conferiu o que a conversa não mostra.
         - Se o cliente perguntar se está falando com robô, IA ou pessoa, não minta: escreva a resposta e explique em "motivo", para quem for aprovar decidir.
         - É WhatsApp: curto (até umas cinco linhas), sem títulos e sem markdown; para destacar use *asteriscos* como no WhatsApp. Sem assinatura.
         - Nunca invente valor, prazo, taxa, banco aprovado ou situação do contrato. O que depende de consulta é "humano" ou pedido do dado/documento.

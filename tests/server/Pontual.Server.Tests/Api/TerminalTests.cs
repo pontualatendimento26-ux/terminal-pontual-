@@ -227,6 +227,46 @@ public sealed class TerminalTests
     }
 
     [Fact]
+    public async Task Modo_leve_comeca_desligado_e_vale_so_no_computador_escolhido()
+    {
+        using var app = new TestApp();
+        var owner = await app.OwnerAsync();
+        var (deviceId, terminal) = await app.ApprovedDeviceAsync(owner, "PC-CLAYTON", "Clayton");
+        var (_, other) = await app.ApprovedDeviceAsync(owner, "PC-02", "Ana");
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PontualDb>();
+            db.TextSettings.Add(new TextSetting { Key = TextSetting.CrmUrl, Value = "http://192.168.0.243:3000" });
+            await db.SaveChangesAsync();
+        }
+
+        Assert.False((await terminal.GetAsync("/api/v1/device/config").Json()).GetProperty("lightMode").GetBoolean());
+
+        var device = await owner.PatchAsJsonAsync($"/api/v1/devices/{deviceId}", new { lightMode = true }).Json();
+        Assert.True(device.GetProperty("lightMode").GetBoolean());
+        Assert.False(device.GetProperty("storeApps").GetBoolean());
+        Assert.Contains("ligou o modo leve em Clayton (PC-CLAYTON)", (await owner.GetAsync("/api/v1/audit").Json()).GetRawText());
+
+        var light = await terminal.GetAsync("/api/v1/device/config").Json();
+        Assert.True(light.GetProperty("lightMode").GetBoolean());
+        Assert.Equal("192.168.0.243", Assert.Single(light.GetProperty("stayConnected").EnumerateArray()).GetString());
+        var small = await terminal.GetAsync("/api/v1/device/recording").Json();
+        Assert.True(small.GetProperty("record").GetBoolean());
+        Assert.Equal(1280, small.GetProperty("maxWidth").GetInt32());
+        Assert.Equal(2, small.GetProperty("frameSeconds").GetInt32());
+
+        // Os outros computadores não mudam.
+        Assert.False((await other.GetAsync("/api/v1/device/config").Json()).GetProperty("lightMode").GetBoolean());
+        var normal = await other.GetAsync("/api/v1/device/recording").Json();
+        Assert.Equal(1920, normal.GetProperty("maxWidth").GetInt32());
+        Assert.Equal(1, normal.GetProperty("frameSeconds").GetInt32());
+
+        // Desligar volta ao normal.
+        await owner.PatchAsJsonAsync($"/api/v1/devices/{deviceId}", new { lightMode = false }).Json();
+        Assert.Equal(1920, (await terminal.GetAsync("/api/v1/device/recording").Json()).GetProperty("maxWidth").GetInt32());
+    }
+
+    [Fact]
     public async Task Evento_app_failed_vai_para_o_historico_com_o_motivo_e_cria_um_alerta()
     {
         using var app = new TestApp();
