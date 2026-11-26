@@ -18,6 +18,7 @@
     <!-- Roteiros operacionais que a assistente recebe na primeira subida do servidor (um arquivo por banco). -->
     <Content Include="roteiros-iniciais\**\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="sistemas-iniciais\**\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Update="respostas-aprendizado\**\*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <!-- Convênios de consignado por banco (um JSON por banco/região), carregados como roteiros na primeira subida. -->
     <Content Update="convenios-iniciais\**\*.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

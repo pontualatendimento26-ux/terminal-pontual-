@@ -127,6 +127,8 @@ public static class CrmLost
             .GroupBy(r => r.ChatId).ToDictionary(g => g.Key, g => g.OrderByDescending(r => r.WaitingSince).Select(r => (r.Id, r.BotId, r.WaitingSince)).First());
 
         var (cached, _) = (await CrmEndpoints.InstructionsAsync(db, settings, "", ct));
+        // Cliente com etiqueta de tipo (LOAS, fechado, em andamento...) não vai para Mensagens para aprovar.
+        var tagged = await CrmTags.TaggedChatsAsync(db, ct);
         var calls = 0;
         var free = 0;
         var created = 0;
@@ -161,7 +163,8 @@ public static class CrmLost
                     continue;
                 }
 
-                if (!chat.TryGetProperty("canais", out var channels) || channels.ValueKind != JsonValueKind.Array)
+                if (!chat.TryGetProperty("canais", out var channels) || channels.ValueKind != JsonValueKind.Array
+                    || tagged.Contains(chatId) || CrmTags.OnChat(chat).Count > 0)
                 {
                     continue;
                 }
@@ -414,6 +417,8 @@ public static class CrmLost
     }
 
     /// <summary>O aviso de quem saiu da fila por já estar nela (ou já ter sido tratado) por outra linha.</summary>
+    public const string TaggedReason = "Etiquetado: este cliente recebeu uma etiqueta de tipo (LOAS, fechado, em andamento...) e não precisa de resposta.";
+
     public const string RepeatedReason = "Repetido: este cliente tem uma conversa mais recente em outra linha.";
 
     /// <summary>
@@ -426,6 +431,7 @@ public static class CrmLost
         var count = 0;
         var all = await db.CrmReplies.AsNoTracking().Where(r => r.Kind == Kind && r.Status != CrmReplyStatus.Outdated).ToListAsync(ct);
         var byChat = all.ToLookup(r => r.ChatId);
+        var tagged = await CrmTags.TaggedChatsAsync(db, ct);
         static bool Waiting(CrmReply r) => r.Status is CrmReplyStatus.Pending or CrmReplyStatus.Failed;
         foreach (var reply in all.Where(Waiting))
         {
@@ -435,6 +441,12 @@ public static class CrmLost
             if (repeated)
             {
                 await CloseAsync(db, reply.Id, CrmReplyStatus.Outdated, RepeatedReason, now, ct);
+                continue;
+            }
+
+            if (tagged.Contains(reply.ChatId))
+            {
+                await CloseAsync(db, reply.Id, CrmReplyStatus.Outdated, TaggedReason, now, ct);
                 continue;
             }
 

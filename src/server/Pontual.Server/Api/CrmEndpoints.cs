@@ -42,6 +42,7 @@ public static class CrmEndpoints
         api.MapPost("/neural/crm/lost/scan", ScanLostAsync).Panel(Access);
         api.MapPut("/neural/crm/lost/period", SavePeriodAsync).Panel(Access);
         api.MapDelete("/neural/crm/lost/period", ClearPeriodAsync).Panel(Access);
+        api.MapPost("/neural/crm/tags/scan", ScanTagsAsync).Panel(Access);
     }
 
     // ------------------------------------------------------------------ webhook
@@ -348,7 +349,7 @@ public static class CrmEndpoints
         await FixHandoffsAsync(db, ct);
         var pending = await waiting.OrderBy(r => r.CreatedAt).Take(100).ToListAsync(ct);
         var recent = await db.CrmReplies.AsNoTracking()
-            .Where(r => r.Status != CrmReplyStatus.Pending && r.Status != CrmReplyStatus.Failed)
+            .Where(r => r.Status != CrmReplyStatus.Pending && r.Status != CrmReplyStatus.Failed && r.Kind != CrmTags.Kind)
             .OrderByDescending(r => r.UpdatedAt).Take(200).ToListAsync(ct);
         // A mesma mensagem lida mais de uma vez por buscas antigas aparece uma vez só.
         recent = [.. recent.DistinctBy(r => r.LastWppId.Length > 0 ? $"{r.ChatId}|{r.BotId}|{r.LastWppId}" : r.Id.ToString()).Take(40)];
@@ -377,6 +378,13 @@ public static class CrmEndpoints
             lostLastRun = settings.GetValueOrDefault(TextSetting.CrmLostLastRun, ""),
             lostPeriod = period is { } p ? new { from = p.From.ToString("yyyy-MM-dd"), to = p.To.ToString("yyyy-MM-dd") } : null,
             lostHidden = hidden,
+            tagsLastRun = settings.GetValueOrDefault(TextSetting.CrmTagsLastRun, ""),
+            tagsRunning = CrmTags.IsRunning,
+            tagCounts = (await db.CrmReplies.AsNoTracking().Where(r => r.Kind == CrmTags.Kind)
+                    .Select(r => new { r.ChatId, r.Decision, r.UpdatedAt }).ToListAsync(ct))
+                .GroupBy(r => r.ChatId).Select(g => g.OrderByDescending(r => r.UpdatedAt).First().Decision)
+                .Where(d => d != "").GroupBy(d => d).Select(g => new { tag = g.Key, count = g.Count() }).OrderByDescending(g => g.count).ToList(),
+            tagNames = CrmTags.Names,
         });
     }
 
@@ -630,6 +638,19 @@ public static class CrmEndpoints
 
         await SetAsync(db, TextSetting.CrmLostPeriod, $"{from:yyyy-MM-dd}|{to:yyyy-MM-dd}", ct);
         return await OverviewAsync(context, db, ct);
+    }
+
+    /// <summary>Começa a leitura das conversas para pôr as etiquetas por tipo de cliente (em segundo plano: a tela acompanha).</summary>
+    private static async Task<IResult> ScanTagsAsync(HttpContext context, PontualDb db, IServiceScopeFactory scopes, TimeProvider time, ILogger<CrmLostWorker> logger, AuditWriter audit, CancellationToken ct)
+    {
+        var admin = context.Admin();
+        if (!CrmTags.Start(scopes, time, logger))
+        {
+            return Results.Ok(new { message = "Já há uma rodada de etiquetas rodando; espere ela terminar." });
+        }
+
+        await audit.SaveAsync(db, AuditInfo.By(admin, "crm.tags", $"{admin.Name} mandou a IA etiquetar os clientes do CRM"), cancellationToken: ct);
+        return Results.Ok(new { message = $"A IA começou a ler as conversas (até {CrmTags.MaxCalls} por rodada). O resultado aparece aqui na tela." });
     }
 
     private static async Task<IResult> ScanLostAsync(HttpContext context, PontualDb db, IServiceScopeFactory scopes, TimeProvider time, ILogger<CrmLostWorker> logger, CancellationToken ct)

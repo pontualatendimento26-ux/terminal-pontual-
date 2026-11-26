@@ -50,16 +50,18 @@ function desenharAprovar() {
     numeros,
     c.enabled ? null : el('p', { className: 'aviso', textContent: 'A IA está desligada para o CRM. Ligue em Clientes do CRM para ela voltar a escrever.' }),
     el('div', { className: 'apr-layout' },
-      el('div', { className: 'apr-lateral' }, cartaoAtendentes(c, nomes, grupos, aprendeu), cartaoPerdidos(c), cartaoComoFunciona()),
+      el('div', { className: 'apr-lateral' }, cartaoAtendentes(c, nomes, grupos, aprendeu), cartaoPerdidos(c), cartaoEtiquetas(c), cartaoComoFunciona()),
       carrosselConversas(lista, E.aprovarFiltro || 'Todas as atendentes', aprendeu.get(E.aprovarFiltro))));
 }
 
 // Caixa com uma conversa por vez: a rolagem encaixa de cartão em cartão (scroll snap), com setas e contador.
 // A conversa atual fica guardada em E.carrosselId para a tela se redesenhar (a cada 10 s) sem pular de conversa.
-function carrosselConversas(lista, titulo, aprendido) {
-  const caixa = el('div', { className: 'apr-carrossel', tabindex: '0', role: 'region', 'aria-label': 'Conversas esperando aprovação' });
-  if (!lista.length) caixa.append(el('div', { className: 'msg' }, vazio('Nenhuma mensagem esperando', 'Quando a IA escrever uma resposta para um cliente do CRM, ela aparece aqui, na atendente dona do cliente.')));
-  for (const r of lista) caixa.append(cartaoCrm(r, true));
+// opcoes (para reaproveitar na tela Clientes do CRM): editavel, chave (onde guardar a conversa atual), sub, vazio.
+function carrosselConversas(lista, titulo, aprendido, opcoes = {}) {
+  const editavel = opcoes.editavel ?? true, chave = opcoes.chave || 'carrosselId';
+  const caixa = el('div', { className: 'apr-carrossel', tabindex: '0', role: 'region', 'aria-label': editavel ? 'Conversas esperando aprovação' : 'Conversas já tratadas' });
+  if (!lista.length) caixa.append(el('div', { className: 'msg' }, vazio(...(opcoes.vazio || ['Nenhuma mensagem esperando', 'Quando a IA escrever uma resposta para um cliente do CRM, ela aparece aqui, na atendente dona do cliente.']))));
+  for (const r of lista) caixa.append(cartaoCrm(r, editavel));
   const contador = el('b', { className: 'apr-contador', 'aria-live': 'polite' });
   const cima = iconeBotao('recolher', 'Conversa anterior'), baixo = iconeBotao('expandir', 'Próxima conversa');
   const cartoes = () => [...caixa.querySelectorAll(':scope > .msg')];
@@ -76,12 +78,12 @@ function carrosselConversas(lista, titulo, aprendido) {
       // A animação parou antes do destino (aba em segundo plano, por exemplo): termina o caminho de uma vez.
       if (destino !== null && Math.abs(caixa.scrollTop - destinoTopo) > 2 && caixa.scrollTop + caixa.clientHeight < caixa.scrollHeight - 2) { caixa.scrollTo({ top: destinoTopo, behavior: 'instant' }); return; }
       destino = null; caixa.style.scrollSnapType = ''; pintar();
-      E.carrosselId = lista[atual()]?.id ?? null; /* guarda a conversa, não os pixels: o redesenho volta para ela */
+      E[chave] = lista[atual()]?.id ?? null; /* guarda a conversa, não os pixels: o redesenho volta para ela */
     }, 160); if (destino === null) pintar(); }, { passive: true });
   // A pessoa mexeu (roda, dedo, barra): a animação das setas deixa de valer e nada a puxa de volta.
   for (const ev of ['wheel', 'touchstart', 'pointerdown']) caixa.addEventListener(ev, () => { destino = null; caixa.style.scrollSnapType = ''; }, { passive: true });
   caixa.addEventListener('keydown', (e) => { if (e.target !== caixa) return; if (e.key === 'ArrowDown' || e.key === 'PageDown') { e.preventDefault(); irPara((destino ?? atual()) + 1); } if (e.key === 'ArrowUp' || e.key === 'PageUp') { e.preventDefault(); irPara((destino ?? atual()) - 1); } });
-  const sub = aprendido ? `A IA já aprendeu com ${plural(aprendido.approved, 'resposta aprovada', 'respostas aprovadas')} dela.` : titulo === 'Todas as atendentes' ? 'Role para passar de conversa em conversa.' : 'Ainda sem resposta aprovada desta atendente.';
+  const sub = opcoes.sub ? opcoes.sub : aprendido ? `A IA já aprendeu com ${plural(aprendido.approved, 'resposta aprovada', 'respostas aprovadas')} dela.` : titulo === 'Todas as atendentes' ? 'Role para passar de conversa em conversa.' : 'Ainda sem resposta aprovada desta atendente.';
   const topo = el('div', { className: 'apr-carrossel-topo' },
     titulo === 'Todas as atendentes' ? el('span', { className: 'avatar todos', 'aria-hidden': 'true' }, ic('balao', 16)) : avatar(titulo),
     el('div', {}, el('b', { textContent: titulo }), el('small', { textContent: sub })),
@@ -92,7 +94,7 @@ function carrosselConversas(lista, titulo, aprendido) {
   requestAnimationFrame(() => {
     const alto = Math.max(480, window.innerHeight - caixa.getBoundingClientRect().top - 22);
     caixa.style.height = `${alto}px`;
-    const i = Math.max(0, lista.findIndex((r) => r.id === E.carrosselId)), c = cartoes();
+    const i = Math.max(0, lista.findIndex((r) => r.id === E[chave])), c = cartoes();
     restaurando = true; caixa.style.scrollBehavior = 'auto'; caixa.style.scrollSnapType = 'none';
     caixa.scrollTop = c[i] ? c[i].offsetTop - 12 : 0;
     requestAnimationFrame(() => { caixa.style.scrollBehavior = ''; caixa.style.scrollSnapType = ''; restaurando = false; pintar(); });
@@ -181,6 +183,33 @@ function cartaoPerdidos(c) {
         el('p', { className: 'nota', textContent: 'A IA procura no funil Atendimento Portabilidade os clientes que mandaram a última mensagem entre as duas datas (incluindo os dois dias) e estão sem resposta há mais de um dia. Quem escreveu há menos de 1 hora fica de fora: a atendente pode estar respondendo. Ela lê a conversa, vê quem é a responsável no CRM e escreve a retomada no jeito dela. Quem só mandou "ok" ou "obrigado" e quem já foi finalizado (Ganho ou Perdido no CRM, ou conversa encerrada) fica de fora. Se aparecer algum, clique em "Já foi finalizado": a IA aprende. Dá para olhar até 60 dias para trás.' })), 'perdidos-como')));
 }
 
+// Etiquetas por tipo de cliente: a IA lê as conversas do funil e põe uma etiqueta no CRM. Quem tem etiqueta
+// não entra na fila de aprovação. Roda só pelo botão, até 60 conversas por vez.
+function cartaoEtiquetas(c) {
+  const [quandoRodou, estado, ...resto] = (c.tagsLastRun || '').split('|');
+  const nota = resto.join('|');
+  const rodando = Boolean(c.tagsRunning);
+  const btn = botao(rodando ? 'Lendo as conversas…' : 'Etiquetar clientes', 'aprender', 'btn mini');
+  btn.disabled = rodando;
+  btn.title = `A IA lê as conversas do funil Atendimento Portabilidade e põe a etiqueta no CRM. Até ${60} conversas por clique; quem já foi lido só volta se houver mensagem nova.`;
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try { const r = await api('POST', '/neural/crm/tags/scan'); recado(r.message); }
+    catch (e) { recado(e.message, true); }
+    finally { await carregarCrm(); }
+  };
+  const contagem = new Map((c.tagCounts || []).map((t) => [t.tag, t.count]));
+  return el('div', { className: 'cartao apr-etiquetas' },
+    el('div', { className: 'cartao-topo' },
+      el('div', {}, el('h2', { textContent: 'Etiquetas dos clientes' }), el('p', { textContent: 'A IA lê a conversa e marca o tipo de cliente no CRM.' })),
+      selo(rodando ? 'pending' : 'disabled', rodando ? 'Rodando' : 'Parada')),
+    el('div', { className: 'cartao-corpo' },
+      btn,
+      el('ul', { className: 'pontos' }, ...(c.tagNames || []).map((n) => el('li', { textContent: `${n}: ${contagem.get(n) || 0}` }))),
+      el('p', { className: 'nota', textContent: quandoRodou ? `${estado === 'rodando' ? 'Começou' : 'Última rodada'} ${quando(quandoRodou)}: ${nota}` : 'Ainda não rodou.' }),
+      el('p', { className: 'nota', textContent: 'Cliente com uma dessas etiquetas não vai para Mensagens para aprovar. Etiqueta posta ou trocada à mão no CRM vale: a IA não mexe.' })));
+}
+
 // Uma conversa: cliente à esquerda, resposta da IA à direita (editável enquanto espera aprovação).
 function cartaoCrm(r, editavel) {
   const [rotulo, classe] = SITUACAO_CRM[r.status] || [r.status, 'liso'];
@@ -246,4 +275,70 @@ function cartaoCrm(r, editavel) {
   if (r.error) partes.push(el('p', { className: r.status === 'human' ? 'nota' : 'erro', textContent: r.error }));
   if (!margem) partes.push(detalhesConversa('Ver a conversa inteira', r.transcript, `conversa:${r.id}`));
   return el('article', { className: `msg${r.kind === 'perdido' ? ' perdido' : ''}${margem ? ' margem' : ''}${editavel ? '' : ' tratada'}` }, ...partes);
+}
+
+// ================================================== Clientes do CRM (refeita em 26/11/2026)
+// Números em cima; à esquerda o filtro por situação, a ligação (recolhida) e os avisos do CRM;
+// à direita as conversas já tratadas num carrossel vertical, uma por vez, para analisar com calma.
+E.crmFiltro = '';
+function desenharCrm() {
+  const c = E.crm;
+  if (!c) { $('v-crm').replaceChildren(el('p', { className: 'nota', textContent: 'Carregando…' })); carregarCrm(); return; }
+  const recentes = c.recent || [];
+  const grupos = new Map();
+  for (const r of recentes) { if (!grupos.has(r.status)) grupos.set(r.status, []); grupos.get(r.status).push(r); }
+  if (E.crmFiltro && !grupos.has(E.crmFiltro)) E.crmFiltro = '';
+  const conta = (st) => grupos.get(st)?.length || 0;
+  const corrigidas = recentes.filter((r) => r.draft && r.reply && r.draft.trim() !== r.reply.trim()).length;
+
+  const numeros = el('div', { className: 'numeros' },
+    tile(c.pending.length, 'Esperando aprovação', c.pending.length ? 'Estão na aba Mensagens para aprovar' : 'Nada na fila agora', c.pending.length > 0),
+    tile(conta('sent'), 'Enviadas', 'Aprovadas e entregues pelo CRM'),
+    tile(conta('human'), 'Passadas para atendente', 'Voltaram para a dona do cliente'),
+    tile(conta('rejected') + conta('skipped') + conta('outdated'), 'Não enviadas', 'Recusadas, sem resposta ou fora da fila'),
+    tile(corrigidas, 'Corrigidas antes de enviar', 'A IA aprende com elas'));
+
+  // Filtro por situação (mesmo visual da fila por atendente).
+  const linha = (valor, nome, qtd) => {
+    const b = el('button', { type: 'button', className: 'apr-pessoa', 'aria-pressed': String(E.crmFiltro === valor) },
+      el('span', { className: 'avatar todos', 'aria-hidden': 'true' }, ic('balao', 16)),
+      el('div', {}, el('b', { textContent: nome }), el('small', { textContent: valor ? `situação: ${nome.toLowerCase()}` : 'tudo o que já foi tratado' })),
+      el('em', { className: qtd && valor === '' ? 'quente' : '', textContent: mil(qtd) }));
+    b.onclick = () => { E.crmFiltro = valor; E.crmCarrosselId = null; desenharCrm(); };
+    return b;
+  };
+  const filtro = el('div', { className: 'cartao' },
+    el('div', { className: 'cartao-topo' }, el('div', {}, el('h2', { textContent: 'Últimas tratadas' }), el('p', { textContent: 'Escolha o que quer analisar.' }))),
+    el('div', { className: 'apr-pessoas' }, linha('', 'Todas', recentes.length),
+      ...[...grupos.keys()].map((st) => linha(st, (SITUACAO_CRM[st] || [st])[0], conta(st)))));
+
+  const irAprovar = botao(c.pending.length ? `Aprovar ${mil(c.pending.length)} mensagens` : 'Abrir Mensagens para aprovar', null, 'btn mini');
+  irAprovar.onclick = () => ir('aprovar');
+  const estado = el('div', { className: 'cartao' },
+    el('div', { className: 'cartao-topo' }, el('div', {},
+      el('h2', { textContent: 'IA no CRM' }),
+      el('p', { textContent: c.enabled ? 'Ligada: a IA escreve e nada vai ao cliente sem aprovação.' : 'Desligada: os avisos chegam, a IA não escreve.' })),
+      selo(c.enabled ? 'active' : 'disabled', c.enabled ? 'Ligada' : 'Desligada')),
+    el('div', { className: 'botoes' }, irAprovar));
+
+  const ligacao = manterAberto(el('details', { className: 'cartao apr-como' },
+    el('summary', {}, ic('aprender', 16), 'Ligação com o CRM (configuração)'),
+    cartaoLigacaoCrm(c)), 'crm-ligacao');
+  const avisos = manterAberto(el('details', { className: 'cartao apr-como' },
+    el('summary', {}, ic('balao', 16), `Avisos recebidos do CRM (${c.events.length})`),
+    el('div', { className: 'cartao-corpo', style: 'display:grid;gap:10px;max-height:420px;overflow:auto' },
+      el('p', { className: 'nota', textContent: 'O que o CRM mandou, do jeito que chegou. Serve para conferir se a ligação está funcionando.' }),
+      ...(c.events.length ? c.events.map(cartaoAvisoCrm) : [el('p', { className: 'nota', textContent: 'Nenhum aviso recebido ainda.' })]))), 'avisos-crm');
+
+  const lista = E.crmFiltro ? grupos.get(E.crmFiltro) : recentes;
+  const titulo = E.crmFiltro ? (SITUACAO_CRM[E.crmFiltro] || [E.crmFiltro])[0] : 'Todas as atendentes';
+  $('v-crm').replaceChildren(
+    numeros,
+    el('div', { className: 'apr-layout' },
+      el('div', { className: 'apr-lateral crm-lateral' }, estado, filtro, ligacao, avisos),
+      carrosselConversas(lista, titulo, null, {
+        editavel: false, chave: 'crmCarrosselId',
+        sub: 'Role ou use as setas para passar de conversa em conversa.',
+        vazio: ['Nenhuma conversa tratada ainda', 'Quando uma resposta for aprovada, recusada ou passada para a atendente, ela aparece aqui.'],
+      })));
 }

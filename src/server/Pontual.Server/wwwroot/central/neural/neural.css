@@ -436,3 +436,7 @@ dialog::backdrop { background: rgba(2, 4, 9, 0.72); backdrop-filter: blur(4px); 
 @media (max-width: 1100px) { .apr-layout { grid-template-columns: 1fr; } .apr-lateral { position: static; } }
 @media (max-width: 640px) { .apr-datas { grid-template-columns: 1fr; } .msg { padding: 14px; } .msg-balao { max-width: 100%; } }
 .rot-topo-podio { cursor: pointer; } .rot-topo-podio .campo { width: auto; min-width: 180px; } .rot-seta { flex: none; }
+/* Clientes do CRM: coluna da esquerda rola com a página (a ligação aberta é alta) e o cartão da ligação entra sem moldura dupla. */
+.crm-lateral { position: static; }
+.crm-lateral details > .cartao { border: 0; background: none; box-shadow: none; backdrop-filter: none; margin: 0; padding: 4px 18px 16px; }
+.crm-lateral details > .cartao .cartao-topo { display: none; }

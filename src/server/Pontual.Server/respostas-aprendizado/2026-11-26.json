@@ -1,0 +1,297 @@
+[
+ {
+  "id": "5393797F-FEDC-4F30-B8B0-80EF47A836D6",
+  "resposta": "Ao resumir o SIAPE, use a mesma classificação da tabela detalhada: verde = passa; laranja = atenção (o órgão tem critério); conferir = falta saber as parcelas pagas, peça o extrato; não passa = com o motivo escrito. Não marque como não passa um banco que a tabela mostra como passa, a menos que o valor liberado seja negativo. Se o valor liberado der negativo, a operação não está aprovada, mesmo que o banco apareça como passa: apresente esse banco como não viável no momento e informe o valor negativo.\nFonte: base — Resultado com valor liberado negativo marcado como 'passa'; Nexus - consultas de cliente (SIAPE).",
+  "detalhe": "Respondida pelo Claude com a base e as conversas."
+ },
+ {
+  "id": "2175A8D4-4577-4F64-84F9-C3E6816B4241",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: O banco ALFA é parceiro da Pontual? Exige autorização de portabilidade e como orientar o cliente?"
+ },
+ {
+  "id": "F7D1EFE8-CF67-4880-882E-02B0B69C24E7",
+  "resposta": "Antes de enviar a oferta, confira a margem do cliente no extrato e no contracheque do dia e no alerta de margem negativa do Kanban. Se a margem mudar depois da oferta, não prometa o valor: diga ao cliente que a margem mudou, que você vai conferir o motivo e que retorna por aqui. Não prometa que ela volta. Causa já vista nas conversas: margem reservada no portal por outra promotora, que precisa ser cancelada pelo outro correspondente antes de nova digitação.\nFonte: base — Checklist antes de digitar e promessas que não devem ser feitas; Margem negativa: positivação, troco menor e o que verificar antes; Outras operações (problemas vistos); conversas do CRM — padrão da equipe.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Qual o procedimento oficial para checar a margem antes de ofertar e o texto padrão para quando ela some?"
+ },
+ {
+  "id": "4E7F508D-0B2A-4263-8998-5C4C6117BA12",
+  "resposta": "Mensagens prontas do CRM: menu Configurações > aba Mensagens Prontas > + Nova. O 'Título / Identificação' é o que se digita depois da barra (/) para achar a mensagem. Correspondente cria mensagens só para ela (aba Minhas).\nAo cliente, o nome da empresa é Pontual Consignados (sem abreviações).\nO fluxo de salvar a mensagem pela assistente com palavra-chave não está descrito no material: não orientar esse fluxo até a supervisão confirmar.\nFonte: base — Sistema interno (CRM) - Kanban e cadastro de mensagens prontas; Nome oficial da empresa nas mensagens de apresentação.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: O fluxo de salvar mensagem pela assistente com palavra-chave é oficial? Onde fica guardado, qual o limite e quem apaga?"
+ },
+ {
+  "id": "084FABD8-C46F-48C3-BF3A-927488F0C6E6",
+  "resposta": "Não envie ao cliente, pelo WhatsApp, nada de uso interno da operação: resultado de consulta no Nexus (bancos, motivos de recusa, margens, contratos, avisos internos), dados ou CPF de outra pessoa, senhas, códigos de SMS, tokens ou comandos técnicos. Para o cliente, escreva só o que ele precisa para o próximo passo (documento, link, assinatura), com as próprias palavras. Instruções de autorização no SouGov são para o cliente fazer sozinho, com passo a passo, e nunca pedem a senha do gov.br.\nFonte: base — Dados de cliente e resultado de consulta fora do WhatsApp; Credenciais, tokens e comandos técnicos fora do uso do WhatsApp e da assistente; Nunca pedir nem usar a senha do gov.br/SouGov do cliente.",
+  "detalhe": "Respondida pelo Claude com a base e as conversas."
+ },
+ {
+  "id": "28E859CB-E65F-4704-B6B5-98AD4D22F1CC",
+  "resposta": "Explique o motivo em uma frase simples, sem termo interno: o banco reduziu o prazo ou recusou a parcela por idade. Antes de simular um valor alto, avise que a idade pode reduzir o prazo e o valor liberado e que pode haver seguro. Não diga data de volta. Referência do sistema: na consulta SIAPE, a partir de 68 anos a tabela trava no fator idade, e a partir de 74 o liberado é zero.\nFonte: base — Cliente idoso ou com pouca prática no celular; Nexus - consultas de cliente (SIAPE); Definir: seguro no contrato.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Qual o critério de idade vigente por banco (prazo máximo e idade limite) para a atendente orientar o cliente?"
+ },
+ {
+  "id": "52C19A64-7D0D-4E67-B8CD-DE53AF8CE0E8",
+  "resposta": "A autorização é para o banco COMPRADOR (o Inter), nunca para o banco de origem (o Daycoval). No SouGov, o cliente autoriza o Inter como consignatário e marca as parcelas que saem do Daycoval. Formato para escrever: 'CONSIGNATÁRIO: INTER / SELECIONAR AS PARCELAS DO DAYCOVAL', conferindo o número do contrato, porque o mesmo banco pode ter várias parcelas. Corrija a lista de documentos enviada ao cliente se ela indicar outro banco.\nFonte: base — Autorização de portabilidade no SouGov: caminho, banco certo e erros comuns (cuidados 1 e 2); conversas do CRM — padrão da equipe.",
+  "detalhe": "Respondida pelo Claude com a base e as conversas."
+ },
+ {
+  "id": "86D40B1E-4651-4C42-B21F-5596BC3227B3",
+  "resposta": "Para a simulação, peça o extrato de consignações. Caminho para o cliente: servidor federal (SIAPE): app ou site SouGov.br > Consignações (aparecem contratos e parcelas). INSS: Meu INSS > Extrato de empréstimos consignados. Se o cliente responder só com texto, peça o arquivo ou print do extrato, e avise que sem ele a simulação detalhada não sai.\nFonte: base — Cliente pergunta se as parcelas já foram pagas e quer verificar no banco; Documentos (lista padrão); conversas do CRM — padrão da equipe (pedido do extrato de consignações).",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Qual o passo a passo oficial para gerar e enviar o extrato de consignações em arquivo (SouGov e Meu INSS)?"
+ },
+ {
+  "id": "AE7A77AB-6312-4F2E-BB15-41FAF48D59DC",
+  "resposta": "Nas conversas do CRM, a equipe vem dizendo que voltou a analisar contratos com mais de 12 parcelas pagas, sem informar banco nem regra. Não trate como regra da base até a supervisão confirmar. Ao cliente, se a atendente for comunicar, diga apenas que está analisando contratos com mais de 12 parcelas pagas e que o valor só é confirmado depois da análise do caso. Não cite valor. Na base, 12 parcelas pagas aparece como critério em vários bancos.\nFonte: conversas do CRM — padrão da equipe (mensagens de reabertura); base — Qual banco compra qual parcela.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Quais bancos voltaram a aceitar contratos com mais de 12 parcelas pagas, desde quando, e o valor citado nas mensagens é estimativa?"
+ },
+ {
+  "id": "690F6FAB-1B10-47AD-B16A-9C22BB376A15",
+  "resposta": "No roteiro do C6 Bank (INSS), o refinanciamento de portabilidade exige saldo mínimo de R$ 3.000,00 e troco mínimo de R$ 100,00, com 12 parcelas pagas nos bancos de origem que não são da rede. Esta regra é do INSS: para SIAPE não há regra escrita. Se o contrato não liberou o mínimo, informe o motivo em uma frase e não prometa outra tentativa.\nFonte: base — C6 Bank - INSS (roteiro).",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Qual é o valor mínimo de portabilidade do C6 no SIAPE, e o que orientar ao cliente quando o contrato não atinge o mínimo?"
+ },
+ {
+  "id": "A93469AB-9F98-48DC-9488-7AC4F71F6D65",
+  "resposta": "Previsão observada, não promessa: o saldo devedor costuma chegar em 5 dias úteis a partir da assinatura do link; a quitação sai no mesmo dia do saldo aprovado; a averbação leva de horas a 2 dias; o total, quando nada é retido, fica em 7 a 10 dias úteis. Dê a faixa e a data prevista. Não use '5 dias para o saldo e 5 para a liberação' como regra: a base mostra várias versões.\nFonte: base — Prazos observados, horário-limite no dia do saldo e virada da folha; Definir: prazos padrão.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Qual o prazo oficial de cada etapa (total, saldo, pagamento após anuência), em dias úteis ou corridos, para a frase padrão?"
+ },
+ {
+  "id": "8E57BFA0-2F91-48D9-8822-8E801D8AA9F6",
+  "resposta": "Não prometa liberação 'ainda hoje' nem o mês do primeiro desconto sem confirmar na proposta ou com o banco. Diga que o valor é liberado depois da análise e aprovação do banco e que o prazo e o primeiro desconto dependem do banco e do convênio. Confirme a margem de cartão antes de apresentar o valor como certo, e deixe claro que é cartão consignado, não empréstimo comum.\nFonte: base — Cartão consignado: prazo de liberação e primeiro desconto.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: A margem do cartão precisa ser confirmada antes de informar o valor? Qual o prazo confirmado do banco? A equipe usa 'liberado ainda hoje' em várias ofertas, e a base proíbe; confirmar a regra."
+ },
+ {
+  "id": "A4603E78-2476-49DB-904F-92F396F49FC3",
+  "resposta": "Caixa: o número do contrato aparece no app da Caixa: entre em Empréstimos > Meus contratos, localize o contrato e tire print da tela com o número do contrato e as parcelas. O número a enviar é o que aparece no app, que pode ser diferente do número do extrato de consignação. Se o app estiver bloqueado ou o site oscilar, tente mais tarde.\nFonte: base — Documentos, DED e número do contrato por banco de origem; conversas do CRM — padrão da equipe (print em Meus contratos).",
+  "detalhe": "Respondida pelo Claude com a base e as conversas."
+ },
+ {
+  "id": "FFC32C82-8AD5-41DD-A2EB-D3CD831816EF",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: Qual o procedimento oficial para desbloquear benefício no meuinss, o que fazer quando a selfie falha e qual o prazo de análise?"
+ },
+ {
+  "id": "CB69B2AC-BECF-43D5-873E-4178089D1D51",
+  "resposta": "Não diga qual contrato ou parcela gera o valor antes de ver o extrato de consignações. O contrato e a parcela só ficam claros depois que o extrato é analisado e o saldo chega. Não prometa valor. Frase ao cliente: 'Para eu te dizer exatamente qual contrato e parcela geram esse valor, preciso analisar o seu extrato de consignações. Pode me enviar?'\nFonte: base — Passo a passo da portabilidade com refinanciamento (itens 1 e 7); Valor diferente da simulação.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: O que a equipe pode informar antes de ver o extrato sobre o contrato ou a parcela que geram o valor da reabertura?"
+ },
+ {
+  "id": "93164E1B-0F53-4257-86E0-7ADCD7C52534",
+  "resposta": "Se o contrato não aparece no app do banco de origem, peça a DED pelo site ou canal de consulta do próprio banco. No caso da Caixa, a consulta de contratos fica no site ou no app. Se o contrato não for localizado e a parcela liberar pouco, a base permite deixar essa parcela de fora e seguir com as outras.\nFonte: base — Documentos, DED e número do contrato por banco de origem.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Qual a orientação do banco de origem quando o contrato não aparece no app e a agência é de outro estado?"
+ },
+ {
+  "id": "F8058DE8-41D1-42B0-B2CA-4B85EE319AC9",
+  "resposta": "Se o código do Inter não chegou: peça ao cliente que confira a caixa de spam e as promoções (se for e-mail) ou as mensagens do celular (se for SMS). Confirme se o e-mail ou o celular cadastrado na proposta está certo; se estiver errado, a atendente corrige e reenvia o link. Aguarde alguns minutos e use a opção de reenviar código no próprio link, se houver. Se ainda não chegar, a atendente reenvia o link da assinatura, sem mandar várias vezes seguidas, e chama a supervisão se nada funcionar. A Pontual nunca pede o código ao cliente: ele digita no próprio link.\nFonte: base — Código de confirmação do Banco Inter enviado por e-mail.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Em cada etapa, por qual canal o código do Inter chega (SMS, e-mail ou WhatsApp) e quanto tempo pode demorar?"
+ },
+ {
+  "id": "28BF7D32-3BB1-4AD8-B51D-8259199B2774",
+  "resposta": "Quando não há nova operação, diga: 'No momento, infelizmente, não temos possibilidade de liberar um novo valor. Seus contratos foram realizados recentemente e já estão com uma taxa de juros baixa, por isso não há uma condição disponível agora. Caso surja alguma nova oportunidade, posso verificar novamente para você.' Se a campanha mandou um valor alto, explique que esse valor é uma estimativa. Não encerre só com 'não libera valor no momento'.\nFonte: base — Outras operações: refin no mesmo banco, contrato novo, cartão e quando não há; conversas do CRM — padrão da equipe.",
+  "detalhe": "Respondida pelo Claude com a base e as conversas."
+ },
+ {
+  "id": "66B1289C-2DDD-4979-9597-B754B460A56A",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: Com RG e contracheque em nomes diferentes (após divórcio) na portabilidade PAN, qual documento a Pontual aceita e o que orientar?"
+ },
+ {
+  "id": "39DA1A7F-A7FB-476B-B2BC-2CDD15C59099",
+  "resposta": "A base não tem roteiro nem banco com o nome Inbursa, mas as conversas mostram o Inbursa como banco de origem de parcelas, e a base registra um pedido devolvido pelo Inbursa por menos de 12 parcelas pagas. Documentos padrão para qualquer banco de origem: documento com foto (RG ou CNH, frente e verso), comprovante de residência (ou CEP), contracheque atual, extrato de consignação, e-mail pessoal e conta de recebimento. Se o banco exigir o número do contrato (DED), peça o número real do contrato.\nFonte: base — Documentos, DED e número do contrato por banco de origem; Qual banco compra qual parcela (regras e recusas); conversas do CRM.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: A Pontual opera com o Inbursa como banco de origem e como comprador? Qual DED é necessária?"
+ },
+ {
+  "id": "AE8AF365-2A7B-4634-9C0D-13B116D111C2",
+  "resposta": "Use o padrão: a operação é portabilidade + refinanciamento, a parcela continua a mesma e o prazo volta para 120 parcelas (120x). Não use o número 108x. Lista padrão de documentos: documento com foto (RG ou CNH), comprovante de residência (ou CEP), contracheque atual, extrato de consignação, e-mail pessoal e conta de recebimento. Prazo total: ver a resposta sobre prazos (7 a 10 dias úteis quando nada é retido).\nFonte: base — Como explicar a operação: mesma parcela, 120x; Documentos, DED e número do contrato por banco de origem.",
+  "detalhe": "Respondida pelo Claude com a base e as conversas."
+ },
+ {
+  "id": "BC0EA8F9-3FCF-4AA1-893E-DA903BB0A114",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: Há banco para servidor de governo estadual fora de MT, MS, GO, DF e TO (ex.: RN, PB, AM, SP, MG, CE)? Se não houver, qual resposta padrão?"
+ },
+ {
+  "id": "FBB45440-C527-4CE9-A551-E85B847D1123",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: Onde o cliente ou a equipe encontra a taxa da parcela do BRB (documento, campo ou app)?"
+ },
+ {
+  "id": "19A84E43-0208-43D4-9B94-06CC1CA6302C",
+  "resposta": "A base não cobre supermargem no banco de origem com contrato refinanciado a taxa reduzida. Regra geral escrita: a portabilidade não usa margem livre, mas se a margem está negativa parte do troco cobre a positivação; se o troco não cobrir, o banco nega na chegada do saldo. Antes de pedir as autorizações, calcule se o troco cobre e avise o cliente do risco. Não responda só '(liberado)' e não prometa que a margem fica positiva.\nFonte: base — Margem negativa: positivação, troco menor e o que verificar antes; Checklist antes de digitar.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Qual a regra da supervisão para margem negativa causada por supermargem no banco de origem, com contrato refinanciado a taxa reduzida?"
+ },
+ {
+  "id": "9776DF0C-B13D-4C92-8D8C-260C6FC71495",
+  "resposta": "Se o cliente perguntar como simular, não responda só '?' nem mande só a pergunta de convênio. Em uma mensagem, peça: nome completo e se o CPF é dele; vínculo (INSS, servidor federal, CLT ou FGTS); se for INSS, se é aposentadoria, pensão ou BPC/LOAS; o que procura (novo, portabilidade, refinanciamento, cartão ou FGTS); e o banco do contrato atual, se for portabilidade ou refinanciamento. Não informe valor nem aprovação antes da consulta.\nFonte: base — Cliente que envia só o CPF pedindo valor disponível.",
+  "detalhe": "Respondida pelo Claude com a base e as conversas."
+ },
+ {
+  "id": "47FFBD96-FBDF-478C-A0F5-09C514B204C7",
+  "resposta": "O Agibank não está na base. Enquanto a supervisão não define a orientação oficial: não clique em links de SMS nem passe códigos; a Pontual nunca pede código de SMS ao cliente; oriente o cliente a falar com o banco só pelos canais oficiais (app ou telefone do cartão/site), nunca pelo número do SMS. Se a mensagem não bater com alguma proposta em andamento, não confirme e chame a supervisão.\nFonte: base — SMS de confirmação de empréstimo no Banco Inter durante a portabilidade (regra geral); Ligações dos bancos durante a portabilidade.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Qual a orientação oficial do Agibank para o SMS com link e as ligações, e como o Agibank opera (origem ou comprador)?"
+ },
+ {
+  "id": "6759A1E9-9FF0-48E4-A454-4897239B3952",
+  "resposta": "Para 'de onde vocês falam', a equipe vem respondendo 'Brasília' nas conversas do CRM. Responda só a cidade, sem endereço, e não envie link de rede social até a supervisão definir o canal oficial. Use Pontual Consignados como nome da empresa.\nFonte: conversas do CRM — padrão da equipe; base — Nome oficial da empresa nas mensagens de apresentação.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Confirmar a cidade e o canal oficial de apresentação para a resposta 'de onde vocês falam'."
+ },
+ {
+  "id": "82B3425A-F356-4656-AE64-5B9F3112B6F5",
+  "resposta": "Explique a diferença em uma frase: a portabilidade leva a dívida para outro banco, que quita o saldo do banco antigo; o refinanciamento refaz o contrato e libera o troco. Se o cliente pediu refinanciamento e recebeu uma proposta de portabilidade, não aceite nem assine antes de conferir com a atendente. Peça print da proposta e confirme antes de enviar qualquer link.\nFonte: base — Como explicar a operação: mesma parcela, 120x; Outras operações (refin isolado e portabilidade + refin); conversas do CRM.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Como explicar ao cliente quando a simulação enviada por SMS usa outro nome (portabilidade x refinanciamento), e qual o procedimento?"
+ },
+ {
+  "id": "4A73F52B-6DCE-40B3-BB9F-2E0667684E5D",
+  "resposta": "Na Caixa, o demonstrativo do contrato (DED) é obtido no app da Caixa (Empréstimos > Meus contratos) ou no site de consulta de contratos. A base não diz se demonstrativo com mais de um mês é aceito: não afirme que é aceito. Se o contrato não aparece no app, use o site ou deixe a parcela de fora.\nFonte: base — Documentos, DED e número do contrato por banco de origem.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: A DED da Caixa com mais de um mês é aceita pelo banco comprador? Confirmar com o banco."
+ },
+ {
+  "id": "D67FC97A-4738-44EC-B1D2-B4E8541C713A",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: A Pontual pode informar o número do contrato ao cliente para ele pedir a taxa a outro canal? Em qual banco e onde ele encontra esse número?"
+ },
+ {
+  "id": "66A2D6E2-F792-480F-870A-206DA1BC2A32",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: A Pontual compra dívida de cartão de crédito de banco? Qual resposta padrão ao cliente?"
+ },
+ {
+  "id": "896F19E6-965B-467D-BA41-62A7D57F2768",
+  "resposta": "A portabilidade com refinanciamento não usa margem livre, mas se a margem do cliente está negativa parte do troco é usada para positivá-la; se o troco não cobrir, o banco nega na chegada do saldo. Diga isso antes de pedir as autorizações. Evite afirmar 'não se usa margem' sem essa ressalva.\nFonte: base — Margem negativa: positivação, troco menor e o que verificar antes; Definir: margem negativa impede a operação?.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: A margem negativa impede a portabilidade com refinanciamento? Se não impede, qual o cálculo para aceitar?"
+ },
+ {
+  "id": "CDF36DEC-ADAB-4885-882C-6851CF1F068B",
+  "resposta": "Não informe um valor mínimo de parcela para contrato novo sem saber o banco: o limite varia por banco. Na base: BRB Red Consig (INSS), PMT mínima de R$ 25,00; Banrisul (INSS) e C6 (INSS) e PAN (INSS) têm valor mínimo do empréstimo, de R$ 700,00 e R$ 1.000,00 respectivamente. Para saque complementar de cartão, a base observou parcela mínima de R$ 50.\nFonte: base — BRB Red Consig, Banrisul, C6 Bank e PAN (INSS); Outras operações (saque complementar).",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Qual banco informou o mínimo de R$ 50 e qual é a parcela mínima de contrato novo no SIAPE?"
+ },
+ {
+  "id": "F6CF45F8-E696-4298-8672-28D15A675B2D",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: Quando o cliente assina e vê valor liberado zero, o que a atendente explica e o que confere no contrato para saber se é da Pontual?"
+ },
+ {
+  "id": "460AE931-888C-40F6-89A8-66DE5BE7E7EE",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: Autônomo com loja (sem vínculo público): a Pontual faz simulação e qual documento usar no lugar do extrato de consignações?"
+ },
+ {
+  "id": "90B32BF1-8F34-473C-A9CD-B70514D0F5F5",
+  "resposta": "Não use só 'indisponível' ou 'aguardar'. Diga o motivo em linguagem simples e o próximo passo. Modelo: 'No momento a operação ainda não é possível porque [motivo]. Ainda não temos data certa para isso mudar. Vamos consultar de novo e te avisamos por aqui.' Se houver previsão confirmada, use-a. Se o motivo for margem negativa, poucas parcelas pagas, bloqueio do benefício ou banco sem tabela, diga qual é. Nunca invente data.\nFonte: base — pode manter (até quando a operação fica sem possibilidade); Cliente ansioso ou irritado, demora e ausência.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Qual a lista oficial de motivos de indisponibilidade e as previsões de cada um, para completar o modelo?"
+ },
+ {
+  "id": "EC5B83BC-161C-47A4-8978-C4B20CBBDC94",
+  "resposta": "A autorização de 5% do Banco Capital Consig é feita pelo cliente, no SouGov.br com a conta gov.br: Consignações > Empréstimo consignado > Autorização > escolha '5% cartão consignado' (ou '5% cartão benefício') > selecione o consignatário Banco Capital Consig > Confirmar. Depois, peça ao cliente o aviso ou print. Não peça a senha do gov.br: o cliente faz a autorização sozinho.\nFonte: base — Autorização de cartão consignado pelo SouGov; Outras operações (autorização do cartão benefício: '5% CARTÃO BENEFÍCIO'); conversas do CRM — padrão da equipe (Capital Consig).",
+  "detalhe": "Respondida pelo Claude com a base e as conversas."
+ },
+ {
+  "id": "45B92EB0-2540-49E3-9088-5034A2EA4141",
+  "resposta": "Explique assim: na portabilidade, a dívida muda de banco, que quita o saldo do banco antigo; o banco novo passa a ser o credor do contrato. Não é um empréstimo a mais. O refinanciamento refaz o contrato e libera o troco (o valor que sobra). A Pontual é a empresa que faz a operação com os bancos, não é um banco.\nFonte: base — Como explicar a operação: mesma parcela, 120x (itens 7 e 8).",
+  "detalhe": "Respondida pelo Claude com a base e as conversas."
+ },
+ {
+  "id": "157A166C-87DB-426B-A83B-9488584A0E0E",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: Qual o passo para autorizar a Facta no app do FGTS antes de informar o CPF, e o que fazer depois? O roteiro Facta da base está em branco."
+ },
+ {
+  "id": "656B3645-F698-4B6C-9F27-DE10D20F70AA",
+  "resposta": "Servidor de prefeitura do Paraná: não confirme nem negue antes de checar. Pergunte a cidade e o estado, o banco do contrato atual e se tem o contracheque mais recente. Diga que a possibilidade depende da cidade e do banco e que você vai verificar com a supervisão. Não prometa prazo nem condições.\nFonte: base — Servidor de prefeitura (convênio municipal).",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Quais prefeituras do Paraná têm convênio e quais bancos atendem servidores municipais?"
+ },
+ {
+  "id": "913D1826-3140-43F7-A916-FB791791FD4B",
+  "resposta": "Cada autorização é para um banco comprador (quem recebe a dívida) e marca as parcelas do banco de origem. Confira em cada mensagem: se o banco comprador é o PAN, escreva PAN; se a parcela é do banco de origem, marque a parcela sem escrever esse banco como comprador. Uma autorização por banco comprador. Se o comprador mudar, cancele a autorização antiga e gere a nova, avisando o cliente. Não misture autorizações de bancos diferentes na mesma mensagem.\nFonte: base — Autorização de portabilidade no SouGov (cuidados 1, 2 e 4).",
+  "detalhe": "Respondida em parte pelo Claude. Falta: O PAN compra parcelas de portabilidade? Confirmar qual parcela é de origem e qual banco é comprador nesta conversa."
+ },
+ {
+  "id": "936E6B8E-985D-4A0D-81BD-C81EA63099EB",
+  "resposta": "A base aceita comprovante de residência ou CEP, e um comprovante em nome do cônjuge foi aceito. Não diga ao cliente que a conta de água serve, nem que precisa enviar a página inteira, até a supervisão confirmar. Peça comprovante de residência ou CEP.\nFonte: base — Documentos, DED e número do contrato por banco de origem.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: A conta de água serve como comprovante de residência? Precisa enviar a página inteira?"
+ },
+ {
+  "id": "4E86E987-02AF-4ED2-913B-295A9283FF95",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: A Pontual opera com o Pine como banco comprador ou de origem? Como orientar o cliente com parcelas do Pine?"
+ },
+ {
+  "id": "9216CADC-5B8E-4CB5-81BE-77DC643A83F5",
+  "resposta": "Ao enviar oferta de cartão, diga que o valor é aproximado e depende da análise e aprovação do banco, e que pode mudar na liberação. Não informe mês do primeiro desconto nem liberação 'ainda hoje'. No saque complementar, o valor exato só sai na digitação e a parcela deve ser conferida antes de o cliente confirmar.\nFonte: base — Cartão consignado: prazo de liberação e primeiro desconto; Outras operações (saque complementar de cartão).",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Confirmar a regra de aviso de valor aproximado para cartão benefício, e por que houve oferta de cartão a cliente que pediu portabilidade."
+ },
+ {
+  "id": "CDE1C023-5B84-47A3-9733-6F44D73A693F",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: O que a atendente responde quando o cliente pede limite maior ou pergunta se pode aumentar o valor?"
+ },
+ {
+  "id": "241B6669-AAFA-43F8-BC81-5A5A3048058A",
+  "resposta": "Pela base, as espécies 87 e 88 do INSS são LOAS (BPC), que a Pontual não atende no momento. Não prometa data nem indique outra empresa. Mensagem: 'No momento não estamos fazendo operação para LOAS nem empréstimo pessoal. Se você tiver aposentadoria, pensão, for servidor público, trabalhar de carteira assinada ou tiver saldo de FGTS, posso verificar outras opções para você. Quer que eu consulte?'\nFonte: base — LOAS (BPC) e empréstimo pessoal: não atendemos no momento; roteiros INSS (BRB Red Consig, Banrisul, C6, PAN: LOAS espécies 87/88 não operados).",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Confirmar se o benefício de espécie 87 é LOAS/BPC e se há exceção para pensão."
+ },
+ {
+  "id": "AEA7ED6B-853F-4C2A-A12A-0D389A45BE43",
+  "resposta": "Antes de pedir a taxa ao cliente, confira se ela já está no documento que ele enviou. Se não estiver, peça o contrato ou print do app: 'Para seguir com a portabilidade, preciso da taxa de juros do seu contrato do Inter. Pode me enviar uma foto da primeira página do contrato, ou um print do app do Inter na parte do empréstimo, onde aparecem a taxa e as parcelas?' Use a taxa de juros mensal (% a.m.), não o CET.\nFonte: base — Onde localizar a taxa do contrato Inter na portabilidade.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Confirmar a página e o nome do campo do contrato Inter onde fica a taxa (a base ainda tem o espaço em branco)."
+ },
+ {
+  "id": "DD38459D-F0F8-4570-8AFD-29E04D4A47EF",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: Há banco para servidor estadual do Ceará e de outros estados fora de MT, MS, GO, DF e TO? Qual pergunta fazer quando o cliente escolhe a opção 5 do menu?"
+ },
+ {
+  "id": "E76461D5-2BAE-45F7-99E7-16A56343302F",
+  "resposta": "Desconto direto em folha é o consignado: a parcela é descontada direto da folha de pagamento ou do benefício, e não é crédito pessoal. Diga isso em uma frase e pergunte se o cliente quer seguir com a consulta.\nFonte: base — Nexus - o que é e glossário (Consignado); conversas do CRM — padrão da equipe (resposta sobre consignado com desconto direto no benefício).",
+  "detalhe": "Respondida pelo Claude com a base e as conversas."
+ },
+ {
+  "id": "6B03DEA7-9B26-40EE-A7D7-A1E245235189",
+  "resposta": "Quando as parcelas já foram refinanciadas recentemente, a portabilidade com refinanciamento não avança no momento, porque contratos recém-refinanciados não liberam troco. Explique o motivo ao cliente e diga que não há previsão confirmada para nova tentativa. Não diga prazo de espera.\nFonte: base — Checklist antes de digitar e promessas que não devem ser feitas (item 4); Outras operações (sem possibilidade).",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Qual o prazo de espera, em meses, para parcelas refinanciadas voltarem a ser elegíveis?"
+ },
+ {
+  "id": "BB13B8C3-81F5-43B2-8918-2D7EA2BB88B8",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: Qual o procedimento quando um link de proposta vai para o cliente errado: como conferir o destinatário e o que dizer ao cliente afetado?"
+ },
+ {
+  "id": "E1EA2EBE-F84F-44F9-8CC7-1F25B92BC7EA",
+  "resposta": "A base não diz se link compartilhado do Acrobat ou arquivo escaneado vale para a digitação. Enquanto a supervisão não confirma: peça o documento em PDF ou em foto legível, sem bordas cortadas. Se o cliente só tem PDF, a atendente anexa no lugar da etapa. Não encaminhe para digitação antes de conferir que o documento é do cliente.\nFonte: base — Assinatura dos links (itens 3 e 4); Documentos, DED e número do contrato por banco de origem.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Links do Acrobat e arquivos escaneados são aceitos para a digitação? Como conferir que o documento pertence ao cliente?"
+ },
+ {
+  "id": "D5C5CDC1-4B65-4444-BE25-78AFFD310FEB",
+  "resposta": "Explique ao cliente que a proposta não é digitada sem a documentação completa e a autorização exata no SouGov, pois a autorização mostra qual banco vai comprar a dívida. Diga qual autorização falta (portabilidade, novo e renovação ou anuência) e qual é o próximo passo. Se o link expirou, a proposta pode ter sido reprovada e precisa ser pedida de novo.\nFonte: base — Documentos, DED e número do contrato por banco de origem; Novo e renovação e anuência; Assinatura dos links (item 7).",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Qual a mensagem padrão para cada tipo de reprovação por falta de autorização?"
+ },
+ {
+  "id": "71D5621A-5FDE-4425-AFEF-9E46400FD507",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: Qual a resposta oficial quando o cliente pergunta se precisa pagar comissão por fora para a operação?"
+ },
+ {
+  "id": "9FBF6C00-A672-44BC-A419-14D882A7EE8E",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: Qual procedimento quando alguém usa a foto de uma atendente em outro perfil: o que responder ao cliente e para quem encaminhar a conversa?"
+ },
+ {
+  "id": "B65EB721-B8BE-4766-B989-CBC9A895B722",
+  "resposta": "A base registra que a portabilidade foi feita só para servidor federal (SIAPE). Para CLT, a base traz consulta e contrato novo (Facta, Storm). Diga que a portabilidade CLT não está disponível, sem dar motivo que não foi confirmado, e ofereça a consulta CLT para contrato novo se o cliente quiser.\nFonte: base — Outras operações (fora do SIAPE); Nexus - consultas de cliente (CLT e FGTS).",
+  "detalhe": "Respondida em parte pelo Claude. Falta: A Pontual faz portabilidade CLT? Se não, qual o motivo a dizer ao cliente e qual a alternativa?"
+ },
+ {
+  "id": "47426EF4-EBE9-4027-B9B9-3D3CB83A4A32",
+  "resposta": "Não envie ao cliente códigos internos (como texto de recusa interno) nem valores de margem sem explicação. Diga o motivo em frase simples: a margem está negativa e o valor liberado não cobre a positivação. Depois mostre o que dá para fazer: escolher qual parcela vai positivar ou tentar outro banco, conforme a base.\nFonte: base — Margem negativa: positivação, troco menor e o que verificar antes; Dados de cliente e resultado de consulta fora do WhatsApp.",
+  "detalhe": "Respondida em parte pelo Claude. Falta: Qual o texto padrão, confirmado pela supervisão, para comunicar recusa de margem negativa ao cliente?"
+ },
+ {
+  "id": "A1B74822-A7F2-4B0A-AECD-E1E849A68C28",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: Onde o cliente vê a taxa da parcela do Paraná Banco e do Daycoval no contrato (documento, campo ou app)?"
+ },
+ {
+  "id": "D885C6CA-FB6E-421E-B4A2-8479216E2A37",
+  "resposta": "",
+  "detalhe": "O Claude não achou resposta na base nem nas conversas. Falta: Quais são as taxas do cartão de crédito consignado e onde o cliente as confere?"
+ }
+]

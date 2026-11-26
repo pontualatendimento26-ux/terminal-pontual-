@@ -311,6 +311,8 @@ public sealed class TextSetting
     public const string AssistantScriptsSeeded = "assistant.scriptsSeeded";
     /// <summary>Nomes (um por linha) dos arquivos da pasta <c>sistemas-iniciais</c> já carregados na base.</summary>
     public const string AssistantSystemsSeeded = "assistant.systemsSeeded";
+    /// <summary>Nomes (um por linha) dos arquivos da pasta <c>respostas-aprendizado</c> já aplicados às sugestões.</summary>
+    public const string AssistantAnswersApplied = "assistant.answersApplied";
     /// <summary>Nomes (um por linha) dos arquivos da pasta <c>convenios-iniciais</c> já carregados na base.</summary>
     public const string AssistantAgreementsSeeded = "assistant.agreementsSeeded";
 
@@ -346,6 +348,8 @@ public sealed class TextSetting
     public const string CrmLostPeriod = "crm.lostPeriod";
     /// <summary>Quando a busca dos perdidos rodou por último e o que achou, para a tela.</summary>
     public const string CrmLostLastRun = "crm.lostLastRun";
+    /// <summary>A última rodada das etiquetas por tipo de cliente ("quando|rodando ou pronto|nota"; ver <c>CrmTags</c>).</summary>
+    public const string CrmTagsLastRun = "crm.tagsLastRun";
     /// <summary>Endereço da API de integração do Nexus, ex.: http://192.168.0.171:3001/api/integracao/v1.</summary>
     public const string NexusUrl = "nexus.url";
     /// <summary>Token da Central no Nexus, cifrado como a chave da IA (ver <c>AssistantSecrets</c>).</summary>

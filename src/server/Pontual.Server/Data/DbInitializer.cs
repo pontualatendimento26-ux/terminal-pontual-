@@ -223,6 +223,127 @@ public static partial class DbInitializer
     }
 
     /// <summary>
+    /// Aplica as respostas que o Claude escreveu para as sugestões pendentes (pasta <c>respostas-aprendizado</c>,
+    /// um .json com id, resposta e detalhe). Só mexe em sugestão ainda pendente e cada arquivo entra uma vez;
+    /// a sugestão continua pendente e só vira conhecimento quando alguém aprova.
+    /// </summary>
+    private static async Task ApplyAnswersAsync(PontualDb db, IServiceProvider services)
+    {
+        var folder = Path.Combine(AppContext.BaseDirectory, "respostas-aprendizado");
+        if (!Directory.Exists(folder))
+        {
+            return;
+        }
+
+        var mark = await db.TextSettings.FirstOrDefaultAsync(s => s.Key == TextSetting.AssistantAnswersApplied);
+        var applied = new HashSet<string>((mark?.Value ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries), StringComparer.OrdinalIgnoreCase);
+        var now = services.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime;
+        var changed = 0;
+        foreach (var file in Directory.GetFiles(folder, "*.json").Order(StringComparer.Ordinal))
+        {
+            if (!applied.Add(Path.GetFileName(file)))
+            {
+                continue;
+            }
+
+            using var json = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(file));
+            foreach (var answer in json.RootElement.EnumerateArray())
+            {
+                if (!Guid.TryParse(answer.GetProperty("id").GetString(), out var id))
+                {
+                    continue;
+                }
+
+                var suggestion = await db.KnowledgeSuggestions.FirstOrDefaultAsync(s => s.Id == id);
+                if (suggestion is { Status: SuggestionStatus.Approved, ItemId: { } doneId }
+                    && answer.TryGetProperty("categoria", out var doneCategory) && (doneCategory.GetString() ?? "").Length > 0)
+                {
+                    // Já aprovada por alguém na tela: só completa a categoria do conhecimento, se ficou vazia.
+                    var done = await db.AssistantScripts.FirstOrDefaultAsync(s => s.Id == doneId && s.Category == "");
+                    if (done is not null)
+                    {
+                        done.Category = Input.Truncated(doneCategory.GetString()!, 60);
+                        changed++;
+                    }
+
+                    continue;
+                }
+
+                if (suggestion is not { Status: SuggestionStatus.Pending })
+                {
+                    continue;
+                }
+
+                var text = answer.GetProperty("resposta").GetString() ?? "";
+                if (text.Length > 0)
+                {
+                    suggestion.ProposedContent = text.Length > 20_000 ? text[..20_000] : text;
+                }
+
+                var detail = answer.GetProperty("detalhe").GetString() ?? "";
+                if (detail.Length > 0)
+                {
+                    suggestion.Detail = detail.Length > 4000 ? detail[..4000] : detail;
+                }
+
+                suggestion.UpdatedAt = now;
+                changed++;
+
+                // "aprovar": o dono mandou aprovar; vira conhecimento como no botão Aprovar da Central Neural.
+                if (answer.TryGetProperty("aprovar", out var approve) && approve.ValueKind == System.Text.Json.JsonValueKind.True
+                    && suggestion.ProposedContent.Length > 0 && await db.AssistantScripts.CountAsync() < KnowledgeLimits.Items)
+                {
+                    var newTitle = answer.TryGetProperty("titulo", out var t) ? t.GetString() ?? "" : "";
+                    if (newTitle.Length > 0)
+                    {
+                        suggestion.Title = Input.Truncated(newTitle, 120);
+                    }
+
+                    var newCategory = answer.TryGetProperty("categoria", out var cat) ? cat.GetString() ?? "" : "";
+                    if (newCategory.Length > 0)
+                    {
+                        suggestion.Category = Input.Truncated(newCategory, 60);
+                    }
+
+                    var item = new AssistantScript
+                    {
+                        Id = Guid.NewGuid(), Kind = KnowledgeKind.Knowledge, Title = Input.Truncated(suggestion.Title, 120),
+                        Content = suggestion.ProposedContent.Length > KnowledgeLimits.Item ? suggestion.ProposedContent[..KnowledgeLimits.Item] : suggestion.ProposedContent,
+                        Bank = Input.Truncated(suggestion.Bank, 80), Category = Input.Truncated(suggestion.Category, 60),
+                        CreatedAt = now, UpdatedAt = now, UpdatedByName = "Claude (a pedido do Paulo)", Source = "atendentes",
+                    };
+                    db.AssistantScripts.Add(item);
+                    suggestion.Status = SuggestionStatus.Approved;
+                    suggestion.ItemId = item.Id;
+                    suggestion.ReviewedAt = now;
+                    suggestion.ReviewedByName = "Claude (a pedido do Paulo)";
+                }
+            }
+        }
+
+        var value = string.Join('\n', applied.Order(StringComparer.Ordinal));
+        if (mark is null)
+        {
+            db.TextSettings.Add(new TextSetting { Key = TextSetting.AssistantAnswersApplied, Value = value });
+        }
+        else
+        {
+            mark.Value = value;
+        }
+
+        if (changed == 0)
+        {
+            await db.SaveChangesAsync();
+            return;
+        }
+
+        await services.GetRequiredService<AuditWriter>().SaveAsync(
+            db,
+            new AuditInfo(ActorType.System, null, "Sistema", "assistant.suggestion.answers",
+                $"Sistema aplicou {changed} resposta(s) do Claude às sugestões pendentes"));
+    }
+
+    /// <summary>
     /// Carrega os aprendizados sobre os sistemas da Pontual da pasta <c>sistemas-iniciais</c>: cada arquivo .txt
     /// vira um item do ramo "Sistemas da Pontual", com o nome do arquivo como título. Cada arquivo entra uma única
     /// vez (o nome fica guardado); um arquivo novo colocado depois entra na próxima vez que a Central iniciar.
@@ -344,6 +465,7 @@ public static partial class DbInitializer
         await AddMissingColumnsAsync(db, "CrmReplies");
         await SeedScriptsAsync(db, scope.ServiceProvider);
         await SeedSystemsAsync(db, scope.ServiceProvider);
+        await ApplyAnswersAsync(db, scope.ServiceProvider);
         await SeedAgreementsAsync(db, scope.ServiceProvider);
 
         if (!await db.Settings.AnyAsync(s => s.Key == Setting.ConfigVersion))

@@ -26,8 +26,7 @@ public sealed class CrmClient
     private string _tokenFor = "";
     private string _token = "";
     private DateTime _tokenUntil;
-    private string _tagFor = "";
-    private JsonElement? _tagId;
+    private readonly Dictionary<string, JsonElement> _tagIds = new(StringComparer.Ordinal);
 
     public CrmClient(TimeProvider time, HttpMessageHandler? handler = null)
     {
@@ -79,40 +78,54 @@ public sealed class CrmClient
     /// Marca o cliente com a etiqueta <see cref="CrmAgent.AiTag"/>, pelas rotas que a tela de conversa do CRM usa
     /// (a API do Agente Externo não tem etiqueta). Cria a etiqueta se ela ainda não existe. Marcar de novo não muda nada.
     /// </summary>
-    public async Task TagAsync(CrmAccess access, string phone, string lineId, CancellationToken ct)
+    public Task TagAsync(CrmAccess access, string phone, string lineId, CancellationToken ct) =>
+        TagAsync(access, phone, lineId, CrmAgent.AiTag, ct);
+
+    /// <summary>Põe (ou, com <paramref name="remove"/>, tira) a etiqueta <paramref name="name"/> do cliente nesta linha; cria a etiqueta se falta.</summary>
+    public async Task TagAsync(CrmAccess access, string phone, string lineId, string name, CancellationToken ct, bool remove = false)
     {
         if (phone.Length == 0 || lineId.Length == 0)
         {
             throw new CrmFailure("O aviso do CRM não trouxe o telefone do cliente ou a linha do WhatsApp.");
         }
 
-        var tagId = await TagIdAsync(access, ct);
+        var tagId = await TagIdAsync(access, name, ct);
         using var response = await SendAsync(access, HttpMethod.Post, "/api/chat/tags/toggle",
-            new { chatId = phone.Contains('@') ? phone : $"{phone}@c.us", botId = lineId, tagId, action = "add" }, ct);
+            new { chatId = phone.Contains('@') ? phone : $"{phone}@c.us", botId = lineId, tagId, action = remove ? "remove" : "add" }, ct);
         await ReadAsync(response, ct);
     }
 
-    private async Task<JsonElement> TagIdAsync(CrmAccess access, CancellationToken ct)
+    private async Task<JsonElement> TagIdAsync(CrmAccess access, string name, CancellationToken ct)
     {
-        if (_tagFor == access.Url && _tagId is { } known)
+        var key = $"{access.Url}|{name}";
+        lock (_tagIds)
         {
-            return known;
+            if (_tagIds.TryGetValue(key, out var known))
+            {
+                return known;
+            }
         }
 
-        var id = await FindTagAsync(access, ct);
+        var id = await FindTagAsync(access, name, ct);
         if (id is null)
         {
-            using var created = await SendAsync(access, HttpMethod.Post, "/api/tags", new { name = CrmAgent.AiTag, color = "#7c3aed", tipo = "chat" }, ct);
+            var color = name == CrmAgent.AiTag ? "#7c3aed" : TagColors[(int)((uint)StringComparer.Ordinal.GetHashCode(name) % (uint)TagColors.Length)];
+            using var created = await SendAsync(access, HttpMethod.Post, "/api/tags", new { name, color, tipo = "chat" }, ct);
             await ReadAsync(created, ct);
-            id = await FindTagAsync(access, ct) ?? throw new CrmFailure($"O CRM não mostrou a etiqueta \"{CrmAgent.AiTag}\" depois de criada.");
+            id = await FindTagAsync(access, name, ct) ?? throw new CrmFailure($"O CRM não mostrou a etiqueta \"{name}\" depois de criada.");
         }
 
-        _tagId = id;
-        _tagFor = access.Url;
+        lock (_tagIds)
+        {
+            _tagIds[key] = id.Value;
+        }
+
         return id.Value;
     }
 
-    private async Task<JsonElement?> FindTagAsync(CrmAccess access, CancellationToken ct)
+    private static readonly string[] TagColors = ["#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#0891b2", "#2563eb", "#db2777", "#4b5563"];
+
+    private async Task<JsonElement?> FindTagAsync(CrmAccess access, string wanted, CancellationToken ct)
     {
         using var response = await SendAsync(access, HttpMethod.Get, "/api/tags?tipo=chat", null, ct);
         var json = await ReadAsync(response, ct);
@@ -131,7 +144,7 @@ public sealed class CrmClient
             if (tag.ValueKind == JsonValueKind.Object && tag.TryGetProperty("id", out var id)
                 && (tag.TryGetProperty("name", out var name) || tag.TryGetProperty("nome", out name))
                 && name.ValueKind == JsonValueKind.String
-                && string.Equals(name.GetString()?.Trim(), CrmAgent.AiTag, StringComparison.OrdinalIgnoreCase))
+                && string.Equals(CrmAgent.Fold(name.GetString()?.Trim() ?? ""), CrmAgent.Fold(wanted), StringComparison.Ordinal))
             {
                 return id.Clone();
             }
@@ -158,6 +171,17 @@ public sealed class CrmClient
     {
         var query = $"/api/chat/contacts?page={page}&busca=&botId={Uri.EscapeDataString(string.Join(',', lineIds))}&status=recebidas&vendedores=&tags=&etapas=&ordem=desc"
             + $"&periodo=custom&dataInicio={fromDay:yyyy-MM-dd}&dataFim={toDay:yyyy-MM-dd}";
+        using var response = await SendAsync(access, HttpMethod.Get, query, null, ct);
+        var json = await ReadAsync(response, ct);
+        var chats = json.ValueKind == JsonValueKind.Object && json.TryGetProperty("chats", out var c) && c.ValueKind == JsonValueKind.Array ? c : default;
+        var more = json.ValueKind == JsonValueKind.Object && json.TryGetProperty("temMais", out var m) && m.ValueKind == JsonValueKind.True;
+        return (chats, more);
+    }
+
+    /// <summary>Uma página (20) de todas as conversas destas linhas, em qualquer data e situação, da mais nova para a mais velha.</summary>
+    public async Task<(JsonElement Chats, bool More)> ChatsAsync(CrmAccess access, IEnumerable<string> lineIds, int page, CancellationToken ct)
+    {
+        var query = $"/api/chat/contacts?page={page}&busca=&botId={Uri.EscapeDataString(string.Join(',', lineIds))}&status=todos&vendedores=&tags=&etapas=&ordem=desc";
         using var response = await SendAsync(access, HttpMethod.Get, query, null, ct);
         var json = await ReadAsync(response, ct);
         var chats = json.ValueKind == JsonValueKind.Object && json.TryGetProperty("chats", out var c) && c.ValueKind == JsonValueKind.Array ? c : default;
