@@ -1,0 +1,17 @@
+2026-11-26 13:44:34.783: [INFO] CurrentProfilePath: F:\Projetos\Terminal-Pontual\.rascunho-central-neural\siape-teste\perfil\Default
+2026-11-26 13:44:34.783: [INFO] Profiles total count: 1
+2026-11-26 13:44:34.783: [INFO] Profile: name=Perfil 1 path=F:\Projetos\Terminal-Pontual\.rascunho-central-neural\siape-teste\perfil\Default lastActive=2026-11-26T13:44:34.776Z
+2026-11-26 13:44:34.783: [INFO] LastUsedProfileDir: F:\Projetos\Terminal-Pontual\.rascunho-central-neural\siape-teste\perfil\Default
+2026-11-26 13:44:34.783: [INFO] MostRecentlyActiveProfile: name=Perfil 1 path=F:\Projetos\Terminal-Pontual\.rascunho-central-neural\siape-teste\perfil\Default lastActive=2026-11-26T13:44:34.776Z
+2026-11-26 13:44:34.783: [INFO] OnDoneLoading sync enabled: 0
+2026-11-26 13:44:34.783: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-11-26 13:44:34.783: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-11-26 13:44:34.783: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-11-26 13:44:36.720: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-11-26 13:44:36.722: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-11-26 13:44:36.724: [INFO] Primary account changed.
+2026-11-26 13:44:36.724: [INFO] OnPrimaryAccountChanged PrimaryAccountChangeEvent::Type::kSet
+2026-11-26 13:44:36.729: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-11-26 13:44:36.789: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-11-26 13:44:36.833: [INFO] VisibilityChanged: 0
+2026-11-26 13:44:40.659: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1

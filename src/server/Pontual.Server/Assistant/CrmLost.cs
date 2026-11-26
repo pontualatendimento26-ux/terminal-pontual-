@@ -49,7 +49,7 @@ public static class CrmLost
         Este cliente mandou mensagem e ficou sem resposta da Pontual há bastante tempo (veja as datas na conversa). Você vai retomar a conversa como a atendente dona do cliente, indicada em <atendente>: pense e escreva como ela.
 
         - Escreva no jeito dela: veja como ela escreve nas falas marcadas com o nome dela na conversa e nos exemplos aprovados (tamanho, cumprimento, emojis, forma de tratar o cliente). Não assine e não diga o nome dela se ela não costuma dizer.
-        - Para o cliente, quem escreve é ela mesma: sempre em primeira pessoa, nunca "vou chamar a Kamila", "a Kamila vai te responder", "vou passar para a atendente" ou "vou confirmar com ela". O nome da atendente em <atendente> serve para você saber de quem é o jeito de escrever, seja ela quem for.
+        - Para o cliente, quem escreve é ela mesma: sempre em primeira pessoa, nunca "vou chamar a Kamila", "a Kamila vai te responder", "vou passar para a atendente" ou "vou confirmar com ela". O nome da atendente em <atendente> serve para você saber de quem é o jeito de escrever, seja ela quem for. Quando algo depende de outra pessoa (áudio, ligação, consulta), não diga quem vai fazer: "vou verificar e te retorno por aqui".
         - Comece retomando com naturalidade e um pedido de desculpas curto pela demora, e responda de verdade o que o cliente perguntou ou conduza para o próximo passo (por exemplo, pedir o CPF ou o contracheque para simular).
         - "nada" quando o cliente não espera resposta: agradeceu, mandou "ok", figurinha, encerrou, disse que não quer mais, pediu para não ser chamado, ou a mensagem é automática.
         - Cliente FINALIZADO é sempre "nada", e o "motivo" começa com "Finalizado:". É o atendimento que já chegou ao fim: a Pontual já disse que não dá (sem possibilidade, margem negativa, reprovado, sem banco, idade, prazo), a proposta já foi concluída ou paga, ou o cliente desistiu, e o que ele escreveu depois só fecha a conversa ("ok", "tá", "viu", "obrigado", "vou ver", "deixa pra próxima"). Não reabra esse atendimento, não ofereça nova simulação e não use "humano" só para a atendente rever o caso.
@@ -115,15 +115,18 @@ public static class CrmLost
         var wait = now - (force && chosen ? MinWaitChosen : MinWait);
         var newest = chosen && periodEnd < wait ? periodEnd : wait;
 
-        // Já tratados: a mesma última mensagem não é lida de novo, e conversa com resposta esperando aprovação fica como está.
-        var seen = (await db.CrmReplies.AsNoTracking().Where(r => r.Kind == Kind
-                    && (r.WaitingSince == null || r.WaitingSince >= oldest || r.Status == CrmReplyStatus.Pending || r.Status == CrmReplyStatus.Failed))
-                .Select(r => new { r.ChatId, r.BotId, r.LastWppId, r.Status }).ToListAsync(ct));
+        // Antes de procurar, tira da fila o que não vale mais (já respondido, repetido, finalizado). Não usa a IA.
+        var finished = await RefreshAsync(db, crm, access, now, ct);
+
+        // Um cliente é um cartão só, em qualquer linha. Já tratados: a mesma última mensagem não é lida de novo.
+        var seen = await db.CrmReplies.AsNoTracking().Where(r => r.Kind == Kind)
+            .Select(r => new { r.Id, r.ChatId, r.BotId, r.LastWppId, r.Status, r.WaitingSince, r.SentAt }).ToListAsync(ct);
         var done = seen.Select(r => $"{r.ChatId}|{r.BotId}|{r.LastWppId}").ToHashSet();
-        var open = seen.Where(r => r.Status is CrmReplyStatus.Pending or CrmReplyStatus.Failed).Select(r => $"{r.ChatId}|{r.BotId}").ToHashSet();
+        var handled = seen.Where(r => r.Status is not (CrmReplyStatus.Outdated or CrmReplyStatus.Pending or CrmReplyStatus.Failed)).ToLookup(r => r.ChatId);
+        var open = seen.Where(r => r.Status is CrmReplyStatus.Pending or CrmReplyStatus.Failed)
+            .GroupBy(r => r.ChatId).ToDictionary(g => g.Key, g => g.OrderByDescending(r => r.WaitingSince).Select(r => (r.Id, r.BotId, r.WaitingSince)).First());
 
         var (cached, _) = (await CrmEndpoints.InstructionsAsync(db, settings, "", ct));
-        var finished = await CloseFinishedAsync(db, crm, access, now, ct);
         var calls = 0;
         var free = 0;
         var created = 0;
@@ -163,43 +166,54 @@ public static class CrmLost
                     continue;
                 }
 
-                foreach (var channel in channels.EnumerateArray())
+                // Só a conversa mais recente do cliente, entre todas as linhas dele (o RCS de divulgação não conta): se em outra
+                // linha a Pontual já respondeu, ou se ele seguiu por outro funil, não é cliente perdido.
+                var latest = channels.EnumerateArray()
+                    .Select(c => (Channel: c, At: Time(Str(c, "ts"), utc: false), Bot: Str(c, "bot_id")))
+                    .Where(c => c.At is not null && !c.Bot.StartsWith("rcs", StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(c => c.At).FirstOrDefault();
+                var (channel, at, botId) = latest;
+                if (at is null || chatId.Length == 0 || !lines.Contains(botId) || at >= newest || at < oldest
+                    || channel.TryGetProperty("from_me", out var fromMe) && fromMe.ValueKind != JsonValueKind.False)
                 {
-                    var botId = Str(channel, "bot_id");
-                    var at = Time(Str(channel, "ts"), utc: false);
-                    if (!lines.Contains(botId) || chatId.Length == 0 || at is null || at >= newest || at < oldest
-                        || channel.TryGetProperty("from_me", out var fromMe) && fromMe.ValueKind != JsonValueKind.False)
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    checkedCount++;
-                    var wpp = channel.TryGetProperty("ultima", out var last) ? Str(last, "wpp") : "";
-                    if (done.Contains($"{chatId}|{botId}|{wpp}") || open.Contains($"{chatId}|{botId}") || calls >= MaxCalls)
-                    {
-                        continue;
-                    }
+                checkedCount++;
+                var wpp = channel.TryGetProperty("ultima", out var last) ? Str(last, "wpp") : "";
+                var waitingOpen = open.TryGetValue(chatId, out var current);
+                if (done.Contains($"{chatId}|{botId}|{wpp}")
+                    || waitingOpen && (current.BotId == botId || current.WaitingSince >= at)
+                    || handled[chatId].Any(r => r.WaitingSince > at || r.SentAt > at))
+                {
+                    continue;
+                }
 
-                    var owner = users.GetValueOrDefault(Str(channel, "responsavel_id"), "");
-                    var (reply, asked) = await WriteAsync(db, crm, model, access, apiKey, settings, cached, chatId, botId, Str(chat, "name"), owner, now, oldest, newest, done, ct);
-                    _ = asked ? calls++ : free++;
-                    if (reply is null)
-                    {
-                        continue;
-                    }
+                var owner = users.GetValueOrDefault(Str(channel, "responsavel_id"), "");
+                var (reply, asked) = await WriteAsync(db, crm, model, access, apiKey, settings, cached, chatId, botId, Str(chat, "name"), owner, now, oldest, newest, done, ct);
+                _ = asked ? calls++ : free++;
+                if (reply is null)
+                {
+                    continue;
+                }
 
-                    db.CrmReplies.Add(reply);
-                    await db.SaveChangesAsync(ct);
-                    done.Add($"{chatId}|{botId}|{reply.LastWppId}");
-                    if (reply.Status == CrmReplyStatus.Pending)
-                    {
-                        created++;
-                        open.Add($"{chatId}|{botId}");
-                    }
-                    else if (reply.Reason.StartsWith(FinishedReason, StringComparison.OrdinalIgnoreCase))
-                    {
-                        finished++;
-                    }
+                db.CrmReplies.Add(reply);
+                await db.SaveChangesAsync(ct);
+                done.Add($"{chatId}|{botId}|{reply.LastWppId}");
+                if (waitingOpen)
+                {
+                    await CloseAsync(db, current.Id, CrmReplyStatus.Outdated, RepeatedReason, now, ct);
+                    open.Remove(chatId);
+                }
+
+                if (reply.Status == CrmReplyStatus.Pending)
+                {
+                    created++;
+                    open[chatId] = (reply.Id, botId, reply.WaitingSince);
+                }
+                else if (reply.Reason.StartsWith(FinishedReason, StringComparison.OrdinalIgnoreCase))
+                {
+                    finished++;
                 }
             }
 
@@ -238,6 +252,21 @@ public static class CrmLost
         static DateTime? Day(string value) =>
             DateTime.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day) ? day : null;
         return parts.Length == 2 && Day(parts[0]) is { } from && Day(parts[1]) is { } to ? (from, to) : null;
+    }
+
+    /// <summary>O período da última busca com datas ("2026-11-25T...|175|16|De 01/11 a 20/11: ..."), no formato salvo; vazio se não teve datas.</summary>
+    internal static string PeriodOfLastRun(string lastRun)
+    {
+        var match = Regex.Match(lastRun, "^([0-9]{4})-([0-9]{2})-[^|]*[|][^|]*[|][^|]*[|]De ([0-9]{2})/([0-9]{2}) a ([0-9]{2})/([0-9]{2}):");
+        if (!match.Success)
+        {
+            return "";
+        }
+
+        int N(int group) => int.Parse(match.Groups[group].Value, CultureInfo.InvariantCulture);
+        string Day(int day, int month) => $"{(month > N(2) ? N(1) - 1 : N(1)):0000}-{month:00}-{day:00}";
+        var period = $"{Day(N(3), N(4))}|{Day(N(5), N(6))}";
+        return ReadPeriod(period) is null ? "" : period;
     }
 
     /// <summary>Do começo do primeiro dia até o começo do dia seguinte ao último (dias de Brasília), em UTC.</summary>
@@ -299,9 +328,9 @@ public static class CrmLost
             .Append(await CrmEndpoints.LearnedAsync(db, owner, ct));
         try
         {
-            var json = await model.AskJsonAsync(new AssistantJsonRequest(apiKey, AssistantEndpoints.ModelOf(settings), "", input.ToString(),
-                CrmAgent.Schema, [.. cached, Rules], new AssistantUsageTag(UsageKind.Crm)), ct);
-            var decision = CrmAgent.ParseDecision(json);
+            var request = new AssistantJsonRequest(apiKey, AssistantEndpoints.ModelOf(settings), "", input.ToString(),
+                CrmAgent.Schema, [.. cached, Rules], new AssistantUsageTag(UsageKind.Crm));
+            var decision = await CrmAgent.WithoutHandoffAsync(model, request, CrmAgent.ParseDecision(await model.AskJsonAsync(request, ct)), owner, ct);
             reply.Decision = decision.Action;
             reply.Reply = decision.Message;
             reply.Draft = decision.Message;
@@ -384,38 +413,69 @@ public static class CrmLost
         return "";
     }
 
-    /// <summary>Tira da fila de aprovação as respostas de clientes que já estão finalizados. Devolve quantas saíram.</summary>
-    private static async Task<int> CloseFinishedAsync(PontualDb db, CrmClient crm, CrmAccess access, DateTime now, CancellationToken ct)
+    /// <summary>O aviso de quem saiu da fila por já estar nela (ou já ter sido tratado) por outra linha.</summary>
+    public const string RepeatedReason = "Repetido: este cliente tem uma conversa mais recente em outra linha.";
+
+    /// <summary>
+    /// Confere a fila de aprovação com o CRM, sem usar a IA. Sai quem: aparece duas vezes ou já foi tratado por uma conversa mais nova
+    /// em outra linha; já foi respondido pela atendente; escreveu de novo (a busca escreve outra, se couber no período); ou já está
+    /// finalizado. Devolve quantos finalizados saíram.
+    /// </summary>
+    public static async Task<int> RefreshAsync(PontualDb db, CrmClient crm, CrmAccess access, DateTime now, CancellationToken ct)
     {
         var count = 0;
-        foreach (var reply in await db.CrmReplies.Where(r => r.Kind == Kind && r.Status == CrmReplyStatus.Pending).ToListAsync(ct))
+        var all = await db.CrmReplies.AsNoTracking().Where(r => r.Kind == Kind && r.Status != CrmReplyStatus.Outdated).ToListAsync(ct);
+        var byChat = all.ToLookup(r => r.ChatId);
+        static bool Waiting(CrmReply r) => r.Status is CrmReplyStatus.Pending or CrmReplyStatus.Failed;
+        foreach (var reply in all.Where(Waiting))
         {
-            string why;
+            // Entre duas esperando, fica a da conversa mais recente; o Id desempata.
+            var repeated = byChat[reply.ChatId].Any(o => o.Id != reply.Id && (o.SentAt > reply.WaitingSince
+                || o.WaitingSince > reply.WaitingSince || o.WaitingSince == reply.WaitingSince && Waiting(o) && o.Id.CompareTo(reply.Id) > 0));
+            if (repeated)
+            {
+                await CloseAsync(db, reply.Id, CrmReplyStatus.Outdated, RepeatedReason, now, ct);
+                continue;
+            }
+
             try
             {
                 var history = Read(await crm.MessagesAsync(access, reply.ChatId, reply.BotId, ct));
-                if (history.Count == 0 || history[^1].WppId != reply.LastWppId)
+                if (history.Count == 0)
                 {
                     continue;
                 }
 
-                why = Finished(history, await crm.StageAsync(access, reply.Phone, ct));
+                if (history[^1].WppId != reply.LastWppId)
+                {
+                    var who = history[^1].Who;
+                    await CloseAsync(db, reply.Id, CrmReplyStatus.Outdated, history[^1].FromMe
+                        ? $"{(who.Length > 0 ? who : "A equipe")} já respondeu este cliente no CRM."
+                        : "O cliente escreveu de novo depois desta resposta.", now, ct);
+                    continue;
+                }
+
+                if (Finished(history, await crm.StageAsync(access, reply.Phone, ct)) is { Length: > 0 } why)
+                {
+                    count += await CloseAsync(db, reply.Id, CrmReplyStatus.Skipped, why, now, ct);
+                }
             }
             catch (CrmFailure)
             {
-                continue;
-            }
-
-            if (why.Length > 0)
-            {
-                // Alguém pode ter aprovado enquanto a busca conferia: só mexe no que ainda espera.
-                count += await db.CrmReplies.Where(r => r.Id == reply.Id && r.Status == CrmReplyStatus.Pending).ExecuteUpdateAsync(u => u
-                    .SetProperty(r => r.Status, CrmReplyStatus.Skipped).SetProperty(r => r.Reason, why).SetProperty(r => r.UpdatedAt, now), ct);
+                // O CRM não respondeu: a resposta fica como está, e a aprovação confere de novo antes de enviar.
             }
         }
 
         return count;
     }
+
+    /// <summary>Tira uma resposta da fila. Alguém pode ter aprovado enquanto a busca conferia: só mexe no que ainda espera.</summary>
+    private static Task<int> CloseAsync(PontualDb db, Guid id, string status, string why, DateTime now, CancellationToken ct) =>
+        db.CrmReplies.Where(r => r.Id == id && (r.Status == CrmReplyStatus.Pending || r.Status == CrmReplyStatus.Failed)).ExecuteUpdateAsync(u => u
+            .SetProperty(r => r.Status, status)
+            .SetProperty(r => r.Reason, r => status == CrmReplyStatus.Skipped ? why : r.Reason)
+            .SetProperty(r => r.Error, r => status == CrmReplyStatus.Outdated ? why : r.Error)
+            .SetProperty(r => r.UpdatedAt, now), ct);
 
     /// <summary>As últimas conversas que a equipe marcou como "Já foi finalizado", para a IA reconhecer as parecidas.</summary>
     private static async Task<string> FinishedExamplesAsync(PontualDb db, CancellationToken ct)
@@ -528,6 +588,8 @@ public sealed class CrmLostWorker(IServiceScopeFactory scopes, TimeProvider time
     {
         try
         {
+            await Task.Delay(TimeSpan.FromSeconds(10), time, stoppingToken);
+            await TidyAsync(stoppingToken);
             await Task.Delay(TimeSpan.FromMinutes(2), time, stoppingToken);
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -542,6 +604,46 @@ public sealed class CrmLostWorker(IServiceScopeFactory scopes, TimeProvider time
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
+        }
+    }
+
+    /// <summary>
+    /// Ao ligar a Central: confere a fila com o CRM (sem IA). Se a tela ainda não guardou período nenhum e a última busca
+    /// foi feita com datas escolhidas, são elas que passam a valer.
+    /// </summary>
+    private async Task TidyAsync(CancellationToken ct)
+    {
+        if (!await Running.WaitAsync(0, ct))
+        {
+            return;
+        }
+
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<PontualDb>();
+            if (!await db.TextSettings.AnyAsync(s => s.Key == TextSetting.CrmLostPeriod, ct))
+            {
+                var last = await db.TextSettings.AsNoTracking().Where(s => s.Key == TextSetting.CrmLostLastRun).Select(s => s.Value).FirstOrDefaultAsync(ct) ?? "";
+                if (CrmLost.PeriodOfLastRun(last) is { Length: > 0 } period)
+                {
+                    db.TextSettings.Add(new TextSetting { Key = TextSetting.CrmLostPeriod, Value = period });
+                    await db.SaveChangesAsync(ct);
+                }
+            }
+
+            if (await CrmClient.AccessAsync(db, ct) is { } access)
+            {
+                await CrmLost.RefreshAsync(db, scope.ServiceProvider.GetRequiredService<CrmClient>(), access, time.GetUtcNow().UtcDateTime, ct);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Falha ao conferir a fila dos clientes perdidos do CRM");
+        }
+        finally
+        {
+            Running.Release();
         }
     }
 

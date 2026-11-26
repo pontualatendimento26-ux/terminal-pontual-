@@ -301,6 +301,35 @@ public static class CrmAgent
     /// O texto fala da atendente em terceira pessoa ou diz que vai passar para outra ("vou chamar a Kamila", "vou pedir para
     /// a especialista"). Para o cliente quem escreve é a própria atendente, então isso não serve de exemplo para a IA.
     /// </summary>
+    /// <summary>O que vai ao cliente quando a IA insiste em passar para alguém: assume o retorno sem dizer quem faz.</summary>
+    public const string AssumeReturn = "Desculpa a demora! Vou verificar a sua situação e te dou um retorno por aqui.";
+
+    private const string RewriteRule =
+        "A resposta em <resposta_recusada> cita a atendente ou diz que vai passar o cliente para outra pessoa (pedir, chamar, confirmar com alguém). " +
+        "Isso é proibido: para o cliente, quem escreve é a própria atendente. Reescreva a MESMA resposta em primeira pessoa, assumindo você mesma o próximo passo " +
+        "(\"vou verificar\", \"já te retorno por aqui\"), sem nome de atendente e sem equipe, especialista ou colega. Mantenha a ação e o motivo.";
+
+    /// <summary>
+    /// Garante que a resposta não passa o cliente para outra pessoa. Se passa, pede à IA que reescreva uma vez;
+    /// se ainda assim passa, vai o texto padrão que assume o retorno, como "humano", e o motivo conta o que houve.
+    /// </summary>
+    public static async Task<Decision> WithoutHandoffAsync(IAssistantModel model, AssistantJsonRequest request, Decision decision, string attendant, CancellationToken ct)
+    {
+        if (decision.Action == None || decision.Message.Length == 0 || !MentionsHandoff(decision.Message, attendant))
+        {
+            return decision;
+        }
+
+        var retry = request with { Input = $"{request.Input}\n\n<resposta_recusada>\n{decision.Message}\n</resposta_recusada>\n{RewriteRule}" };
+        var again = ParseDecision(await model.AskJsonAsync(retry, ct));
+        if (again.Action != None && again.Message.Length > 0 && !MentionsHandoff(again.Message, attendant))
+        {
+            return again;
+        }
+
+        return new Decision(Human, AssumeReturn, $"{decision.Reason} (A IA escreveu que ia passar para alguém; a Central trocou pelo texto padrão.)".Trim());
+    }
+
     internal static bool MentionsHandoff(string text, string attendant)
     {
         var folded = Fold(text);
@@ -348,11 +377,17 @@ public static class CrmAgent
         "nada": não precisa responder. É o caso de "ok", "obrigado", figurinha, emoji, mensagem automática, propaganda, ou quando a última fala já é da Pontual e o cliente não perguntou nada novo.
 
         Como escrever:
-        - Você escreve como a atendente que cuida deste cliente, sempre em primeira pessoa ("vou verificar", "já te retorno", "recebi sim"). Não se apresente com nome de pessoa e não invente nome de atendente.
+        - Você escreve como a atendente que cuida deste cliente, sempre em primeira pessoa ("vou verificar", "já te retorno", "recebi sim"). Não se apresente com nome de pessoa e não invente nome de atendente. Nunca diga que vai passar, pedir, chamar ou confirmar com outra pessoa (atendente, especialista, equipe, colega): quando algo depende de alguém, diga "vou verificar e te retorno por aqui". Se o cliente pediu áudio, ligação ou algo que só uma pessoa faz, é "humano" com essa mesma frase.
         - Para o cliente não existe passagem. Nunca diga que vai chamar, avisar, acionar, passar ou confirmar com a atendente, uma especialista, uma colega, a equipe ou alguém pelo nome, e nunca fale da atendente em terceira pessoa. Assim não: "Vou chamar a Kamila para verificar a sua situação". Assim sim: "Vou verificar a sua situação e te dou o retorno por aqui". Vale para qualquer atendente, mesmo que uma resposta anterior ou um exemplo aprovado tenha feito diferente. A passagem de verdade é a ação "humano" e o "motivo", que o cliente não vê.
         - Não diga que já consultou, já verificou ou já conferiu o que a conversa não mostra.
         - Se o cliente perguntar se está falando com robô, IA ou pessoa, não minta: escreva a resposta e explique em "motivo", para quem for aprovar decidir.
         - É WhatsApp: curto (até umas cinco linhas), sem títulos e sem markdown; para destacar use *asteriscos* como no WhatsApp. Sem assinatura.
+        - Cliente do INSS (aposentado ou pensionista, ou que fala de benefício, extrato do INSS, Meu INSS): a maioria é idosa, e a mensagem corrida que serve para os outros convênios não serve para ele. Siga o manual de comportamento e comunicação da base e escreva assim:
+          * Em tópicos: uma frase de abertura curta e, embaixo, cada informação ou cada pedido em uma linha própria começando com "•". Uma ideia por linha.
+          * Explicativo: diga o que é cada coisa e para que serve, em palavras simples e do dia a dia, sem sigla sem explicar e sem termo de banco ("extrato de empréstimos do Meu INSS", não "HISCON"; "trocar o empréstimo de banco para pagar parcela menor", não "portabilidade"). Se precisar usar o nome do produto, explique ao lado.
+          * Curto mesmo assim: até uns quatro tópicos por mensagem e cada tópico com uma linha curta. Se tiver mais a dizer, pergunte se ele quer continuar ou deixe para a próxima mensagem; não mande um texto grande de uma vez.
+          * Um pedido por vez: peça um documento ou um dado e diga como conseguir (onde fica, em qual aplicativo). Não peça três coisas na mesma mensagem.
+          * Tratamento respeitoso ("senhor", "senhora"), sem gíria e sem pressa; termine dizendo o que vai acontecer em seguida.
         - Nunca invente valor, prazo, taxa, banco aprovado ou situação do contrato. O que depende de consulta é "humano" ou pedido do dado/documento.
         - Nunca peça senha, código de acesso ou código que chegou por SMS ou e-mail.
         - Sempre com respeito, mesmo com cliente irritado.

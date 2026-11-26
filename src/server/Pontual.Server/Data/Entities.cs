@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Pontual.Domain.Audit;
 using Pontual.Domain.Authorization;
 
@@ -52,6 +52,18 @@ public sealed class Device
     /// Começa desligado; o TI liga computador por computador.
     /// </summary>
     public bool LightMode { get; set; }
+    /// <summary>
+    /// Cofre de senhas do navegador interno, para um Terminal dedicado a uma atendente: o WebView2 volta a oferecer
+    /// guardar e preencher a senha nos sites (como o Chrome), no perfil próprio do Terminal. Começa desligado; o TI liga computador por computador.
+    /// </summary>
+    public bool SavePasswords { get; set; }
+    /// <summary>
+    /// Papel de parede da tela inicial: nome do arquivo na pasta <c>papeis-de-parede</c> (ao lado do banco), ou vazio.
+    /// O TI envia a imagem no painel do computador; a tela inicial busca com o token da máquina.
+    /// </summary>
+    public string Wallpaper { get; set; } = "";
+    /// <summary>Papel de parede repetido como azulejo (para padrões). Desligado = uma imagem só, cobrindo a tela.</summary>
+    public bool WallpaperTile { get; set; }
     public DateTime? LastSeenAt { get; set; }
     public DateTime? SessionStartedAt { get; set; }
     public string AppsInUseJson { get; set; } = "[]";
@@ -299,6 +311,8 @@ public sealed class TextSetting
     public const string AssistantScriptsSeeded = "assistant.scriptsSeeded";
     /// <summary>Nomes (um por linha) dos arquivos da pasta <c>sistemas-iniciais</c> já carregados na base.</summary>
     public const string AssistantSystemsSeeded = "assistant.systemsSeeded";
+    /// <summary>Nomes (um por linha) dos arquivos da pasta <c>convenios-iniciais</c> já carregados na base.</summary>
+    public const string AssistantAgreementsSeeded = "assistant.agreementsSeeded";
 
     /// <summary>Marca da limpeza única que tirou o site "Teams" (fica só o aplicativo Microsoft Teams).</summary>
     public const string TeamsSiteRemoved = "items.teamsSiteRemoved";
@@ -336,6 +350,34 @@ public sealed class TextSetting
     public const string NexusUrl = "nexus.url";
     /// <summary>Token da Central no Nexus, cifrado como a chave da IA (ver <c>AssistantSecrets</c>).</summary>
     public const string NexusToken = "nexus.token";
+
+    // Margem liberada do SIAPE (ver <c>SiapeMargin</c>): a base do SQL Server na máquina da Kamila.
+    /// <summary>Servidor SQL, no formato IP,porta (ex.: 192.168.0.160,1433).</summary>
+    public const string SiapeServer = "siape.server";
+    public const string SiapeDatabase = "siape.database";
+    public const string SiapeUser = "siape.user";
+    /// <summary>Senha do login SQL, cifrada como a chave da IA.</summary>
+    public const string SiapePassword = "siape.password";
+    /// <summary>"1" liga a busca mensal; o padrão é desligada.</summary>
+    public const string SiapeEnabled = "siape.enabled";
+    /// <summary>"1" manda a mensagem ao cliente sem passar pela aprovação; o padrão é esperar aprovação.</summary>
+    public const string SiapeAutoSend = "siape.autoSend";
+    /// <summary>Dia do mês a partir do qual a busca roda (1 a 28).</summary>
+    public const string SiapeDay = "siape.day";
+    /// <summary>Quantas mensagens no máximo por mês.</summary>
+    public const string SiapeMax = "siape.max";
+    /// <summary>Valor liberado total mínimo (R$, coluna TOTAL_LIBERADO) para o servidor entrar; o dono pediu R$ 1.000.</summary>
+    public const string SiapeMinLiberado = "siape.minLiberado";
+    /// <summary>Nome da tabela do mês; vazio = automático (a mais nova com telefone e valor liberado).</summary>
+    public const string SiapeTable = "siape.table";
+    /// <summary>A linha de WhatsApp do CRM (bot_id) por onde as mensagens saem.</summary>
+    public const string SiapeBotId = "siape.botId";
+    /// <summary>Nome da atendente cujo jeito de escrever a IA imita; vazio = jeito geral da equipe.</summary>
+    public const string SiapeAttendant = "siape.attendant";
+    /// <summary>Quando a busca rodou por último e o que achou, para a tela.</summary>
+    public const string SiapeLastRun = "siape.lastRun";
+    /// <summary>"2026-12": o mês (de Brasília) em que a busca automática já rodou.</summary>
+    public const string SiapeLastMonth = "siape.lastMonth";
 
     public required string Key { get; set; }
     public string Value { get; set; } = "";
@@ -410,6 +452,21 @@ public sealed class AssistantScript
     public long FileSize { get; set; }
     public string FileStatus { get; set; } = "";
     public string FileError { get; set; } = "";
+
+    /// <summary>UF do convênio (GO, MT, MS, TO, DF...). Vazio quando o conhecimento não é de um convênio.</summary>
+    public string Uf { get; set; } = "";
+    /// <summary>
+    /// Posição de venda dentro do banco: 1 = o roteiro que mais vende, 2 o seguinte... 0 = sem ranking. Marcado à
+    /// mão pela gestão na Central Neural; é o que a IA usa quando a atendente pergunta "qual o melhor roteiro".
+    /// </summary>
+    public int SalesRank { get; set; }
+    /// <summary>De onde veio o ranking (ex.: "Nov/2026: 32 propostas pagas"). Vai para a IA junto do ranking.</summary>
+    public string SalesNote { get; set; } = "";
+    /// <summary>
+    /// Dados estruturados do convênio (prazo, margem, averbadora, idade x valor, arquivo no portal...), em JSON
+    /// de chave → texto. A Central Neural monta os cartões com eles; a IA lê a versão em texto no conteúdo.
+    /// </summary>
+    public string DetailsJson { get; set; } = "";
 }
 
 /// <summary>Ligação entre dois conhecimentos (ex.: um roteiro e o documento do banco). Não tem direção.</summary>

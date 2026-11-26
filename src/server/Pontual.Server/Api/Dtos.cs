@@ -38,7 +38,10 @@ public sealed record DeviceDto(
     bool ObservationMode,
     string TerminalVersion = "",
     bool StoreApps = false,
-    bool LightMode = false)
+    bool LightMode = false,
+    string Wallpaper = "",
+    bool SavePasswords = false,
+    bool WallpaperTile = false)
 {
     /// <summary>Sem sinal há mais de 45 segundos = fora do ar.</summary>
     public static readonly TimeSpan OfflineAfter = TimeSpan.FromSeconds(45);
@@ -68,7 +71,10 @@ public sealed record DeviceDto(
             device.ObservationMode,
             device.TerminalVersion,
             device.StoreApps,
-            device.LightMode);
+            device.LightMode,
+            device.Wallpaper,
+            device.SavePasswords,
+            device.WallpaperTile);
     }
 
     public static async Task<DeviceDto> LoadAsync(PontualDb db, Device device, DateTime now, CancellationToken ct)
@@ -114,12 +120,17 @@ public sealed record ConfigItemDto(Guid Id, string Name, string Kind, string Tar
 /// <param name="AppsAllowed">Aplicativos do computador (nome do .exe) que o TI liberou para esta máquina: abrem sem pedido.</param>
 /// <param name="AppsBlocked">Aplicativos do computador (nome do .exe) que o TI bloqueou para esta máquina: o Terminal não abre.</param>
 /// <param name="StoreApps">Aplicativos da Microsoft Store ligados: o Terminal mantém o Explorer escondido rodando (Terminal 2.13.0+).</param>
-/// <param name="LightMode">Modo leve, para computador fraco (Terminal 2.17.0+).</param>
+/// <param name="LightMode">Modo leve, para computador fraco (Terminal 2.16.1+).</param>
+/// <param name="Central">Marca dos arquivos da tela inicial nesta Central: quando muda, a página aberta no Terminal se recarrega.</param>
+/// <param name="WallpaperTile">Repetir o papel de parede como azulejo; falso = uma imagem só, cobrindo a tela.</param>
+/// <param name="Wallpaper">Papel de parede da tela inicial: marca da imagem atual (a tela busca em <c>/device/wallpaper</c>), ou nulo.</param>
 /// <param name="StayConnected">No modo leve, domínios (o do CRM) cuja aba nunca dorme; o WhatsApp o Terminal já reconhece sozinho.</param>
+/// <param name="SavePasswords">Cofre de senhas do navegador interno ligado para esta máquina (Terminal 2.16.2+).</param>
 public sealed record ConfigDto(long Version, string? AttendantName, bool ObservationMode, IReadOnlyList<ConfigItemDto> Items,
     IReadOnlyList<string> ChromeAllowed, IReadOnlyList<string> ChromeBlocked,
     IReadOnlyList<string> AppsAllowed, IReadOnlyList<string> AppsBlocked, bool StoreApps = false,
-    bool LightMode = false, IReadOnlyList<string>? StayConnected = null);
+    bool LightMode = false, IReadOnlyList<string>? StayConnected = null, string? Wallpaper = null,
+    bool SavePasswords = false, string? Central = null, bool WallpaperTile = false);
 
 /// <param name="Assistant">A assistente de IA está ligada para esta máquina (o terminal mostra o botão flutuante).</param>
 /// <param name="WhatsAppLearning">O terminal deve registrar as conversas do WhatsApp para a análise da assistente.</param>

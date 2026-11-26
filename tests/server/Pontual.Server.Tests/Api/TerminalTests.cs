@@ -267,6 +267,80 @@ public sealed class TerminalTests
     }
 
     [Fact]
+    public async Task Cofre_de_senhas_comeca_desligado_e_vale_so_no_computador_escolhido()
+    {
+        using var app = new TestApp();
+        var owner = await app.OwnerAsync();
+        var (deviceId, terminal) = await app.ApprovedDeviceAsync(owner, "PC-FERNANDA", "Fernanda");
+        var (_, other) = await app.ApprovedDeviceAsync(owner, "PC-02", "Ana");
+
+        Assert.False((await terminal.GetAsync("/api/v1/device/config").Json()).GetProperty("savePasswords").GetBoolean());
+
+        var device = await owner.PatchAsJsonAsync($"/api/v1/devices/{deviceId}", new { savePasswords = true }).Json();
+        Assert.True(device.GetProperty("savePasswords").GetBoolean());
+        Assert.Contains("ligou o cofre de senhas do navegador interno em Fernanda (PC-FERNANDA)", (await owner.GetAsync("/api/v1/audit").Json()).GetRawText());
+
+        Assert.True((await terminal.GetAsync("/api/v1/device/config").Json()).GetProperty("savePasswords").GetBoolean());
+        // Só o computador escolhido muda; os outros seguem com o cofre desligado.
+        Assert.False((await other.GetAsync("/api/v1/device/config").Json()).GetProperty("savePasswords").GetBoolean());
+
+        await owner.PatchAsJsonAsync($"/api/v1/devices/{deviceId}", new { savePasswords = false }).Json();
+        Assert.False((await terminal.GetAsync("/api/v1/device/config").Json()).GetProperty("savePasswords").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Papel_de_parede_vale_so_no_computador_escolhido_e_sai_quando_o_TI_tira()
+    {
+        using var app = new TestApp();
+        var owner = await app.OwnerAsync();
+        var (deviceId, terminal) = await app.ApprovedDeviceAsync(owner, "DESKTOP-PA635FG", "Bianca");
+        var (_, other) = await app.ApprovedDeviceAsync(owner, "PC-02", "Ana");
+
+        var first = await terminal.GetAsync("/api/v1/device/config").Json();
+        Assert.Equal(JsonValueKind.Null, first.GetProperty("wallpaper").ValueKind);
+        Assert.False(string.IsNullOrEmpty(first.GetProperty("central").GetString()));
+        Assert.Equal(HttpStatusCode.NotFound, (await terminal.GetAsync("/api/v1/device/wallpaper")).StatusCode);
+
+        // Só a extensão não basta: o cabeçalho do arquivo precisa ser de imagem.
+        Assert.Equal(HttpStatusCode.BadRequest, (await SendWallpaperAsync(owner, deviceId, "nota.txt", "texto"u8.ToArray())).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await SendWallpaperAsync(owner, deviceId, "falso.png", "texto puro"u8.ToArray())).StatusCode);
+
+        var png = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4 };
+        var device = await (await SendWallpaperAsync(owner, deviceId, "quebra-cabeça.png", png)).Json();
+        var mark = device.GetProperty("wallpaper").GetString();
+        Assert.EndsWith(".png", mark);
+        Assert.Contains("trocou o papel de parede de Bianca (DESKTOP-PA635FG)", (await owner.GetAsync("/api/v1/audit").Json()).GetRawText());
+
+        var withImage = await terminal.GetAsync("/api/v1/device/config").Json();
+        Assert.Equal(mark, withImage.GetProperty("wallpaper").GetString());
+        Assert.False(withImage.GetProperty("wallpaperTile").GetBoolean());
+        Assert.True((await owner.PatchAsJsonAsync($"/api/v1/devices/{deviceId}", new { wallpaperTile = true }).Json()).GetProperty("wallpaperTile").GetBoolean());
+        Assert.True((await terminal.GetAsync("/api/v1/device/config").Json()).GetProperty("wallpaperTile").GetBoolean());
+        var image = await terminal.GetAsync("/api/v1/device/wallpaper");
+        Assert.Equal(HttpStatusCode.OK, image.StatusCode);
+        Assert.Equal("image/png", image.Content.Headers.ContentType!.MediaType);
+        Assert.Equal(png, await image.Content.ReadAsByteArrayAsync());
+        Assert.Equal(png, await (await owner.GetAsync($"/api/v1/devices/{deviceId}/wallpaper")).Content.ReadAsByteArrayAsync());
+
+        // Os outros computadores não mudam.
+        Assert.Equal(JsonValueKind.Null, (await other.GetAsync("/api/v1/device/config").Json()).GetProperty("wallpaper").ValueKind);
+        Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync("/api/v1/device/wallpaper")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.DeleteAsync($"/api/v1/devices/{deviceId}/wallpaper")).StatusCode);
+        Assert.Equal(JsonValueKind.Null, (await terminal.GetAsync("/api/v1/device/config").Json()).GetProperty("wallpaper").ValueKind);
+        Assert.Equal(HttpStatusCode.NotFound, (await terminal.GetAsync("/api/v1/device/wallpaper")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.GetAsync($"/api/v1/devices/{deviceId}/wallpaper")).StatusCode);
+    }
+
+    private static Task<HttpResponseMessage> SendWallpaperAsync(HttpClient admin, Guid deviceId, string fileName, byte[] bytes)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Put, $"/api/v1/devices/{deviceId}/wallpaper") { Content = new ByteArrayContent(bytes) };
+        request.Headers.Add("X-File-Name", Uri.EscapeDataString(fileName));
+        request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+        return admin.SendAsync(request);
+    }
+
+    [Fact]
     public async Task Evento_app_failed_vai_para_o_historico_com_o_motivo_e_cria_um_alerta()
     {
         using var app = new TestApp();

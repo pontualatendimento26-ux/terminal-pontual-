@@ -148,11 +148,67 @@
       version: Number.isFinite(c && c.version) ? c.version : 0,
       attendantName: texto(c && c.attendantName, 120),
       observationMode: Boolean(c && c.observationMode),
+      // Papel de parede escolhido pelo TI (marca da imagem atual); a imagem vem de /device/wallpaper.
+      wallpaper: texto(c && c.wallpaper, 120),
+      central: texto(c && c.central, 40),
+      wallpaperTile: Boolean(c && c.wallpaperTile),
       items: itens.filter((i) => i && typeof i.id === 'string' && typeof i.name === 'string').map((i) => ({
         id: i.id, name: texto(i.name, 120), kind: i.kind === 'program' ? 'program' : 'site', target: texto(i.target, 2000),
         group: texto(i.group, 80) || GRUPOS[2], hosts: Array.isArray(i.hosts) ? i.hosts.filter((h) => typeof h === 'string') : [],
       })),
     };
+  }
+
+  // ------------------------------------------------------------ papel de parede
+  // O TI escolhe a imagem no painel do computador, na Central. A página busca com o token da máquina (um <img> ou
+  // CSS não mandam o cabeçalho) e usa o endereço temporário do arquivo. Uma imagem só cobre a tela; com a chave
+  // "repetir como azulejo" ligada na Central, a imagem repete (para padrões). Sem servidor (modo local) não há papel de parede.
+  let papelAtual = '', papelUrl = '';
+  async function aplicarPapel() {
+    // A marca inclui o modo: trocar entre imagem única e azulejo também reaplica.
+    const chave = S.config && S.config.wallpaper ? `${S.config.wallpaper}|${S.config.wallpaperTile ? 'azulejo' : 'unica'}` : '';
+    if (P.local || chave === papelAtual) return;
+    papelAtual = chave;
+    const app = $('app-at');
+    if (!chave) {
+      app.classList.remove('com-papel', 'papel-azulejo');
+      app.style.removeProperty('--papel');
+      if (papelUrl) { URL.revokeObjectURL(papelUrl); papelUrl = ''; }
+      return;
+    }
+    try {
+      const r = await fetch('/api/v1/device/wallpaper', { cache: 'no-store', credentials: 'omit', headers: { Authorization: `Bearer ${P.token}` }, signal: AbortSignal.timeout(20000) });
+      if (!r.ok) throw new ErroHttp(r.status);
+      const blob = await r.blob();
+      if (chave !== papelAtual) return;
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        if (chave !== papelAtual) { URL.revokeObjectURL(url); return; }
+        if (papelUrl) URL.revokeObjectURL(papelUrl);
+        papelUrl = url;
+        app.classList.toggle('papel-azulejo', chave.endsWith('|azulejo'));
+        app.style.setProperty('--papel', `url("${url}")`);
+        app.classList.add('com-papel');
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); papelAtual = ''; };
+      img.src = url;
+    } catch {
+      // Sem a imagem agora (rede caiu): tenta de novo na próxima configuração.
+      papelAtual = '';
+    }
+  }
+
+  // Esta página é carregada uma vez, quando o Terminal abre. Se a Central foi atualizada depois disso, a marca dos
+  // arquivos muda e a página se recarrega sozinha, para a atendente receber a tela nova sem reabrir o Terminal.
+  let marcaCentral = '';
+  function recarregarSeCentralMudou() {
+    const marca = (S.config && S.config.central) || '';
+    if (!marca) return false;
+    if (!marcaCentral) { marcaCentral = marca; return false; }
+    if (marca === marcaCentral) return false;
+    location.reload();
+    return true;
   }
 
   let buscandoConfig = false, tentarDeNovo = 0;
@@ -163,6 +219,8 @@
     try {
       S.config = lerConfig(await api('GET', '/device/config'));
       S.online = true;
+      if (recarregarSeCentralMudou()) return;
+      aplicarPapel();
       if (S.config.attendantName) S.nome = S.config.attendantName;
       if (!S.estado) S.estado = 'active';
     } catch (e) {

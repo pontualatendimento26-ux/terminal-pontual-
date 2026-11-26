@@ -12,6 +12,9 @@ ramo('system','Sistemas da Pontual',[['Sistema CRM',6],['Nexus',9]]);
 ramo('attendant','Atendentes',[['Atendentes PC',10],['Atendentes celular',5]]);
 ramo('suggestion','Aprendizado',[['Lacuna de conhecimento',11],['Informação nova',3],['Revisão',7]]);
 add('r:manual','ia','ramo','Manual de comunicação',{ramo:'manual'});add('m:manual','r:manual','manual','Comportamento',{ramo:'manual'});
+add('r:siape','ia','ramo','Margem liberada',{ramo:'siape',n:43});add('z:base','r:siape','siape','Base de margens do SIAPE (SQL)',{ramo:'siape'});
+ramoSiape();
+function ramoSiape(){const gs=[['g:siape:pending','Esperando aprovação',12,'pending'],['g:siape:sent','Enviadas este mês',30,'active']];for(const [g,rot,n,est] of gs){add(g,'r:siape','grupo',rot,{ramo:'siape',n});for(let i=0;i<n;i++)add('z:'+g+i,g,'siape','Servidor '+i,{ramo:'siape',estado:est});}}
 const m=new MapaNeural(document.getElementById('c'));m.setDados({nos});
 const modo=location.hash.slice(1);
 if(modo==='aberto') m.expandirTudo(); else if(modo==='sem') { m.alternar('g:knowledge0'); }

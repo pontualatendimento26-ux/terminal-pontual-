@@ -34,6 +34,7 @@
       <button type="button" data-ir="horarios"><i data-ic="relogio"></i><span>Horários da IA</span></button>
       <button type="button" data-ir="crm"><i data-ic="enviar"></i><span>Clientes do CRM</span></button>
       <button type="button" data-ir="nexus"><i data-ic="lupa"></i><span>Consulta no Nexus</span></button>
+      <button type="button" data-ir="siape"><i data-ic="raio"></i><span>Margem liberada</span><em class="alerta" id="n-siape" hidden></em></button>
       <button type="button" data-ir="base"><i data-ic="base"></i><span>Base de Conhecimento</span><em id="n-base"></em></button>
       <button type="button" data-ir="visao"><i data-ic="visao"></i><span>Visão Geral</span></button>
     </nav>
@@ -88,6 +89,7 @@
     <section class="vista rolagem" data-vista="aprovar" hidden><div class="conteudo" id="v-aprovar"></div></section>
     <section class="vista rolagem" data-vista="crm" hidden><div class="conteudo" id="v-crm"></div></section>
     <section class="vista rolagem" data-vista="nexus" hidden><div class="conteudo" id="v-nexus"></div></section>
+    <section class="vista rolagem" data-vista="siape" hidden><div class="conteudo" id="v-siape"></div></section>
     <section class="vista rolagem" data-vista="base" hidden><div class="conteudo" id="v-base"></div></section>
     <section class="vista rolagem" data-vista="visao" hidden><div class="conteudo" id="v-visao"></div></section>
 
@@ -106,7 +108,9 @@
     <label class="toda">Descrição<input class="campo" id="item-descricao" maxlength="500" autocomplete="off" placeholder="Uma frase sobre o que este conteúdo cobre"></label>
     <label>Banco ou assunto<input class="campo" id="item-banco" maxlength="80" autocomplete="off" list="lista-bancos" placeholder="Ex.: Safra"></label>
     <label>Categoria<input class="campo" id="item-categoria" maxlength="60" autocomplete="off" list="lista-categorias" placeholder="Ex.: Procedimentos"></label>
+    <label>UF do convênio (opcional)<input class="campo" id="item-uf" maxlength="2" autocomplete="off" placeholder="Ex.: GO" style="text-transform:uppercase"></label>
     <label class="toda">Palavras-chave<input class="campo" id="item-chaves" maxlength="300" autocomplete="off" placeholder="Separadas por vírgula. Ajudam a busca e o índice da IA"></label>
+    <details class="convenio" id="item-convenio-caixa"><summary>Dados do convênio (prazo, margem, averbadora, arquivo no portal…): montam o cartão da aba Roteiros</summary><div class="grade" id="item-convenio"></div></details>
     <label class="toda">Texto<textarea class="campo alto" id="item-texto" spellcheck="false" placeholder="O passo a passo, as regras, os documentos exigidos, os prazos."></textarea><span class="dica" id="item-conta"></span></label>
     <label class="toda">Instruções para a IA (opcional)<textarea class="campo" id="item-instrucoes" maxlength="2000" placeholder="Como a IA deve usar este conteúdo. Ex.: sempre confirmar a espécie do benefício antes de aplicar esta regra."></textarea></label>
     <label class="toda">Observações internas (opcional)<textarea class="campo" id="item-obs" maxlength="2000" placeholder="Só para a equipe. A IA não lê este campo."></textarea></label>
@@ -114,6 +118,15 @@
   <datalist id="lista-bancos"></datalist><datalist id="lista-categorias"></datalist>
   <p class="erro" id="item-erro" role="alert" hidden></p>
   <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn" id="item-salvar">Salvar</button></div>
+</form></dialog>
+
+<dialog id="dlg-ranking" aria-labelledby="rank-titulo"><form class="dlg" novalidate>
+  <h2 id="rank-titulo">Ranking de venda</h2><p id="rank-explica"></p>
+  <label>Posição de venda dentro do banco<select class="campo" id="rank-pos"></select></label>
+  <label>De onde veio o ranking (opcional)<input class="campo" id="rank-nota" maxlength="200" autocomplete="off" placeholder="Ex.: Nov/2026: 32 propostas pagas"></label>
+  <p class="nota">A IA passa a responder com esta ordem quando a atendente perguntar qual é o melhor roteiro do banco ou o que vende mais.</p>
+  <p class="erro" id="rank-erro" role="alert" hidden></p>
+  <div class="acoes"><button type="button" class="btn claro" data-fechar>Cancelar</button><button type="submit" class="btn">Salvar</button></div>
 </form></dialog>
 
 <dialog id="dlg-ligar" aria-labelledby="ligar-titulo"><form class="dlg" novalidate>
@@ -171,5 +184,8 @@
 
 <script src="/central/neural/mapa.js"></script>
 <script src="/central/neural/neural.js"></script>
+<script src="/central/neural/roteiros.js"></script>
+<script src="/central/neural/aprovar.js"></script>
+<script src="/central/neural/siape.js"></script>
 </body>
 </html>

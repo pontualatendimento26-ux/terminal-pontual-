@@ -55,7 +55,7 @@ public sealed class CrmTests
             object answer = path switch
             {
                 "/login" => new { success = true, token = "token-do-agente" },
-                "/api/sessions" => new object[] { new { id = "Kamila_4", canal_id = 4 }, new { id = "Pedro_7", canal_id = 7 } },
+                "/api/sessions" => new object[] { new { id = "Kamila_4", canal_id = 4 }, new { id = "Sarah_4", canal_id = 4 }, new { id = "Pedro_7", canal_id = 7 } },
                 "/api/chat/contacts" => new { success = true, chats = query["page"] == "1" ? Chats : [], temMais = false },
                 "/api/chat/messages" => new { success = true, messages = History.GetValueOrDefault($"{query["chatId"]}|{query["botId"]}", []) },
                 "/api/chat/send" => new { success = true },
@@ -292,6 +292,8 @@ public sealed class CrmTests
             funil = new { id = CrmAgent.TestFunnel },
         });
         await anonymous.PostAsJsonAsync(webhook, Aviso("71", "Vai dar pra fazer mesmo?"));
+        // Se a IA insiste em passar para alguém, a Central pede para reescrever (segunda decisão) e, insistindo, troca o texto.
+        model.Decisions.Enqueue(Decide("responder", approved));
         model.Decisions.Enqueue(Decide("responder", approved));
         await WriteAsync(app, "71");
         var pending = Assert.Single((await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray());
@@ -300,7 +302,100 @@ public sealed class CrmTests
         await anonymous.PostAsJsonAsync(webhook, Aviso("71", "E agora?"));
         model.Decisions.Enqueue(Decide("responder", "Já estou vendo aqui!"));
         await WriteAsync(app, "71");
-        Assert.Equal(becomesExample, model.Requests[1].Input.Contains("<respostas_aprovadas>"));
+        Assert.Equal(becomesExample, model.Requests[^1].Input.Contains("<respostas_aprovadas>"));
+    }
+
+    [Fact]
+    public async Task Resposta_que_passa_para_alguem_volta_para_a_ia_reescrever()
+    {
+        var (app, model, _, owner, webhook) = await SetupAsync();
+        using var _app = app;
+        var anonymous = app.CreateClient();
+        await anonymous.PostAsJsonAsync(webhook, Aviso("71", "Dá pra mandar um áudio pra mim que eu não sei ler não."));
+        model.Decisions.Enqueue(Decide("responder", "Claro! Vou pedir para a atendente gravar um áudio e te enviar por aqui."));
+        model.Decisions.Enqueue(Decide("humano", "Claro! Vou verificar e te retorno por aqui, tudo bem?", "O cliente pediu áudio."));
+        await WriteAsync(app, "71");
+
+        Assert.Equal(2, model.Requests.Count);
+        Assert.Contains("<resposta_recusada>", model.Requests[1].Input);
+        var pending = Assert.Single((await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray());
+        Assert.Equal("Claro! Vou verificar e te retorno por aqui, tudo bem?", pending.GetProperty("reply").GetString());
+        Assert.Equal(CrmAgent.Human, pending.GetProperty("decision").GetString());
+    }
+
+    [Fact]
+    public async Task Resposta_que_insiste_em_passar_para_alguem_vira_o_texto_padrao()
+    {
+        var (app, model, _, owner, webhook) = await SetupAsync();
+        using var _app = app;
+        var anonymous = app.CreateClient();
+        await anonymous.PostAsJsonAsync(webhook, Aviso("71", "Dá pra mandar um áudio?"));
+        model.Decisions.Enqueue(Decide("responder", "Vou pedir para a atendente gravar um áudio.", "Pediu áudio."));
+        model.Decisions.Enqueue(Decide("responder", "Vou chamar a equipe para gravar o áudio."));
+        await WriteAsync(app, "71");
+
+        var pending = Assert.Single((await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray());
+        Assert.Equal(CrmAgent.AssumeReturn, pending.GetProperty("reply").GetString());
+        Assert.Equal(CrmAgent.Human, pending.GetProperty("decision").GetString());
+        Assert.StartsWith("Pediu áudio.", pending.GetProperty("reason").GetString());
+    }
+
+    [Fact]
+    public async Task Ia_continua_a_conversa_do_cliente_perdido_que_ela_retomou()
+    {
+        var (app, model, _, owner, webhook) = await SetupAsync();
+        using var _app = app;
+        var anonymous = app.CreateClient();
+
+        // Fora do funil de teste e sem atendente ausente: a IA não escreveria...
+        await anonymous.PostAsJsonAsync(webhook, Aviso("90", "Oi, e aí?", funil: "4"));
+        await WriteAsync(app, "90");
+        Assert.Empty(model.Requests);
+
+        // ...mas este cliente ela já retomou pela busca de perdidos (mesmo telefone), então segue a conversa como a dona dele.
+        await using (var scope = app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PontualDb>();
+            db.CrmReplies.Add(new CrmReply
+            {
+                Id = Guid.NewGuid(), ConversationId = "5561999990000@c.us|Sarah_4", Kind = CrmLost.Kind, Phone = "5561999990000", Attendant = "Sarah Nathalie",
+                Reply = "Desculpa a demora! Me manda seu CPF?", Draft = "Desculpa a demora! Me manda seu CPF?", Decision = CrmAgent.Answer,
+                Status = CrmReplyStatus.Sent, SentAt = DateTime.UtcNow.AddMinutes(-30), ReviewedByName = "Paulo", Incoming = "Quero simular",
+                CreatedAt = DateTime.UtcNow.AddMinutes(-31), UpdatedAt = DateTime.UtcNow.AddMinutes(-30),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await anonymous.PostAsJsonAsync(webhook, Aviso("90", "Meu CPF é 123", funil: "4"));
+        model.Decisions.Enqueue(Decide("responder", "Recebi, já vou simular!"));
+        await WriteAsync(app, "90");
+
+        var pending = Assert.Single((await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray());
+        Assert.Equal("Recebi, já vou simular!", pending.GetProperty("reply").GetString());
+        Assert.Equal("Sarah Nathalie", pending.GetProperty("attendant").GetString());
+    }
+
+    [Fact]
+    public async Task Resposta_antiga_na_fila_que_passa_para_alguem_e_trocada_ao_abrir_a_tela()
+    {
+        var (app, _, _, owner, _) = await SetupAsync();
+        using var _app = app;
+        await using (var scope = app.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PontualDb>();
+            db.CrmReplies.Add(new CrmReply
+            {
+                Id = Guid.NewGuid(), ConversationId = "x|Sarah_4", Kind = CrmLost.Kind, Phone = "5561999990000", Attendant = "Sarah Nathalie",
+                Reply = "Claro! Vou pedir para a Sarah gravar um áudio e te enviar por aqui.", Draft = "Claro! Vou pedir para a Sarah gravar um áudio e te enviar por aqui.",
+                Decision = CrmAgent.Answer, Reason = "Pediu áudio.", Status = CrmReplyStatus.Pending, Incoming = "Manda áudio",
+                CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var pending = Assert.Single((await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray());
+        Assert.Equal(CrmAgent.AssumeReturn, pending.GetProperty("reply").GetString());
+        Assert.Equal(CrmAgent.Human, pending.GetProperty("decision").GetString());
     }
 
     private static readonly TimeZoneInfo Brasilia = TimeZoneInfo.FindSystemTimeZoneById(OperatingSystem.IsWindows() ? "E. South America Standard Time" : "America/Sao_Paulo");
@@ -445,6 +540,71 @@ public sealed class CrmTests
     }
 
     [Fact]
+    public async Task Cliente_com_varias_linhas_aparece_uma_vez_e_o_ja_respondido_nao_volta()
+    {
+        var (app, model, crm, owner, _) = await SetupAsync();
+        using var _app = app;
+        var now = DateTime.UtcNow;
+        DateTime Br(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(utc, Brasilia);
+        var dez = now.AddDays(-10);
+        var tres = now.AddDays(-3);
+        object Chat(string id, params object[] canais) => new { chat_id = $"{id}@c.us", name = id, last_message_at = tres.ToString("O"), canais };
+        async Task<List<string?>> Lista() => (await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending").EnumerateArray().Select(p => p.GetProperty("phone").GetString()).ToList();
+
+        crm.Chats =
+        [
+            // Duas linhas do funil, as duas sem resposta: um cartão só, da conversa mais recente.
+            Chat("1", Canal("Kamila_4", Br(dez), false, "A1"), Canal("Sarah_4", Br(tres), false, "A2"), Canal("rcs_pontual", Br(now.AddDays(-2)), false, "R")),
+            // Sem resposta há 10 dias numa linha, mas a Pontual respondeu por outra há 3: não é perdido.
+            Chat("2", Canal("Kamila_4", Br(dez), false, "B1"), Canal("Sarah_4", Br(tres), true, "B2")),
+            // Seguiu por uma linha de outro funil: não é deste funil.
+            Chat("3", Canal("Kamila_4", Br(dez), false, "C1"), Canal("Pedro_7", Br(tres), false, "C2")),
+        ];
+        crm.History["1@c.us|Kamila_4"] = [Msg("A1", dez, false, "Oi?")];
+        crm.History["1@c.us|Sarah_4"] = [Msg("A2", tres, false, "Consegue simular?")];
+        crm.History["2@c.us|Kamila_4"] = [Msg("B1", dez, false, "Oi?")];
+        crm.History["3@c.us|Kamila_4"] = [Msg("C1", dez, false, "Oi?")];
+        model.Decisions.Enqueue(Decide("responder", "Oi!"));
+        await owner.PostAsync("/api/v1/neural/crm/lost/scan", null);
+        Assert.Equal(["1"], await Lista());
+        Assert.Contains("Consegue simular?", Assert.Single(model.Requests).Input);
+
+        // Fila antiga com repetidos: o 1 outra vez, por uma conversa velha, e o 9, que já recebeu resposta por uma conversa mais nova.
+        CrmReply Velha(string id, string wpp, DateTime espera, string status, DateTime? enviada = null) => new()
+        {
+            Id = Guid.NewGuid(), Kind = CrmLost.Kind, ConversationId = $"{id}@c.us|Kamila_4", ChatId = $"{id}@c.us", BotId = "Kamila_4", LastWppId = wpp, Phone = id, Contact = id,
+            Incoming = "x", Transcript = "x", Reply = "x", WaitingSince = espera, Status = status, SentAt = enviada, CreatedAt = now, UpdatedAt = now,
+        };
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PontualDb>();
+            db.CrmReplies.AddRange(Velha("1", "A1", dez, CrmReplyStatus.Pending), Velha("9", "Z1", dez, CrmReplyStatus.Pending),
+                Velha("9", "Z2", tres, CrmReplyStatus.Sent, now), Velha("8", "Y1", tres, CrmReplyStatus.Pending));
+            await db.SaveChangesAsync();
+        }
+
+        // O 8 já foi respondido pela atendente no CRM.
+        crm.History["8@c.us|Kamila_4"] = [Msg("Y1", tres, false, "Oi?"), Msg("Y2", now, true, "Oi!", "Kamila Oliveira Borges")];
+        crm.History["9@c.us|Kamila_4"] = [Msg("Z1", dez, false, "Oi?")];
+        Assert.Equal(4, (await Lista()).Count);
+        await owner.PostAsync("/api/v1/neural/crm/lost/scan", null);
+        Assert.Equal(["1"], await Lista());
+        Assert.Single(model.Requests);
+    }
+
+    [Fact]
+    public async Task Trocar_as_datas_ja_filtra_a_lista_sem_usar_a_ia()
+    {
+        var (app, model, _, owner, _) = await SetupAsync();
+        using var _app = app;
+        var hoje = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Brasilia).Date;
+        var saved = await (await owner.PutAsJsonAsync("/api/v1/neural/crm/lost/period", new { from = hoje.AddDays(-5).ToString("yyyy-MM-dd"), to = hoje.AddDays(-2).ToString("yyyy-MM-dd") })).Json();
+        Assert.Equal(hoje.AddDays(-5).ToString("yyyy-MM-dd"), saved.GetProperty("lostPeriod").GetProperty("from").GetString());
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync("/api/v1/neural/crm/lost/period", new { from = hoje.ToString("yyyy-MM-dd") })).StatusCode);
+        Assert.Empty(model.Requests);
+    }
+
+    [Fact]
     public async Task Com_periodo_escolhido_so_entram_e_so_aparecem_clientes_daquelas_datas()
     {
         var (app, model, crm, owner, _) = await SetupAsync();
@@ -523,7 +683,7 @@ public sealed class CrmTests
         var anonymous = app.CreateClient();
 
         await anonymous.PostAsJsonAsync(webhook, Aviso("5", "Qual o valor que libera?"));
-        model.Decisions.Enqueue(Decide("humano", "Vou chamar uma especialista para te ajudar.", "valor depende de consulta"));
+        model.Decisions.Enqueue(Decide("humano", "Vou verificar o valor e te retorno por aqui.", "valor depende de consulta"));
         await WriteAsync(app, "5");
         var id = (await owner.GetAsync("/api/v1/neural/crm").Json()).GetProperty("pending")[0].GetProperty("id").GetString();
 

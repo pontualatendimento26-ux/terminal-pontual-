@@ -8,9 +8,12 @@
 //   estado: 'active' | 'disabled' | 'pending' | 'error'
 'use strict';
 
+// Raio do núcleo (o "cérebro" do centro). Grande o bastante para continuar visível com o zoom bem reduzido.
+const NUCLEO_R = 180;
+
 const MAPA_CORES = {
   nucleo: '#4fd8ff', script: '#4fd8ff', document: '#5b8cff', knowledge: '#9b8cff', system: '#ffd76a',
-  attendant: '#3ddc97', suggestion: '#ffb454', manual: '#ff8fb8', erro: '#ff6b7d',
+  attendant: '#3ddc97', suggestion: '#ffb454', manual: '#ff8fb8', siape: '#7be0d6', erro: '#ff6b7d',
 };
 
 class MapaNeural {
@@ -33,7 +36,7 @@ class MapaNeural {
     this.calmo = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.tempo = 0;
     this.primeiraVez = true;
-    this.esfera = this.montarEsfera(110);
+    this.esfera = this.montarEsfera(240);
 
     this.ligarEventos();
     this.observador = new ResizeObserver(() => this.redimensionar());
@@ -97,7 +100,7 @@ class MapaNeural {
     // Cada nó abre o que tem para fora: pontas numa coluna, grupos num arco.
     // O núcleo reparte a volta em fatias (maiores para ramos com mais coisa) e põe cada ramo perto dele;
     // os grupos de um ramo abrem só dentro da fatia dele. A conferência de colisão, mais abaixo, afasta só o que encostar.
-    const raioDe = (no) => (no.tipo === 'nucleo' ? 62 : no.tipo === 'ramo' ? 24 : no.tipo === 'grupo' ? 14 : no.tipo === 'attendant' ? 11 : 8.5);
+    const raioDe = (no) => (no.tipo === 'nucleo' ? NUCLEO_R : no.tipo === 'ramo' ? 24 : no.tipo === 'grupo' ? 14 : no.tipo === 'attendant' ? 11 : 8.5);
     const pontas = (no) => { const fs = mostrados(no); return fs.length ? fs.reduce((s, f) => s + pontas(f), 0) : 1; };
     const medir = (no, abre = Math.PI) => {
       no.r = raioDe(no);
@@ -112,7 +115,7 @@ class MapaNeural {
         let t = 0;
         fs.forEach((f, i) => {
           medir(f, Math.min(Math.max(fatias[i] * 1.6, 1.2), Math.PI * 1.15));
-          no.plano.push({ f, d: 380 * (f.multAnel || 1), t: t + fatias[i] / 2 - fatias[0] / 2 });
+          no.plano.push({ f, d: (NUCLEO_R + 320) * (f.multAnel || 1), t: t + fatias[i] / 2 - fatias[0] / 2 });
           t += fatias[i];
         });
         no.C = Math.max(...no.plano.map((item) => item.d + item.f.C));
@@ -250,7 +253,7 @@ class MapaNeural {
 
   lerPosicoes() {
     try {
-      const lido = JSON.parse(localStorage.getItem('neural.mapa.posicoes.v3') || '{}');
+      const lido = JSON.parse(localStorage.getItem('neural.mapa.posicoes.v4') || '{}');
       return lido && typeof lido === 'object' && !Array.isArray(lido) ? lido : {};
     } catch { return {}; }
   }
@@ -258,7 +261,7 @@ class MapaNeural {
   guardarPosicoes() {
     this.posicoes = {};
     for (const no of this.nos.values()) if (no.dx || no.dy || no.giro) this.posicoes[no.id] = [Math.round(no.dx), Math.round(no.dy), Math.round((no.giro || 0) * 1000) / 1000];
-    try { localStorage.setItem('neural.mapa.posicoes.v3', JSON.stringify(this.posicoes)); } catch { /* sem armazenamento: vale só até recarregar */ }
+    try { localStorage.setItem('neural.mapa.posicoes.v4', JSON.stringify(this.posicoes)); } catch { /* sem armazenamento: vale só até recarregar */ }
   }
 
   // Desfaz os arrastos: cada círculo volta ao lugar calculado, e o mapa é enquadrado.
@@ -295,7 +298,7 @@ class MapaNeural {
 
   ajustar(naHora = false) {
     if (!this.visiveis.length) return;
-    let minX = -120, maxX = 120, minY = -120, maxY = 120;
+    let minX = -(NUCLEO_R + 60), maxX = NUCLEO_R + 60, minY = -(NUCLEO_R + 60), maxY = NUCLEO_R + 60;
     for (const no of this.visiveis) { minX = Math.min(minX, no.tx); maxX = Math.max(maxX, no.tx); minY = Math.min(minY, no.ty); maxY = Math.max(maxY, no.ty); }
     const folga = 150;
     const z = Math.min(this.largura / (maxX - minX + folga * 2), this.altura / (maxY - minY + folga * 2));
@@ -611,13 +614,14 @@ class MapaNeural {
   }
 
   desenharNucleo() {
-    const { ctx } = this, t = this.tempo, R = 62, cor = MAPA_CORES.nucleo;
+    const { ctx } = this, t = this.tempo, R = NUCLEO_R, cor = MAPA_CORES.nucleo, z = this.cam.z;
+    const minimo = (v) => Math.max(v, v / Math.max(z, 0.05) * 0.55);   // traço nunca fica mais fino que ~metade de um pixel de tela
     const escolhido = this.sel === 'ia' || this.sobre === 'ia';
     ctx.drawImage(this.brilho(cor), -R * 3.4, -R * 3.4, R * 6.8, R * 6.8);
     ctx.drawImage(this.brilho('#9b8cff'), -R * 2.2, -R * 2.2, R * 4.4, R * 4.4);
 
     // Anéis que giram em velocidades e sentidos diferentes.
-    const aneis = [[R + 14, 0.00022, [46, 14], 1.4, 0.75], [R + 26, -0.00013, [4, 9], 1, 0.5], [R + 40, 0.00007, [90, 60], 1, 0.3]];
+    const aneis = [[R + 24, 0.00022, [80, 24], minimo(2), 0.75], [R + 46, -0.00013, [6, 14], minimo(1.5), 0.5], [R + 70, 0.00007, [160, 100], minimo(1.3), 0.3]];
     for (const [raio, vel, traco, largura, alfa] of aneis) {
       ctx.save(); ctx.rotate(t * vel);
       ctx.beginPath(); ctx.arc(0, 0, raio, 0, Math.PI * 2);
@@ -627,14 +631,14 @@ class MapaNeural {
     ctx.setLineDash([]);
 
     // Esfera de pontos: gira no eixo vertical, levemente inclinada.
-    const giro = t * 0.00028, inclina = 0.42, raio = R - 10;
+    const giro = t * 0.00028, inclina = 0.42, raio = R - 20;
     const cg = Math.cos(giro), sg = Math.sin(giro), ci = Math.cos(inclina), si = Math.sin(inclina);
     const proj = this.esfera.pontos.map((p) => {
       const x = p.x * cg + p.z * sg, z1 = -p.x * sg + p.z * cg;
       const y = p.y * ci - z1 * si, zf = p.y * si + z1 * ci;
       return { x: x * raio, y: y * raio, z: zf };
     });
-    ctx.lineWidth = 0.7;
+    ctx.lineWidth = minimo(1);
     for (const [a, b] of this.esfera.elos) {
       const pa = proj[a], pb = proj[b], fundo = (pa.z + pb.z) / 2;
       ctx.globalAlpha = 0.1 + (fundo + 1) * 0.2;
@@ -644,13 +648,13 @@ class MapaNeural {
     for (const p of proj) {
       ctx.globalAlpha = 0.25 + (p.z + 1) * 0.375;
       ctx.fillStyle = p.z > 0.2 ? '#e8fbff' : cor;
-      ctx.beginPath(); ctx.arc(p.x, p.y, 0.9 + (p.z + 1) * 0.7, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, minimo(1.4 + (p.z + 1) * 1.1), 0, Math.PI * 2); ctx.fill();
     }
     // Batimento do centro.
     const bate = this.calmo ? 0.5 : (Math.sin(t * 0.0021) + 1) / 2;
-    const miolo = ctx.createRadialGradient(0, 0, 0, 0, 0, 20 + bate * 6);
+    const miolo = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.34 + bate * 8);
     miolo.addColorStop(0, 'rgba(232, 251, 255, 0.9)'); miolo.addColorStop(0.4, 'rgba(79, 216, 255, 0.35)'); miolo.addColorStop(1, 'rgba(79, 216, 255, 0)');
-    ctx.globalAlpha = 0.75; ctx.fillStyle = miolo; ctx.beginPath(); ctx.arc(0, 0, 26 + bate * 6, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.75; ctx.fillStyle = miolo; ctx.beginPath(); ctx.arc(0, 0, R * 0.42 + bate * 8, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1;
   }
 }

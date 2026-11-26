@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Pontual.Domain.Authorization;
@@ -22,7 +22,8 @@ public static class NeuralEndpoints
 
     private sealed record ItemBody(
         string? Kind, string? Title, string? Description, string? Category, string? Bank, string? Keywords,
-        string? Content, string? AiInstructions, string? Notes, bool? Enabled, bool? StaffOnly);
+        string? Content, string? AiInstructions, string? Notes, bool? Enabled, bool? StaffOnly,
+        string? Uf, int? SalesRank, string? SalesNote, Dictionary<string, string?>? Details);
     private sealed record LinkBody(Guid? From, Guid? To);
     private sealed record SuggestionBody(string? Title, string? Detail, string? ProposedContent, string? Bank, string? Category);
     private sealed record ApproveBody(string? CreateKind, Guid? ItemId, string? Title, string? Content, string? Bank, string? Category, string? Description);
@@ -78,6 +79,10 @@ public static class NeuralEndpoints
         fileSize = s.FileSize,
         fileStatus = s.FileStatus,
         fileError = s.FileError,
+        uf = s.Uf,
+        salesRank = s.SalesRank,
+        salesNote = s.SalesNote,
+        details = Agreements.Parse(s.DetailsJson),
     };
 
     private static async Task<IResult> OverviewAsync(PontualDb db, IConfiguration configuration, TimeProvider time, CancellationToken ct)
@@ -91,6 +96,7 @@ public static class NeuralEndpoints
                 keywords = s.Keywords, enabled = s.Enabled, staffOnly = s.StaffOnly, chars = s.Content.Length, createdAt = s.CreatedAt, updatedAt = s.UpdatedAt,
                 updatedBy = s.UpdatedByName, source = s.Source, fileName = s.FileName, fileSize = s.FileSize,
                 fileStatus = s.FileStatus, fileError = s.FileError, hasInstructions = s.AiInstructions != "",
+                uf = s.Uf, salesRank = s.SalesRank, salesNote = s.SalesNote, detailsJson = s.DetailsJson,
             })
             .ToListAsync(ct);
         var links = await db.KnowledgeLinks.AsNoTracking().Select(l => new { id = l.Id, from = l.FromId, to = l.ToId }).ToListAsync(ct);
@@ -126,6 +132,14 @@ public static class NeuralEndpoints
 
         var settings = await db.TextSettings.AsNoTracking().ToDictionaryAsync(s => s.Key, s => s.Value, ct);
         var enabledChars = items.Where(i => i.enabled).Sum(i => (long)i.chars);
+
+        // Margem liberada do SIAPE: as mensagens do mês (de Brasília), para o ramo do mapa.
+        var local = TimeZoneInfo.ConvertTimeFromUtc(now, AssistantPrompt.BrazilTime);
+        var monthStart = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(new DateTime(local.Year, local.Month, 1), DateTimeKind.Unspecified), AssistantPrompt.BrazilTime);
+        var siapeMonth = await db.CrmReplies.AsNoTracking().Where(r => r.Kind == SiapeMargin.Kind && r.CreatedAt >= monthStart).OrderByDescending(r => r.CreatedAt).Take(300)
+            .Select(r => new { id = r.Id, contact = r.Contact, phone = r.Phone, status = r.Status, reply = r.Reply, incoming = r.Incoming, reason = r.Reason, error = r.Error, createdAt = r.CreatedAt, sentAt = r.SentAt })
+            .ToListAsync(ct);
+        var siapeSettings = SiapeMargin.Settings.From(settings);
 
         return Results.Ok(new
         {
@@ -187,6 +201,14 @@ public static class NeuralEndpoints
                 manual = settings.GetValueOrDefault(TextSetting.AssistantInstructions, ""),
             },
             limits = new { item = KnowledgeLimits.Item, upload = KnowledgeLimits.Upload, extensions = DocumentText.Extensions, title = MaxTitle, manual = AssistantEndpoints.MaxGeneralInstructions },
+            siape = new
+            {
+                configured = SiapeMargin.Access(settings) is not null,
+                enabled = siapeSettings.Enabled,
+                autoSend = siapeSettings.AutoSend,
+                table = siapeSettings.Table,
+                month = siapeMonth,
+            },
         });
     }
 
@@ -379,6 +401,37 @@ public static class NeuralEndpoints
         if (body.StaffOnly is { } staffOnly)
         {
             item.StaffOnly = staffOnly;
+        }
+
+        if (body.Uf is not null)
+        {
+            var uf = Input.Clean(body.Uf).ToUpperInvariant();
+            if (uf.Length > 0 && (uf.Length != 2 || !uf.All(char.IsAsciiLetterUpper)))
+            {
+                throw ApiError.BadRequest("A UF tem duas letras (ex.: GO, MT, MS, TO, DF).");
+            }
+
+            item.Uf = uf;
+        }
+
+        if (body.SalesRank is { } rank)
+        {
+            if (rank is < 0 or > Agreements.MaxRank)
+            {
+                throw ApiError.BadRequest($"O ranking de venda vai de 1 (mais vendido) a {Agreements.MaxRank}; 0 tira o roteiro do ranking.");
+            }
+
+            item.SalesRank = rank;
+        }
+
+        if (body.SalesNote is not null)
+        {
+            item.SalesNote = Optional(body.SalesNote, "origem do ranking", Agreements.MaxNote);
+        }
+
+        if (body.Details is not null)
+        {
+            item.DetailsJson = Agreements.Normalize(body.Details);
         }
 
         if (item.Content.Length == 0)

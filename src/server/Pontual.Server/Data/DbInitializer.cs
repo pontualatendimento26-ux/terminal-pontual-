@@ -1,11 +1,11 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Pontual.Domain.Audit;
 using Pontual.Server.Api;
 using Pontual.Server.Assistant;
 
 namespace Pontual.Server.Data;
 
-public static class DbInitializer
+public static partial class DbInitializer
 {
     private const string Banks = "Bancos e promotoras";
     private const string Communication = "Comunicação";
@@ -344,6 +344,7 @@ public static class DbInitializer
         await AddMissingColumnsAsync(db, "CrmReplies");
         await SeedScriptsAsync(db, scope.ServiceProvider);
         await SeedSystemsAsync(db, scope.ServiceProvider);
+        await SeedAgreementsAsync(db, scope.ServiceProvider);
 
         if (!await db.Settings.AnyAsync(s => s.Key == Setting.ConfigVersion))
         {

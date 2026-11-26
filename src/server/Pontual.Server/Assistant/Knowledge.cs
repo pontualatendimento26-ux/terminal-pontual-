@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using System.Xml;
@@ -128,7 +128,7 @@ public static class KnowledgeText
         var hits = new List<Hit>();
         foreach (var item in items)
         {
-            var head = Fold($"{item.Title} {item.Bank} {item.Category} {item.Keywords} {item.Description}");
+            var head = Fold($"{item.Title} {item.Bank} {item.Category} {item.Uf} {item.Keywords} {item.Description}");
             var parts = Parts(item.Content);
             Hit? best = null;
             for (var p = 0; p < parts.Count; p++)

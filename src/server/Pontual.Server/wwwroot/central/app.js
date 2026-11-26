@@ -281,6 +281,23 @@ function textoDaNota(conteudo) {
 
 // Executa uma ação do administrador: bloqueia o botão, recarrega o que mudou,
 // redesenha e mostra a confirmação (ou o erro do servidor) na linha de recado.
+/** Papel de parede de um computador: a imagem vai no corpo, com o nome no cabeçalho (como os documentos da Central Neural). */
+async function enviarPapelDeParede(id, arquivo) {
+  let resposta;
+  try {
+    resposta = await fetch(`/api/v1/devices/${encodeURIComponent(id)}/wallpaper`, { method: 'PUT', credentials: 'same-origin',
+      headers: { Accept: 'application/json', 'X-Pontual': '1', 'X-File-Name': encodeURIComponent(arquivo.name), 'Content-Type': 'application/octet-stream' }, body: arquivo });
+  } catch {
+    marcarConexao(false);
+    throw new ErroApi(0, 'Sem conexão com o servidor. Tente de novo em instantes.');
+  }
+  marcarConexao(true);
+  let dados = null;
+  try { dados = await resposta.json(); } catch { dados = null; }
+  if (resposta.ok) return dados;
+  throw new ErroApi(resposta.status, (dados && dados.error) || (resposta.status === 413 ? 'A imagem é grande demais.' : `O servidor respondeu com o erro ${resposta.status}.`));
+}
+
 async function agir(botao, fazer, { recarregar = [], ok = '' } = {}) {
   if (botao) botao.disabled = true;
   try {
@@ -1285,16 +1302,61 @@ function desenharGaveta() {
           ? 'Ligado: o Terminal mantém o Explorer do Windows rodando escondido (sem barra de tarefas e sem Iniciar), que é o que o Windows exige para abrir a Microsoft Store, as Notas Autoadesivas, a Calculadora e os outros aplicativos da Loja. O resultado de cada tentativa aparece no histórico do computador.'
           : 'Desligado: os aplicativos da Microsoft Store não abrem neste computador, porque o bloqueio troca a área de trabalho do Windows pelo Terminal. Precisa do Terminal 2.13.0 ou mais novo.' })));
 
-      // Modo leve, para computador fraco (Terminal 2.17.0 ou mais novo; o celular não tem).
+      // Modo leve, para computador fraco (Terminal 2.16.1 ou mais novo; o celular não tem).
       if (!ehCelular(d)) {
+        // Cofre de senhas do navegador interno (Terminal dedicado a uma atendente; Terminal 2.16.2 ou mais novo).
+        const cofre = d.savePasswords === true;
+        const chaveCofre = el('button', { type: 'button', className: 'interruptor', role: 'switch', 'aria-checked': String(cofre), 'aria-labelledby': 'cofre-titulo', 'aria-describedby': 'cofre-texto', disabled: !pode('devices.manage'), 'data-k': 'cofre' });
+        chaveCofre.onclick = () => agir(chaveCofre, () => api('PATCH', `/devices/${encodeURIComponent(d.id)}`, { savePasswords: !cofre }),
+          { recarregar: ['devices'], ok: cofre ? 'Cofre de senhas desligado neste computador.' : 'Cofre de senhas ligado neste computador. Vale na próxima vez que a atendente abrir um site.' });
+        corpo.push(el('div', { className: 'obs' }, el('strong', { id: 'cofre-titulo', textContent: 'Cofre de senhas do navegador interno' }), chaveCofre,
+          el('p', { id: 'cofre-texto', textContent: cofre
+            ? 'Ligado: o navegador interno do Terminal passa a oferecer guardar a senha e a preencher sozinho nos sites, como o Chrome faz, só que no perfil próprio do Terminal. A atendente entra uma vez em cada site e manda salvar; nas próximas já vem preenchido. As senhas ficam só neste computador, no perfil do Terminal, e não vêm do Chrome dela.'
+            : 'Desligado: o navegador interno não guarda senha nem preenche sozinho (padrão). Ligue só no computador de uma atendente que queira que o Terminal lembre as senhas dos sites. Precisa do Terminal 2.16.2 ou mais novo.' })));
+
         const leve = d.lightMode === true;
         const chaveLeve = el('button', { type: 'button', className: 'interruptor', role: 'switch', 'aria-checked': String(leve), 'aria-labelledby': 'leve-titulo', 'aria-describedby': 'leve-texto', disabled: !pode('devices.manage'), 'data-k': 'leve' });
         chaveLeve.onclick = () => agir(chaveLeve, () => api('PATCH', `/devices/${encodeURIComponent(d.id)}`, { lightMode: !leve }),
           { recarregar: ['devices'], ok: leve ? 'Modo leve desligado neste computador.' : 'Modo leve ligado neste computador. As abas e as vigias mudam em até 15 segundos; a gravação, em até 2 minutos.' });
         corpo.push(el('div', { className: 'obs' }, el('strong', { id: 'leve-titulo', textContent: 'Modo leve (computador fraco)' }), chaveLeve,
           el('p', { id: 'leve-texto', textContent: leve
-            ? 'Ligado: a gravação fica menor (1280 pontos, um quadro a cada 2 segundos) e os sites parados há 10 minutos dormem e acordam no clique. WhatsApp e CRM nunca dormem: só liberam memória e continuam recebendo mensagens. Os navegadores são conferidos a cada 10 segundos, então um site bloqueado pode aparecer por alguns segundos a mais.'
-            : 'Desligado: o Terminal trabalha normalmente. Ligue só em computador lento. Precisa do Terminal 2.17.0 ou mais novo.' })));
+            ? 'Ligado: a gravação fica menor (1280 pontos, um quadro a cada 2 segundos) e os sites parados há 10 minutos dormem e acordam no clique (um site que se atualiza sozinho pode precisar ser fechado e aberto de novo). WhatsApp e CRM nunca dormem: só liberam memória e continuam recebendo mensagens. Os navegadores são conferidos a cada 10 segundos, então um site bloqueado pode aparecer por alguns segundos a mais.'
+            : 'Desligado: o Terminal trabalha normalmente. Ligue só em computador lento. Precisa do Terminal 2.16.1 ou mais novo.' })));
+
+        // Papel de parede da tela inicial (pedido do dono, 26/11/2026). A tela inicial vem desta Central: vale em qualquer versão do Terminal.
+        const papel = texto(d.wallpaper, 120);
+        const caixaPapel = el('div', { className: 'obs papel' }, el('strong', { id: 'papel-titulo', textContent: 'Papel de parede da tela inicial' }));
+        const acoesPapel = el('div', { className: 'acoes junto' });
+        if (pode('devices.manage')) {
+          const entrada = el('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', hidden: true, 'aria-hidden': 'true', tabIndex: -1 });
+          const escolher = el('button', { type: 'button', className: 'btn claro p', 'data-k': 'papel-escolher', textContent: papel ? 'Trocar a imagem' : 'Escolher uma imagem' });
+          escolher.onclick = () => { entrada.value = ''; entrada.click(); };
+          entrada.onchange = async () => {
+            const arquivo = entrada.files && entrada.files[0];
+            if (!arquivo) return;
+            if (arquivo.size > 8 * 1024 * 1024) { recado('A imagem passa de 8 MB. Escolha uma menor.', true); return; }
+            await agir(escolher, () => enviarPapelDeParede(d.id, arquivo), { recarregar: ['devices'], ok: `Papel de parede enviado. A tela inicial de ${primeiro(nome)} muda em até 15 segundos.` });
+          };
+          acoesPapel.append(escolher, entrada);
+          if (papel) {
+            const tirar = el('button', { type: 'button', className: 'btn claro p', 'data-k': 'papel-tirar', textContent: 'Tirar' });
+            tirar.onclick = () => agir(tirar, () => api('DELETE', `/devices/${encodeURIComponent(d.id)}/wallpaper`), { recarregar: ['devices'], ok: `Papel de parede tirado. A tela inicial de ${primeiro(nome)} volta ao normal em até 15 segundos.` });
+            acoesPapel.append(tirar);
+          }
+        }
+        caixaPapel.append(acoesPapel);
+        if (papel) caixaPapel.append(el('img', { className: 'amostra', src: `/api/v1/devices/${encodeURIComponent(d.id)}/wallpaper?v=${encodeURIComponent(papel)}`, alt: `Papel de parede atual de ${primeiro(nome)}` }));
+        if (papel) {
+          const azulejo = d.wallpaperTile === true;
+          const chaveAzulejo = el('button', { type: 'button', className: 'interruptor', role: 'switch', 'aria-checked': String(azulejo), 'aria-labelledby': 'azulejo-titulo', disabled: !pode('devices.manage'), 'data-k': 'papel-azulejo' });
+          chaveAzulejo.onclick = () => agir(chaveAzulejo, () => api('PATCH', `/devices/${encodeURIComponent(d.id)}`, { wallpaperTile: !azulejo }),
+            { recarregar: ['devices'], ok: azulejo ? 'A imagem passa a cobrir a tela inteira, uma vez só.' : 'A imagem passa a repetir como azulejo.' });
+          caixaPapel.append(el('div', { className: 'linha-chave' }, el('span', { id: 'azulejo-titulo', textContent: 'Repetir como azulejo (para padrões pequenos)' }), chaveAzulejo));
+        }
+        caixaPapel.append(el('p', { id: 'papel-texto', textContent: papel
+          ? 'A tela inicial do Terminal mostra esta imagem de fundo, uma vez só, cobrindo a tela. Ligue "Repetir como azulejo" só para um padrão pequeno que deva se repetir.'
+          : 'A tela inicial do Terminal fica branca. Envie uma imagem PNG, JPG ou WEBP de até 8 MB para ficar de fundo neste computador.' }));
+        corpo.push(caixaPapel);
       }
     }
     corpo.push(el('p', { className: 'aviso-linha' }, ic('lock', 18), 'Você vê o status e os aplicativos em uso. A tela pode ser vista ao vivo, em "Ver a tela", e fica gravada por 3 meses, em "Gravações". A barra do Terminal avisa a atendente, e cada abertura fica na auditoria. O que ela digita não é registrado.'));

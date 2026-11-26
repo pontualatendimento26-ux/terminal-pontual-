@@ -30,7 +30,7 @@ public static class AssistantEndpoints
     private const int MaxScript = 60_000;
     private const int MaxAllScripts = KnowledgeLimits.All;
     private const int MaxProfileInstructions = 4000;
-    internal const int MaxGeneralInstructions = 8000;
+    internal const int MaxGeneralInstructions = 30_000;
     private const int MaxScripts = KnowledgeLimits.Items;
     private const int MaxFeedback = 2000;
 

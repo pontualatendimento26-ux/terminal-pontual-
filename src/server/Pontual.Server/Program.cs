@@ -1,4 +1,4 @@
-using System.Threading.RateLimiting;
+﻿using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Pontual.Domain.Authorization;
@@ -50,6 +50,9 @@ builder.Services.AddSingleton<CrmQueue>();
 builder.Services.AddSingleton(services => new Pontual.Server.Assistant.CrmClient(services.GetRequiredService<TimeProvider>()));
 builder.Services.AddHostedService<CrmWorker>();
 builder.Services.AddHostedService<Pontual.Server.Assistant.CrmLostWorker>();
+// Margem liberada do SIAPE: todo mês a Central lê a base no SQL da Kamila, a IA escreve e a mensagem sai pelo CRM.
+builder.Services.AddSingleton<Pontual.Server.Assistant.ISiapeSource, Pontual.Server.Assistant.SqlSiapeSource>();
+builder.Services.AddHostedService<Pontual.Server.Assistant.SiapeMarginWorker>();
 // Consulta de CPF no Nexus pelo chat da IA (a Central chama a API de integração do Nexus).
 builder.Services.AddSingleton(services => new Pontual.Server.Assistant.NexusClient(services.GetRequiredService<TimeProvider>()));
 builder.Services.AddSingleton<IPasswordHasher<Admin>, PasswordHasher<Admin>>();
@@ -248,6 +251,7 @@ var api = app.MapGroup("/api/v1");
 api.MapGet("/health", () => Results.Ok(new { ok = true, version = "1.0.0" }));
 AccountEndpoints.Map(api);
 DeviceEndpoints.Map(api);
+WallpaperEndpoints.Map(api);
 ItemEndpoints.Map(api);
 MonitorEndpoints.Map(api);
 TerminalEndpoints.Map(api);
@@ -260,6 +264,7 @@ NeuralEndpoints.Map(api);
 CoverageEndpoints.Map(api);
 CrmEndpoints.Map(api);
 NexusEndpoints.Map(api);
+SiapeEndpoints.Map(api);
 ChromeEndpoints.Map(api);
 AppEndpoints.Map(api);
 

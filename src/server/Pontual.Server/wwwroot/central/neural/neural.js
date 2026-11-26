@@ -75,6 +75,7 @@ const TIPOS = {
   system: { um: 'Aprendizado sobre os sistemas', varios: 'Sistemas da Pontual', cor: MAPA_CORES.system },
   attendant: { um: 'Atendente', varios: 'Atendentes', cor: MAPA_CORES.attendant },
   suggestion: { um: 'Sugestão pendente', varios: 'Aprendizado', cor: MAPA_CORES.suggestion },
+  siape: { um: 'Margem liberada', varios: 'Margem liberada (SIAPE)', cor: MAPA_CORES.siape },
   manual: { um: 'Manual de comunicação', varios: 'Manual de comunicação', cor: MAPA_CORES.manual },
 };
 const SUGESTOES = { correction: 'Correção de atendente', gap: 'Lacuna de conhecimento', new_info: 'Informação nova', review: 'Conteúdo a revisar' };
@@ -85,13 +86,14 @@ const ESTADOS = { active: 'Ativo', disabled: 'Desativado', pending: 'Aguardando 
 const estadoDe = (i) => (i.enabled ? 'active' : i.fileStatus === 'no_text' ? 'pending' : 'disabled');
 const VISTAS = {
   mapa: ['Cérebro Neural', 'Tudo o que alimenta a IA da Pontual e como se conecta.'],
-  roteiros: ['Roteiros', 'Os roteiros operacionais que a IA segue para responder.'],
+  roteiros: ['Roteiros', 'Os roteiros de cada banco e convênio, com o ranking do que mais vende: é isso que a IA responde quando perguntam qual é o melhor roteiro.'],
   documentos: ['Documentos', 'PDF, DOCX, TXT e planilhas (XLSX, CSV): o texto é extraído e entra na base.'],
   aprendizado: ['Aprendizado das atendentes', 'O que as conversas ensinam. Nada vira fonte oficial sem a sua aprovação.'],
   horarios: ['Horários da IA', 'Os dias e os horários em que a IA pode atender os clientes no lugar de cada atendente.'],
   aprovar: ['Mensagens para aprovar', 'As respostas que a IA escreveu para os clientes do CRM, separadas por atendente. Tudo o que você aprova vira exemplo para a IA.'],
   crm: ['Clientes do CRM', 'A IA escreve a resposta para os clientes do sistema interno; nada vai ao cliente sem a sua aprovação.'],
   nexus: ['Consulta no Nexus', 'A atendente manda o CPF no chat da IA e vê em qual banco o cliente passa, pelo roteiro do Nexus.'],
+  siape: ['Margem liberada (SIAPE)', 'Todo mês a Central lê a base de margens do SIAPE, a IA escreve para quem ganhou margem e a mensagem sai pelo CRM depois de aprovada.'],
   base: ['Base de Conhecimento', 'Tudo o que a IA possui, em um só lugar.'],
   visao: ['Visão Geral', 'Os números reais do cérebro da IA.'],
 };
@@ -202,7 +204,7 @@ function desenhar() {
 
   E.mapa.setDados(grafo());
   desenharFiltrosMapa();
-  if (E.vista === 'roteiros') desenharLista('roteiros');
+  if (E.vista === 'roteiros') desenharRoteiros();
   else if (E.vista === 'documentos') desenharLista('documentos');
   else if (E.vista === 'base') desenharLista('base');
   else if (E.vista === 'aprendizado') desenharAprendizado();
@@ -210,6 +212,7 @@ function desenhar() {
   else if (E.vista === 'crm') desenharCrm();
   else if (E.vista === 'aprovar') desenharAprovar();
   else if (E.vista === 'nexus') desenharNexus();
+  else if (E.vista === 'siape') desenharSiape();
   else if (E.vista === 'visao') desenharVisao();
 }
 
@@ -250,6 +253,16 @@ function grafo() {
   const manual = Boolean(d.settings.manual);
   nos.push({ id: 'r:manual', pai: 'ia', tipo: 'ramo', ramo: 'manual', rotulo: 'Manual de comunicação', n: manual ? 1 : 0 });
   nos.push({ id: 'm:manual', pai: 'r:manual', tipo: 'manual', ramo: 'manual', rotulo: 'Comportamento e comunicação com o cliente', estado: manual ? 'active' : 'disabled' });
+  // Margem liberada do SIAPE: a base no SQL e as mensagens que a IA escreveu neste mês, por situação.
+  const sp = d.siape || { month: [] }, mes = sp.month || [];
+  nos.push({ id: 'r:siape', pai: 'ia', tipo: 'ramo', ramo: 'siape', rotulo: 'Margem liberada', n: mes.length + 1 });
+  nos.push({ id: 'z:base', pai: 'r:siape', tipo: 'siape', ramo: 'siape', rotulo: 'Base de margens do SIAPE (SQL)', estado: sp.configured ? (sp.enabled ? 'active' : 'pending') : 'disabled' });
+  const grupoDe = (m) => (m.status === 'pending' || m.status === 'failed' ? 'pending' : m.status === 'sent' ? 'sent' : 'other');
+  for (const [g, rotulo] of [['pending', 'Esperando aprovação'], ['sent', 'Enviadas este mês'], ['other', 'Recusadas e outras']]) {
+    const n = mes.filter((m) => grupoDe(m) === g).length;
+    if (n) nos.push({ id: `g:siape:${g}`, pai: 'r:siape', tipo: 'grupo', ramo: 'siape', rotulo, n });
+  }
+  for (const m of mes) nos.push({ id: `z:${m.id}`, pai: `g:siape:${grupoDe(m)}`, tipo: 'siape', ramo: 'siape', rotulo: m.contact || m.phone, estado: grupoDe(m) === 'pending' ? 'pending' : grupoDe(m) === 'sent' ? 'active' : 'disabled', novo: grupoDe(m) === 'sent' && recente(m.sentAt) });
   return { nos, ligacoes: d.links.map((l) => ({ a: l.from, b: l.to })) };
 }
 
@@ -263,7 +276,7 @@ function aplicarFiltroMapa() {
 }
 
 function desenharFiltrosMapa() {
-  const d = E.d, contagem = { script: itensDe('script').length, document: itensDe('document').length, knowledge: itensDe('knowledge').length, system: itensDe('system').length, attendant: d.attendants.length, suggestion: d.suggestions.pending, manual: d.settings.manual ? 1 : 0 };
+  const d = E.d, contagem = { script: itensDe('script').length, document: itensDe('document').length, knowledge: itensDe('knowledge').length, system: itensDe('system').length, attendant: d.attendants.length, suggestion: d.suggestions.pending, manual: d.settings.manual ? 1 : 0, siape: (d.siape?.month || []).length };
   const chips = Object.keys(contagem).map((tipo) => {
     const b = el('button', { type: 'button', className: 'filtro', style: `--c:${TIPOS[tipo].cor}`, 'aria-pressed': String(!E.ocultos.has(tipo)), title: `Mostrar ou esconder: ${TIPOS[tipo].varios}` },
       el('i'), tipo === 'suggestion' ? 'Sugestões pendentes' : TIPOS[tipo].varios, el('b', { textContent: mil(contagem[tipo]) }));
@@ -298,6 +311,7 @@ function dicaDoNo(no, x, y) {
   else if (no.tipo === 'attendant') linhas.push('Atendente', no.estado === 'active' ? 'Perfil montado pela IA' : no.estado === 'pending' ? 'Tem conversas ainda sem análise' : 'Ainda sem conversas para analisar');
   else if (no.tipo === 'suggestion') linhas.push('Sugestão pendente de aprovação');
   else if (no.tipo === 'manual') linhas.push('Como a IA se comporta e escreve para o cliente', no.estado === 'active' ? 'Escrito e em uso em toda resposta' : 'Ainda não escrito');
+  else if (no.tipo === 'siape') linhas.push(no.id === 'z:base' ? 'A base de margens no SQL Server da Kamila' : 'Mensagem de margem liberada', no.id === 'z:base' ? (no.estado === 'active' ? 'Ligada: a busca roda todo mês' : no.estado === 'pending' ? 'Configurada, busca mensal desligada' : 'Ligação ainda não configurada') : no.estado === 'pending' ? 'Esperando aprovação' : no.estado === 'active' ? 'Enviada pelo CRM' : 'Recusada ou não enviada');
   else linhas.push(`${TIPOS[no.tipo].um}${no.sub ? ` · ${no.sub}` : ''}`, `${ESTADOS[no.estado] || ''}${no.novo ? ' · atualizado nos últimos 7 dias' : ''}`);
   dica.replaceChildren(el('b', { textContent: no.rotulo }), ...linhas.filter(Boolean).map((l) => el('span', { textContent: l })));
   dica.hidden = false;
@@ -314,6 +328,7 @@ function aoSelecionarNo(no) {
   else if (no.tipo === 'attendant') gavetaAtendente(no.id.slice(2));
   else if (no.tipo === 'suggestion') gavetaSugestao(no.id.slice(2));
   else if (no.tipo === 'manual') gavetaManual();
+  else if (no.tipo === 'siape') gavetaMargem(no.id.slice(2));
   else gavetaItem(no.id);
 }
 
@@ -371,13 +386,39 @@ function gavetaRamo(no) {
   if (novo) { acao = botao(novo === 'document' ? 'Enviar documento' : `Novo ${TIPOS[novo].um.toLowerCase()}`, novo === 'document' ? 'enviar' : 'mais', 'btn mini'); acao.onclick = () => (novo === 'document' ? escolherArquivo(null) : abrirFormulario(null, novo)); }
   if (no.id === 'r:suggestion') { acao = botao('Abrir o aprendizado', 'aprender', 'btn mini'); acao.onclick = () => ir('aprendizado'); }
   if (no.id === 'r:manual') { acao = botao(E.d.settings.manual ? 'Editar o manual' : 'Escrever o manual', 'editar', 'btn mini'); acao.onclick = abrirManual; }
-  const vazios = { 'r:script': 'Nenhum roteiro cadastrado.', 'r:document': 'Nenhum documento enviado ainda.', 'r:knowledge': 'Nenhum conhecimento operacional cadastrado ainda.', 'r:system': 'Nenhum aprendizado sobre os sistemas da Pontual ainda. Cole aqui o resumo de como funciona cada sistema (Terminal, Central, IA) para a IA saber explicar.', 'r:attendant': 'Nenhuma máquina aprovada ainda.', 'r:suggestion': 'Nenhuma sugestão pendente. Elas aparecem quando uma atendente corrige uma resposta ou quando a IA analisa as conversas.', 'r:manual': 'O manual ainda não foi escrito.' };
+  if (no.id === 'r:siape' || no.id.startsWith('g:siape:')) { acao = botao(no.id === 'g:siape:pending' ? 'Aprovar as mensagens' : 'Abrir Margem liberada', 'raio', 'btn mini'); acao.onclick = () => ir(no.id === 'g:siape:pending' ? 'aprovar' : 'siape'); }
+  const vazios = { 'r:script': 'Nenhum roteiro cadastrado.', 'r:document': 'Nenhum documento enviado ainda.', 'r:knowledge': 'Nenhum conhecimento operacional cadastrado ainda.', 'r:system': 'Nenhum aprendizado sobre os sistemas da Pontual ainda. Cole aqui o resumo de como funciona cada sistema (Terminal, Central, IA) para a IA saber explicar.', 'r:attendant': 'Nenhuma máquina aprovada ainda.', 'r:suggestion': 'Nenhuma sugestão pendente. Elas aparecem quando uma atendente corrige uma resposta ou quando a IA analisa as conversas.', 'r:manual': 'O manual ainda não foi escrito.', 'r:siape': 'Nenhuma mensagem de margem liberada neste mês.' };
   gaveta(no.id,
     topoGaveta(selo(`${no.ramo} liso`, no.tipo === 'ramo' ? 'Ramo' : 'Grupo')),
     el('h2', { textContent: no.rotulo }),
     el('p', { className: 'frase', textContent: plural(no.n ?? filhos.length, 'item', 'itens') }),
     acao ? el('div', { className: 'botoes' }, acao) : null,
     lista.length ? el('div', { className: 'lista-simples' }, ...lista) : el('p', { className: 'nota', textContent: vazios[no.id] || 'Nada aqui com os filtros atuais.' }));
+}
+
+// Uma mensagem de margem liberada do SIAPE (ou a própria base): o resumo e o atalho para a aba.
+function gavetaMargem(id) {
+  const sp = E.d.siape || { month: [] };
+  const abrir = botao('Abrir Margem liberada', 'raio', 'btn mini'); abrir.onclick = () => ir('siape');
+  if (id === 'base') {
+    gaveta('z:base', topoGaveta(selo('siape liso', 'Base')), el('h2', { textContent: 'Base de margens do SIAPE' }),
+      el('p', { className: 'frase', textContent: 'O SQL Server da Kamila com a base de margens dos servidores federais. Todo mês a Central lê a base nova, compara com a anterior e a IA escreve para quem ganhou margem.' }),
+      el('dl', { className: 'dados' }, dado('Ligação', sp.configured ? 'Configurada' : 'Não configurada'), dado('Busca mensal', sp.enabled ? 'Ligada' : 'Desligada'), dado('Envio', sp.autoSend ? 'Direto, sem aprovação' : 'Com aprovação'), dado('Base do mês', sp.table || 'Automática (a mais nova com telefone)'), dado('Mensagens neste mês', mil(sp.month.length))),
+      el('div', { className: 'botoes' }, abrir));
+    return;
+  }
+  const m = sp.month.find((x) => x.id === id);
+  if (!m) { fecharGaveta(); return; }
+  const [rotulo, classe] = SITUACAO_CRM[m.status] || [m.status, 'liso'];
+  const aprovar = botao('Aprovar na fila', 'balao', 'btn mini'); aprovar.onclick = () => ir('aprovar');
+  gaveta(`z:${id}`, topoGaveta(selo('siape liso', 'Margem liberada'), selo(classe, rotulo)), el('h2', { textContent: m.contact || m.phone }),
+    el('p', { className: 'frase', textContent: m.phone }),
+    el('dl', { className: 'dados' }, dado('Escrita', quando(m.createdAt)), dado('Enviada', m.sentAt ? quando(m.sentAt) : 'Ainda não')),
+    secao('Dados da base do SIAPE', el('p', { className: 'citacao', style: 'white-space:pre-wrap', textContent: m.incoming })),
+    m.reply ? secao('Mensagem da IA', el('p', { className: 'citacao', style: 'white-space:pre-wrap', textContent: m.reply })) : null,
+    m.reason ? el('p', { className: 'nota', textContent: `Motivo da IA: ${m.reason}` }) : null,
+    m.error ? el('p', { className: 'erro', textContent: m.error }) : null,
+    el('div', { className: 'botoes' }, m.status === 'pending' || m.status === 'failed' ? aprovar : null, abrir));
 }
 
 async function gavetaItem(id) {
@@ -400,7 +441,8 @@ async function gavetaItem(id) {
   const abrir = botao('Abrir o texto', 'abrir'); abrir.disabled = !c.content;
   abrir.onclick = () => { $('texto-titulo').textContent = i.title; $('texto-sub').textContent = `${mil(c.content.length)} caracteres${c.parts > 1 ? `, lidos pela IA em ${c.parts} partes no modo índice` : ''}.`; $('texto-corpo').textContent = c.content; $('dlg-texto').showModal(); };
   const excluir = botao('Excluir', 'lixo'); excluir.onclick = () => excluirItem(i);
-  const botoes = [editar, abrir, ligar];
+  const ranking = botao(i.salesRank > 0 ? 'Ranking de venda' : 'Marcar venda', 'raio'); ranking.onclick = () => abrirRanking(i);
+  const botoes = [editar, abrir, ligar, ranking];
   if (i.kind === 'document') {
     const trocar = botao('Atualizar arquivo', 'enviar'); trocar.onclick = () => escolherArquivo(id);
     botoes.push(trocar);
@@ -416,7 +458,7 @@ async function gavetaItem(id) {
   const vinculos = ['script', 'document', 'knowledge', 'system'].map((tipo) => { const linhas = porTipo(tipo); return linhas.length ? secao(`${TIPOS[tipo].varios} vinculados`, el('div', { className: 'lista-simples' }, ...linhas)) : null; });
 
   gaveta(id,
-    topoGaveta(selo(i.kind, TIPOS[i.kind].um), selo(estado, ESTADOS[estado]), recente(i.updatedAt) ? selo('liso', 'Atualizado há pouco') : null),
+    topoGaveta(selo(i.kind, TIPOS[i.kind].um), selo(estado, ESTADOS[estado]), i.salesRank > 0 ? selo('system liso', rotuloRank(i.salesRank)) : null, recente(i.updatedAt) ? selo('liso', 'Atualizado há pouco') : null),
     el('h2', { textContent: i.title }),
     i.description ? el('p', { className: 'frase', textContent: i.description }) : null,
     el('div', { className: 'linha-opcao' }, el('div', {}, el('b', { textContent: i.enabled ? 'Em uso pela IA' : 'Fora de uso' }), el('small', { textContent: c.content ? 'Desligue para guardar sem a IA usar.' : 'Sem texto, não há o que a IA ler.' })), chave),
@@ -424,12 +466,14 @@ async function gavetaItem(id) {
     i.fileStatus === 'no_text' ? el('p', { className: 'aviso', textContent: i.fileError }) : null,
     el('dl', { className: 'dados' },
       dado('Banco ou assunto', i.bank), dado('Categoria', i.category),
+      dado('UF', i.uf), dado('Ranking de venda', textoRanking(i)),
       dado('Origem', ORIGENS[i.source] || i.source), dado('Tamanho', `${mil(i.chars)} caracteres`),
       dado('Criado em', quando(i.createdAt)), dado('Atualizado', `${quando(i.updatedAt)}${i.updatedBy ? `, por ${i.updatedBy}` : ''}`),
       i.fileName ? dado('Arquivo', `${i.fileName} (${tamanho(i.fileSize)})`) : null,
       i.fileName ? dado('Processamento', { processed: 'Texto extraído', no_text: 'Sem texto: aguardando leitor', error: 'Erro na leitura' }[i.fileStatus] || '—') : null),
     el('div', { className: 'botoes' }, ...botoes),
     i.keywords ? secao('Palavras-chave', el('div', { className: 'marcas' }, ...i.keywords.split(',').map((p) => p.trim()).filter(Boolean).map((p) => el('span', { textContent: p })))) : null,
+    ...secoesConvenio(i),
     c.aiInstructions ? secao('Instruções para a IA', el('p', { className: 'frase', textContent: c.aiInstructions })) : null,
     c.content ? secao('Conteúdo', el('div', { className: `trecho${c.content.length > 900 ? ' cortado' : ''}`, textContent: c.content.slice(0, 900) })) : null,
     ...vinculos,
@@ -716,6 +760,7 @@ function abrirFormulario(completo, tipo = 'script') {
   $('item-status').value = i && !i.enabled ? '0' : '1';
   $('item-nome').value = i ? i.title : ''; $('item-descricao').value = i ? i.description : '';
   $('item-banco').value = i ? i.bank : ''; $('item-categoria').value = i ? i.category : ''; $('item-chaves').value = i ? i.keywords : '';
+  $('item-uf').value = i ? (i.uf || '') : ''; pintarConvenio(i ? i.details : null);
   $('item-texto').value = completo ? completo.content : ''; $('item-instrucoes').value = completo ? completo.aiInstructions : ''; $('item-obs').value = completo ? completo.notes : '';
   $('item-erro').hidden = true;
   contar($('item-texto'), $('item-conta'), E.d.limits.item);
@@ -780,7 +825,7 @@ aoEnviar('dlg-item', 'item-erro', async () => {
   const corpo = {
     title: $('item-nome').value.trim(), description: $('item-descricao').value.trim(), bank: $('item-banco').value.trim(), category: $('item-categoria').value.trim(),
     keywords: $('item-chaves').value.trim(), content: $('item-texto').value.trim(), aiInstructions: $('item-instrucoes').value.trim(), notes: $('item-obs').value.trim(),
-    enabled: $('item-status').value === '1',
+    enabled: $('item-status').value === '1', uf: $('item-uf').value.trim().toUpperCase(), details: lerConvenio(),
   };
   if (!i || i.kind !== 'document') corpo.kind = $('item-tipo').value;
   exigir(corpo.title, 'Informe o nome.');
@@ -1233,7 +1278,7 @@ document.addEventListener('keydown', (e) => {
 const SITUACAO_CRM = {
   pending: ['Esperando aprovação', 'pending'], failed: ['Não enviada', 'error'], sent: ['Enviada', 'active'],
   rejected: ['Recusada', 'disabled'], human: ['Passada para atendente', 'active'], skipped: ['Não pedia resposta', 'disabled'],
-  outdated: ['Substituída por outra', 'disabled'],
+  outdated: ['Saiu da fila', 'disabled'],
 };
 const DECISAO_CRM = { responder: 'A IA sugere responder', humano: 'A IA sugere passar para uma atendente', nada: 'Não precisa responder' };
 E.crm = null; E.crmTextos = new Map(); E.crmPara = new Map(); E.crmUsuarios = null; E.abertos = new Map();
@@ -1248,6 +1293,8 @@ async function carregarCrm() {
   try { E.crm = await api('GET', '/neural/crm'); } catch (e) { if (E.vista === 'crm') recado(e.message, true); return; }
   const n = E.crm.pending.length;
   $('n-aprovar').textContent = mil(n); $('n-aprovar').hidden = !n;
+  const margem = E.crm.pending.filter((r) => r.kind === 'margem').length;
+  $('n-siape').textContent = mil(margem); $('n-siape').hidden = !margem;
   // Não redesenha com alguém escrevendo: perderia o cursor.
   const ativo = document.activeElement;
   const editando = (id) => ativo && $(id).contains(ativo) && ['TEXTAREA', 'INPUT', 'SELECT'].includes(ativo.tagName);
@@ -1309,12 +1356,23 @@ function cartaoPerdidos(c) {
   E.perdidosDe ??= c.lostPeriod?.from || dia(15); E.perdidosAte ??= c.lostPeriod?.to || dia(1);
   const de = el('input', { type: 'date', className: 'campo', value: E.perdidosDe, min: dia(60), max: dia(0), style: 'width:auto;color-scheme:dark', 'aria-label': 'Data de início da busca' });
   const ate = el('input', { type: 'date', className: 'campo', value: E.perdidosAte, min: dia(60), max: dia(0), style: 'width:auto;color-scheme:dark', 'aria-label': 'Data de fim da busca' });
-  de.onchange = () => { E.perdidosDe = de.value; };
-  ate.onchange = () => { E.perdidosAte = ate.value; };
+  // Trocar a data já filtra a lista (espera a pessoa terminar de digitar; não busca nem gasta IA).
+  const trocou = () => {
+    E.perdidosDe = de.value; E.perdidosAte = ate.value;
+    clearTimeout(E.perdidosEspera);
+    if (!de.value || !ate.value || !de.validity.valid || !ate.validity.valid || de.value > ate.value) return;
+    E.perdidosEspera = setTimeout(() => {
+      if (document.activeElement === de || document.activeElement === ate) document.activeElement.blur();
+      agirCrm(null, () => api('PUT', '/neural/crm/lost/period', { from: de.value, to: ate.value }), `Mostrando só os clientes de ${diaMes(de.value)} a ${diaMes(ate.value)}.`);
+    }, 1200);
+  };
+  de.onchange = trocou;
+  ate.onchange = trocou;
   const agora = botao('Buscar neste período', null, 'btn mini');
   agora.title = 'Procura os clientes que escreveram por último entre as duas datas e ficaram sem resposta. Cada conversa lida usa a IA (no máximo 25 por busca).';
   agora.onclick = async () => {
     if (!de.value || !ate.value) { recado('Preencha a data de início e a data de fim.', true); return; }
+    clearTimeout(E.perdidosEspera);
     if (de.value > ate.value) { recado('A data de início precisa ser antes da data de fim.', true); return; }
     agora.disabled = true; agora.textContent = 'Buscando… (pode levar alguns minutos)';
     try { const r = await api('POST', '/neural/crm/lost/scan', { from: de.value, to: ate.value }); recado(r.message); }
@@ -1426,7 +1484,7 @@ function cartaoCrm(r, editavel) {
   const nome = r.contact || r.phone || `Conversa ${r.conversationId}`;
   const partes = [
     el('header', {}, selo(classe, rotulo), r.kind === 'perdido' ? selo('pending', 'Cliente perdido') : null, el('b', { textContent: nome }), r.attendant ? el('small', { textContent: `Atendente: ${r.attendant}` }) : null,
-      r.waitingSince ? el('small', { textContent: `sem resposta desde ${quando(r.waitingSince)}` }) : null, r.contact && r.phone ? el('small', { textContent: r.phone }) : null, el('small', { textContent: r.sentAt ? `enviada: ${quando(r.sentAt)}` : `IA escreveu: ${quando(r.createdAt)}` })),
+      r.contact && r.phone ? el('small', { textContent: r.phone }) : null, r.sentAt ? el('small', { textContent: `enviada ${quando(r.sentAt)}` }) : r.waitingSince ? el('small', { textContent: `sem resposta desde ${quando(r.waitingSince)}` }) : el('small', { textContent: quando(r.createdAt) })),
     el('div', { className: 'citacao' }, el('b', { textContent: 'Cliente escreveu' }), r.incoming),
   ];
   if (editavel) {

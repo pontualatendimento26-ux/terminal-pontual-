@@ -406,7 +406,7 @@ public static class RecordingEndpoints
 
     /// <summary>
     /// Como o Terminal grava: 1 quadro por segundo, até 1920 pixels de largura, qualidade 50, trechos de 60 s.
-    /// No modo leve do computador: até 1280 pixels e 1 quadro a cada 2 s (FrameSeconds; Terminal anterior à 2.17.0 ignora).
+    /// No modo leve do computador: até 1280 pixels e 1 quadro a cada 2 s (FrameSeconds; Terminal anterior à 2.16.1 ignora).
     /// </summary>
     public sealed record Policy(bool Record, int Fps, int MaxWidth, int Quality, int SegmentSeconds, int StartMinute, int EndMinute, int FrameSeconds = 1);
 

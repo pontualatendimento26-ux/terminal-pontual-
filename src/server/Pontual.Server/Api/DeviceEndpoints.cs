@@ -10,7 +10,7 @@ public static class DeviceEndpoints
     private static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(30);
 
     private sealed record ApproveBody(string? AttendantName);
-    private sealed record PatchBody(string? AttendantName, bool? ObservationMode, bool? StoreApps = null, bool? LightMode = null);
+    private sealed record PatchBody(string? AttendantName, bool? ObservationMode, bool? StoreApps = null, bool? LightMode = null, bool? SavePasswords = null, bool? WallpaperTile = null);
     private sealed record MaintenanceBody(string? Reason, int? Minutes);
 
     public static void Map(RouteGroupBuilder api)
@@ -118,6 +118,18 @@ public static class DeviceEndpoints
             changes.Add($"{(light ? "ligou" : "desligou")} o modo leve em {device.Label}");
         }
 
+        if (body.SavePasswords is { } vault && vault != device.SavePasswords)
+        {
+            device.SavePasswords = vault;
+            changes.Add($"{(vault ? "ligou" : "desligou")} o cofre de senhas do navegador interno em {device.Label}");
+        }
+
+        if (body.WallpaperTile is { } tile && tile != device.WallpaperTile)
+        {
+            device.WallpaperTile = tile;
+            changes.Add($"{(tile ? "ligou" : "desligou")} a repetição do papel de parede em {device.Label}");
+        }
+
         if (changes.Count > 0)
         {
             await audit.SaveAsync(db, AuditInfo.By(admin, "device.update",
@@ -132,6 +144,7 @@ public static class DeviceEndpoints
         var admin = context.Admin();
         var device = await FindAsync(db, id, ct);
 
+        WallpaperEndpoints.DeleteFile(db, device);
         db.Alerts.RemoveRange(await db.Alerts.Where(a => a.DeviceId == id).ToListAsync(ct));
         db.History.RemoveRange(await db.History.Where(h => h.DeviceId == id).ToListAsync(ct));
         db.ObservedHosts.RemoveRange(await db.ObservedHosts.Where(o => o.DeviceId == id).ToListAsync(ct));

@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Pontual.Domain.Audit;
@@ -228,11 +228,26 @@ public static class AssistantAnalysis
                     : AssistantPrompt.ImportedProfile(settings, device.AttendantName) is { Length: > 0 } imported ? imported
                     : "Ainda não há perfil.").Append("\n</perfil_anterior>\n\n")
                 .Append("<base_de_conhecimento>\n");
-            if (knowledge.Sum(s => (long)s.Content.Length) <= FullBaseChars)
+            // Roteiros de convênio (prefeituras, governos...) são muitos e padronizados: vão em uma linha cada, e o
+            // texto inteiro fica para os roteiros e conhecimentos escritos à mão, que é onde a análise acha lacunas.
+            var agreements = knowledge.Where(s => s.DetailsJson.Length > 0).ToList();
+            var written = knowledge.Where(s => s.DetailsJson.Length == 0).ToList();
+            if (written.Sum(s => (long)s.Content.Length) <= FullBaseChars)
             {
-                foreach (var item in knowledge)
+                foreach (var item in written)
                 {
                     input.Append(AssistantPrompt.Render(item, item.Content, null)).Append('\n');
+                }
+
+                foreach (var item in agreements.Take(600))
+                {
+                    input.Append("- [roteiro de convênio] ").Append(item.Title);
+                    if (item.Description.Length > 0)
+                    {
+                        input.Append(": ").Append(item.Description);
+                    }
+
+                    input.Append('\n');
                 }
             }
             else

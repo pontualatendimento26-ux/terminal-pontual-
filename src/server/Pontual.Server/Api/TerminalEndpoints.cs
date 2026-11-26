@@ -115,6 +115,18 @@ public static class TerminalEndpoints
             coverage != CoverageMode.Off));
     }
 
+    /// <summary>
+    /// Marca da tela inicial publicada nesta Central (data do app.js). A página aberta no Terminal foi carregada uma vez,
+    /// na partida; sem isso, uma Central nova não chega a quem já estava com a tela aberta (caso do papel de parede, 26/11/2026).
+    /// </summary>
+    private static readonly string PageStamp = ReadPageStamp();
+
+    private static string ReadPageStamp()
+    {
+        var file = Path.Combine(AppContext.BaseDirectory, "wwwroot", "terminal", "app.js");
+        return File.Exists(file) ? File.GetLastWriteTimeUtc(file).Ticks.ToString() : DateTime.UtcNow.Ticks.ToString();
+    }
+
     private static async Task<IResult> ConfigAsync(HttpContext context, PontualDb db, CancellationToken ct)
     {
         var device = context.Device();
@@ -136,7 +148,11 @@ public static class TerminalEndpoints
             appsBlocked,
             device.Approved && device.StoreApps,
             device.Approved && device.LightMode,
-            device.Approved && device.LightMode ? await StayConnectedAsync(db, ct) : null));
+            device.Approved && device.LightMode ? await StayConnectedAsync(db, ct) : null,
+            device.Approved && device.Wallpaper.Length > 0 ? device.Wallpaper : null,
+            device.Approved && device.SavePasswords,
+            PageStamp,
+            device.Approved && device.WallpaperTile));
     }
 
     /// <summary>O domínio do CRM, pelo endereço que o TI cadastrou: a aba dele recebe mensagens e não pode dormir.</summary>

@@ -56,6 +56,8 @@ public partial class MainWindow : Window
     private CoreWebView2Environment? _environment;
     private string? _injectedScriptId;
     private TerminalConfig? _config;
+    /// <summary>Cofre de senhas do navegador interno ligado nesta máquina (chave por computador, Terminal dedicado).</summary>
+    private volatile bool _savePasswords;
     private HostPolicy _policy = HostPolicy.Empty;
     private bool _observationMode;
     private string _state = HeartbeatResponse.StateActive;
@@ -520,8 +522,8 @@ public partial class MainWindow : Window
         settings.AreDevToolsEnabled = false;
         settings.AreDefaultContextMenusEnabled = false;
         settings.AreBrowserAcceleratorKeysEnabled = false;
-        settings.IsPasswordAutosaveEnabled = false;
-        settings.IsGeneralAutofillEnabled = false;
+        settings.IsPasswordAutosaveEnabled = _savePasswords && !isHome;
+        settings.IsGeneralAutofillEnabled = _savePasswords && !isHome;
         settings.IsStatusBarEnabled = false;
         settings.AreHostObjectsAllowed = false;
         settings.IsSwipeNavigationEnabled = false;
@@ -884,6 +886,15 @@ public partial class MainWindow : Window
         ApplyLightshot();
         ApplyStoreShell(config);
         ApplyLightMode(config);
+        _savePasswords = config?.SavePasswords ?? false;
+        foreach (var tab in _tabs)
+        {
+            if (tab.View.CoreWebView2 is { } vaultCore)
+            {
+                vaultCore.Settings.IsPasswordAutosaveEnabled = _savePasswords;
+                vaultCore.Settings.IsGeneralAutofillEnabled = _savePasswords;
+            }
+        }
         if (!_local && config is not null && !string.IsNullOrWhiteSpace(config.AttendantName))
         {
             _attendantName = config.AttendantName;

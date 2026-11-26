@@ -65,6 +65,17 @@ svg { flex: none; display: block; }
 .hora { font-size: 13px; color: var(--suave); text-align: right; line-height: 1.3; } .hora b { display: block; font-size: 17px; font-weight: 600; color: var(--tinta); }
 .eu { display: flex; align-items: center; gap: 10px; } .eu b { display: block; color: var(--tinta); font-weight: 600; font-size: 14px; line-height: 1.3; } .eu small { color: var(--suave); font-size: 12px; }
 
+/* ------------------------------------------------------- papel de parede */
+/* Imagem escolhida pelo TI na Central, por computador. A tela inicial fica sobre painéis brancos translúcidos para continuar legível. */
+.app.com-papel { background: var(--papel) center / cover no-repeat fixed; }
+.app.com-papel.papel-azulejo { background-size: 300px auto; background-repeat: repeat; }
+.app.com-papel .heroi { background: none; padding-top: 32px; }
+.app.com-papel .heroi > .caixa-pagina, .app.com-papel #at-inicio > .caixa-pagina { background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.6); border-radius: var(--r-xl); box-shadow: var(--s-2); }
+.app.com-papel .heroi > .caixa-pagina { padding: 40px 32px 36px; }
+.app.com-papel #at-inicio > .caixa-pagina { margin-top: 24px; margin-bottom: 40px; padding: 8px 32px 0; }
+.app.com-papel .estado { background: rgba(255, 255, 255, 0.85); }
+.app.com-papel .rodape { background: rgba(247, 249, 252, 0.94); }
+
 /* ------------------------------------------------------------ atendente */
 .app { min-height: 100vh; display: flex; flex-direction: column; background: var(--branco); position: relative; }
 .heroi { padding: 72px 0 40px; text-align: center; background: radial-gradient(900px 320px at 50% -80px, var(--azul-50), transparent 70%); }

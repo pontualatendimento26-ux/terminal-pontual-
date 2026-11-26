@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -40,6 +40,7 @@ public static class CrmEndpoints
         api.MapGet("/neural/crm/users", UsersAsync).Panel(Access);
         api.MapPut("/neural/crm/lost", SaveLostAsync).Panel(Access);
         api.MapPost("/neural/crm/lost/scan", ScanLostAsync).Panel(Access);
+        api.MapPut("/neural/crm/lost/period", SavePeriodAsync).Panel(Access);
         api.MapDelete("/neural/crm/lost/period", ClearPeriodAsync).Panel(Access);
     }
 
@@ -126,21 +127,31 @@ public static class CrmEndpoints
             return;
         }
 
-        // Fora do funil de teste, a IA só escreve para clientes de uma atendente que faltou hoje (e no horário dela).
+        var who = events.LastOrDefault(e => e.Contact.Length > 0)?.Contact ?? "";
+        var phone = events.LastOrDefault(e => e.Phone.Length > 0)?.Phone ?? "";
+
+        // Conversa que a IA já retomou (por aqui ou pela busca de clientes perdidos, que guarda só o telefone):
+        // ela continua atendendo, para não mandar só a primeira mensagem e sumir.
+        var continuing = sent.Count > 0 ? await db.CrmReplies.AsNoTracking().Where(r => r.ConversationId == conversationId && r.Status == CrmReplyStatus.Sent)
+                .OrderByDescending(r => r.SentAt).Select(r => r.Attendant).FirstOrDefaultAsync(ct)
+            : phone.Length == 0 ? null
+            : await db.CrmReplies.AsNoTracking().Where(r => r.Phone == phone && r.Status == CrmReplyStatus.Sent)
+                .OrderByDescending(r => r.SentAt).Select(r => r.Attendant).FirstOrDefaultAsync(ct);
+
+        // Fora disso e do funil de teste, a IA só escreve para clientes de uma atendente que faltou hoje (e no horário dela).
         var line = events.LastOrDefault(e => e.Line.Length > 0)?.Line ?? "";
         var funnel = events.LastOrDefault(e => e.Funnel.Length > 0)?.Funnel ?? "";
         var attendant = await AbsentAttendantAsync(db, line, now, ct);
-        if (attendant is null && funnel != CrmAgent.TestFunnel)
+        if (attendant is null && continuing is null && funnel != CrmAgent.TestFunnel)
         {
             return;
         }
 
-        // De quem é o cliente: a que faltou ou, se não, a última pessoa da equipe que escreveu a ele no CRM.
+        // De quem é o cliente: a que faltou, a dona da conversa que a IA já retomou ou a última pessoa da equipe que escreveu a ele no CRM.
+        attendant ??= continuing is { Length: > 0 } ? continuing : null;
         attendant ??= events.LastOrDefault(e => e.Author == CrmAuthor.Team && CrmAgent.IsPerson(e.Sender))?.Sender;
 
         var transcript = CrmAgent.Transcript(lines);
-        var who = events.LastOrDefault(e => e.Contact.Length > 0)?.Contact ?? "";
-        var phone = events.LastOrDefault(e => e.Phone.Length > 0)?.Phone ?? "";
 
         var older = await db.CrmReplies.Where(r => r.ConversationId == conversationId && (r.Status == CrmReplyStatus.Pending || r.Status == CrmReplyStatus.Failed)).ToListAsync(ct);
         foreach (var old in older)
@@ -171,9 +182,9 @@ public static class CrmEndpoints
                     .Append("<conversa>\n").Append(transcript).Append("\n</conversa>\n\n")
                     .Append("<mensagens_novas_do_cliente>\n").Append(incoming).Append("\n</mensagens_novas_do_cliente>");
                 input.Append(await LearnedAsync(db, reply.Attendant, ct));
-                var json = await model.AskJsonAsync(new AssistantJsonRequest(apiKey, AssistantEndpoints.ModelOf(settings), found, input.ToString(),
-                    CrmAgent.Schema, cached, new AssistantUsageTag(UsageKind.Crm)), ct);
-                var decision = CrmAgent.ParseDecision(json);
+                var request = new AssistantJsonRequest(apiKey, AssistantEndpoints.ModelOf(settings), found, input.ToString(),
+                    CrmAgent.Schema, cached, new AssistantUsageTag(UsageKind.Crm));
+                var decision = await CrmAgent.WithoutHandoffAsync(model, request, CrmAgent.ParseDecision(await model.AskJsonAsync(request, ct)), reply.Attendant, ct);
                 reply.Decision = decision.Action;
                 reply.Reply = decision.Message;
                 reply.Draft = decision.Message;
@@ -292,6 +303,32 @@ public static class CrmEndpoints
 
     // ------------------------------------------------------------------ Central Neural
 
+    /// <summary>
+    /// Toda resposta ainda na fila (em qualquer data) que passa o cliente para alguém vira o texto que assume o
+    /// retorno, como "humano". Pega as escritas antes da trava. Devolve quantas trocou.
+    /// </summary>
+    public static async Task<int> FixHandoffsAsync(PontualDb db, CancellationToken ct)
+    {
+        var waiting = await db.CrmReplies.Where(r => (r.Status == CrmReplyStatus.Pending || r.Status == CrmReplyStatus.Failed) && r.Reply != "").ToListAsync(ct);
+        var stale = waiting.Where(r => CrmAgent.MentionsHandoff(r.Reply, r.Attendant)).ToList();
+        var now = DateTime.UtcNow;
+        foreach (var r in stale)
+        {
+            r.Reply = CrmAgent.AssumeReturn;
+            r.Draft = CrmAgent.AssumeReturn;
+            r.Decision = CrmAgent.Human;
+            r.Reason = Input.Truncated($"{r.Reason} (A IA tinha escrito que ia passar para alguém; a Central trocou pelo texto padrão.)", 400);
+            r.UpdatedAt = now;
+        }
+
+        if (stale.Count > 0)
+        {
+            await db.SaveChangesAsync(ct);
+        }
+
+        return stale.Count;
+    }
+
     private static async Task<IResult> OverviewAsync(HttpContext context, PontualDb db, CancellationToken ct)
     {
         var settings = await db.TextSettings.AsNoTracking().Where(s => s.Key.StartsWith("crm.")).ToDictionaryAsync(s => s.Key, s => s.Value, ct);
@@ -308,10 +345,13 @@ public static class CrmEndpoints
             hidden = total - await waiting.CountAsync(ct);
         }
 
+        await FixHandoffsAsync(db, ct);
         var pending = await waiting.OrderBy(r => r.CreatedAt).Take(100).ToListAsync(ct);
         var recent = await db.CrmReplies.AsNoTracking()
             .Where(r => r.Status != CrmReplyStatus.Pending && r.Status != CrmReplyStatus.Failed)
-            .OrderByDescending(r => r.UpdatedAt).Take(40).ToListAsync(ct);
+            .OrderByDescending(r => r.UpdatedAt).Take(200).ToListAsync(ct);
+        // A mesma mensagem lida mais de uma vez por buscas antigas aparece uma vez só.
+        recent = [.. recent.DistinctBy(r => r.LastWppId.Length > 0 ? $"{r.ChatId}|{r.BotId}|{r.LastWppId}" : r.Id.ToString()).Take(40)];
         var events = await db.CrmEvents.AsNoTracking().OrderByDescending(e => e.Id).Take(15)
             .Select(e => new { id = e.Id, at = e.At, conversationId = e.ConversationId, contact = e.Contact, phone = e.Phone, author = e.Author, text = e.Text, body = e.Body })
             .ToListAsync(ct);
@@ -467,7 +507,9 @@ public static class CrmEndpoints
 
         var now = time.GetUtcNow().UtcDateTime;
         var lost = reply.Kind == CrmLost.Kind;
-        if (!lost)
+        // Margem liberada (SIAPE): primeira mensagem para o cliente, pela linha escolhida; não há conversa para conferir.
+        var chat = lost || reply.Kind == SiapeMargin.Kind;
+        if (!chat)
         {
             await RefuseIfOutdatedAsync(db, queue, reply, now, ct);
         }
@@ -500,7 +542,7 @@ public static class CrmEndpoints
         reply.UpdatedAt = now;
         try
         {
-            if (lost)
+            if (chat)
             {
                 await crm.SendChatAsync(access, reply.ChatId, reply.BotId, message, ct);
             }
@@ -574,13 +616,40 @@ public static class CrmEndpoints
     private static async Task<IResult> ClearPeriodAsync(HttpContext context, PontualDb db, CancellationToken ct)
     {
         await SetAsync(db, TextSetting.CrmLostPeriod, "", ct);
-        await db.SaveChangesAsync(ct);
+        return await OverviewAsync(context, db, ct);
+    }
+
+    /// <summary>Trocar as datas na tela já filtra a lista, sem buscar nem gastar IA.</summary>
+    private static async Task<IResult> SavePeriodAsync(HttpContext context, PontualDb db, TimeProvider time, CancellationToken ct)
+    {
+        var (from, to, _) = ReadDays(await context.ReadBodyAsync<ScanBody>(), time);
+        if (from is null || to is null)
+        {
+            throw ApiError.BadRequest("Preencha a data de início e a data de fim.");
+        }
+
+        await SetAsync(db, TextSetting.CrmLostPeriod, $"{from:yyyy-MM-dd}|{to:yyyy-MM-dd}", ct);
         return await OverviewAsync(context, db, ct);
     }
 
     private static async Task<IResult> ScanLostAsync(HttpContext context, PontualDb db, IServiceScopeFactory scopes, TimeProvider time, ILogger<CrmLostWorker> logger, CancellationToken ct)
     {
-        var body = context.Request.HasJsonContentType() ? await context.ReadBodyAsync<ScanBody>() : new ScanBody(null, null);
+        var (from, to, today) = ReadDays(context.Request.HasJsonContentType() ? await context.ReadBodyAsync<ScanBody>() : new ScanBody(null, null), time);
+        // O período fica valendo para a lista e para a busca automática até alguém mostrar todas as datas.
+        if (from is not null || to is not null)
+        {
+            from ??= today.AddDays(-15);
+            to ??= today;
+            await SetAsync(db, TextSetting.CrmLostPeriod, $"{from:yyyy-MM-dd}|{to:yyyy-MM-dd}", ct);
+        }
+
+        var result = await CrmLostWorker.RunAsync(scopes, time, logger, force: true, ct, from, to);
+        return Results.Ok(new { result.Checked, result.Created, message = result.Note });
+    }
+
+    /// <summary>As datas do pedido, conferidas, e o dia de hoje em Brasília.</summary>
+    private static (DateTime? From, DateTime? To, DateTime Today) ReadDays(ScanBody body, TimeProvider time)
+    {
         static DateTime? Day(string? text, string label) =>
             string.IsNullOrWhiteSpace(text) ? null
             : DateTime.TryParseExact(text.Trim(), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d) ? d
@@ -603,17 +672,7 @@ public static class CrmEndpoints
             throw ApiError.BadRequest($"A busca olha no máximo {CrmLost.MaxDays} dias para trás.");
         }
 
-        // O período fica valendo para a lista e para a busca automática até alguém mostrar todas as datas.
-        if (from is not null || to is not null)
-        {
-            from ??= today.AddDays(-15);
-            to ??= today;
-            await SetAsync(db, TextSetting.CrmLostPeriod, $"{from:yyyy-MM-dd}|{to:yyyy-MM-dd}", ct);
-            await db.SaveChangesAsync(ct);
-        }
-
-        var result = await CrmLostWorker.RunAsync(scopes, time, logger, force: true, ct, from, to);
-        return Results.Ok(new { result.Checked, result.Created, message = result.Note });
+        return (from, to, today);
     }
 
     /// <summary>Os usuários do CRM, para escolher a atendente quando a Central não sabe de quem é o cliente.</summary>
@@ -639,6 +698,11 @@ public static class CrmEndpoints
         if (reply.Kind == CrmLost.Kind)
         {
             throw ApiError.Conflict("Este cliente já é da atendente dele no CRM. Para deixar com ela, use Recusar: nada vai ao cliente.");
+        }
+
+        if (reply.Kind == SiapeMargin.Kind)
+        {
+            throw ApiError.Conflict("Esta é a primeira mensagem para o cliente: ainda não há conversa para passar. Aprove para enviar ou recuse.");
         }
 
         var message = AssistantEndpoints.Multiline(body.Message ?? "");
@@ -705,7 +769,7 @@ public static class CrmEndpoints
     {
         try
         {
-            if (reply.Kind == CrmLost.Kind)
+            if (reply.Kind is CrmLost.Kind or SiapeMargin.Kind)
             {
                 await crm.TagAsync(access, reply.ChatId, reply.BotId, ct);
                 return "";
@@ -725,7 +789,7 @@ public static class CrmEndpoints
 
     private static string Label(CrmReply r) => r.Contact.Length > 0 ? r.Contact : r.Phone.Length > 0 ? r.Phone : $"conversa {r.ConversationId}";
 
-    private static object Dto(CrmReply r) => new
+    internal static object Dto(CrmReply r) => new
     {
         id = r.Id, conversationId = r.ConversationId, contact = r.Contact, phone = r.Phone, incoming = r.Incoming, transcript = r.Transcript,
         reply = r.Reply, draft = r.Draft, kind = r.Kind, waitingSince = r.WaitingSince, attendant = r.Attendant, decision = r.Decision, reason = r.Reason, status = r.Status, error = r.Error, reviewedBy = r.ReviewedByName,
@@ -821,6 +885,12 @@ public sealed class CrmWorker(IServiceScopeFactory scopes, CrmQueue queue, TimeP
             {
                 await using var scope = scopes.CreateAsyncScope();
                 var db = scope.ServiceProvider.GetRequiredService<PontualDb>();
+                var fixedReplies = await CrmEndpoints.FixHandoffsAsync(db, ct);
+                if (fixedReplies > 0)
+                {
+                    logger.LogInformation("{Count} resposta(s) do CRM que passavam o cliente para alguém foram trocadas pelo texto padrão", fixedReplies);
+                }
+
                 var old = time.GetUtcNow().UtcDateTime - CrmAgent.Keep;
                 await db.CrmEvents.Where(e => e.At < old).ExecuteDeleteAsync(ct);
                 // As aprovadas ficam um ano: são os exemplos com que a IA aprende.

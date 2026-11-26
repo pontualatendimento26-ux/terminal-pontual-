@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,6 +9,18 @@ namespace Pontual.Server.Tests.Api;
 
 public sealed class AssistantTests
 {
+    /// <summary>Carga inicial: um roteiro por .txt de roteiros-iniciais e um por convênio dos .json de convenios-iniciais.</summary>
+    public static int InitialScripts
+    {
+        get
+        {
+            var texts = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "roteiros-iniciais"), "*.txt").Length;
+            var agreements = Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "convenios-iniciais"), "*.json")
+                .Sum(f => JsonDocument.Parse(File.ReadAllText(f)).RootElement.GetArrayLength());
+            return texts + agreements;
+        }
+    }
+
     private const string Key = "sk-ant-chave-de-teste-0123456789";
 
     /// <summary>IA de mentira: guarda o que recebeu e devolve a resposta combinada, palavra por palavra.</summary>
@@ -198,7 +210,7 @@ public sealed class AssistantTests
 
         var overview = await owner.GetAsync("/api/v1/assistant").Json();
         var titles = overview.GetProperty("scripts").EnumerateArray().Select(s => s.GetProperty("title").GetString()).ToList();
-        Assert.Equal(10, titles.Count);
+        Assert.Equal(InitialScripts, titles.Count);
         Assert.Contains("Finanto - INSS", titles);
         Assert.Contains("BRB Red Consig (BRB Financeira) - INSS", titles);
         Assert.False(overview.GetProperty("settings").GetProperty("hasKey").GetBoolean());
@@ -414,7 +426,7 @@ public sealed class AssistantTests
         Assert.Contains("Divida em duas partes", await tooLong.ErrorAsync());
         Assert.Equal(HttpStatusCode.NoContent, (await admin.PutAsJsonAsync($"/api/v1/assistant/scripts/{id}", new { enabled = false })).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await admin.DeleteAsync($"/api/v1/assistant/scripts/{id}")).StatusCode);
-        Assert.Equal(10, (await admin.GetAsync("/api/v1/assistant").Json()).GetProperty("scripts").GetArrayLength());
+        Assert.Equal(InitialScripts, (await admin.GetAsync("/api/v1/assistant").Json()).GetProperty("scripts").GetArrayLength());
 
         // O texto do roteiro não vai para a auditoria; o fato, sim.
         var audit = (await owner.GetAsync("/api/v1/audit").Json()).GetRawText();

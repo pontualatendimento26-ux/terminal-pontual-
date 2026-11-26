@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -113,7 +113,7 @@ public sealed class NeuralTests
         var auditor = await app.AdminAsync(owner, "Rita", "auditor");
 
         var overview = await owner.GetAsync("/api/v1/neural").Json();
-        Assert.Equal(10, Items(overview, "script").Count);
+        Assert.Equal(AssistantTests.InitialScripts, Items(overview, "script").Count);
         Assert.Equal("inline", overview.GetProperty("brain").GetProperty("mode").GetString());
         // O banco e a categoria dos roteiros iniciais saem do título.
         var finanto = Items(overview, "script").Single(i => i.GetProperty("title").GetString() == "Finanto - INSS");
@@ -145,7 +145,7 @@ public sealed class NeuralTests
 
         var overview = await owner.GetAsync("/api/v1/neural").Json();
         Assert.Equal("Leia o cliente pela conversa.\nA voz é da atendente, a dose é do cliente.", overview.GetProperty("settings").GetProperty("manual").GetString());
-        Assert.Equal(8000, overview.GetProperty("limits").GetProperty("manual").GetInt32());
+        Assert.Equal(30000, overview.GetProperty("limits").GetProperty("manual").GetInt32());
 
         // É o mesmo texto das orientações gerais: entra na parte comum das instruções da IA.
         await AskAsync(terminal, "Como respondo um cliente confuso?");
@@ -199,6 +199,74 @@ public sealed class NeuralTests
 
         Assert.Equal(HttpStatusCode.NoContent, (await owner.DeleteAsync($"/api/v1/neural/items/{id}")).StatusCode);
         Assert.Empty(Items(await owner.GetAsync("/api/v1/neural").Json(), "knowledge"));
+    }
+
+    [Fact]
+    public async Task Roteiro_de_convenio_guarda_uf_ranking_e_dados_e_a_ia_recebe_o_ranking_de_venda()
+    {
+        var model = new FakeBrain();
+        using var app = new TestApp { AssistantModel = model };
+        var owner = await app.OwnerAsync();
+        var (_, terminal) = await app.ApprovedDeviceAsync(owner, "PC-01", "Maria Souza");
+        await owner.PutAsJsonAsync("/api/v1/assistant/settings", new { apiKey = Key });
+
+        var created = await owner.PostAsJsonAsync("/api/v1/neural/items", new
+        {
+            kind = "script", title = "Daycoval - Prefeitura de Goiatuba (GO)", bank = "Daycoval", category = "Consignado público", uf = "go",
+            content = "Prazo máximo: 120 m\nMargem: 35%", salesRank = 1, salesNote = "Nov/2026: 32 propostas pagas",
+            details = new Dictionary<string, string?> { ["prazo_meses"] = "120", ["margem_pct"] = "35", ["averbadora"] = "Consiglog", ["vazio"] = "" },
+        }).Json();
+        var id = created.GetProperty("id").GetGuid();
+        Assert.Equal("GO", created.GetProperty("uf").GetString());
+        Assert.Equal(1, created.GetProperty("salesRank").GetInt32());
+        var details = created.GetProperty("details");
+        Assert.Equal("Consiglog", details.GetProperty("averbadora").GetString());
+        Assert.False(details.TryGetProperty("vazio", out _));
+
+        // A visão geral leva os dados em JSON para a aba Roteiros montar os cartões.
+        var listed = Items(await owner.GetAsync("/api/v1/neural").Json(), "script").Single(i => i.GetProperty("id").GetGuid() == id);
+        Assert.Equal("GO", listed.GetProperty("uf").GetString());
+        Assert.Contains("\"prazo_meses\":\"120\"", listed.GetProperty("detailsJson").GetString());
+
+        await AskAsync(terminal, "Qual o melhor roteiro do Daycoval?");
+        var shared = model.Requests[^1].SharedInstructions;
+        Assert.Contains("uf=\"GO\"", shared);
+        Assert.Contains("ranking_venda=\"1º do banco (o roteiro que mais vende); origem: Nov/2026: 32 propostas pagas\"", shared);
+        Assert.Contains("Ranking de venda:", shared);
+
+        // Validações: UF com duas letras, ranking dentro da faixa.
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync($"/api/v1/neural/items/{id}", new { uf = "Goiás" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync($"/api/v1/neural/items/{id}", new { salesRank = 100 })).StatusCode);
+
+        // Tirar do ranking: o atributo some do texto da IA.
+        await owner.PutAsJsonAsync($"/api/v1/neural/items/{id}", new { salesRank = 0 }).Json();
+        await AskAsync(terminal, "E agora?");
+        Assert.DoesNotContain("ranking_venda=", model.Requests[^1].SharedInstructions);
+    }
+
+    [Fact]
+    public void Carga_inicial_transforma_cada_convenio_do_json_em_roteiro_com_texto_e_dados()
+    {
+        var row = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
+            """{"id":"c013","uf":"GO","estado":"Goiás","cidade":"Goiatuba","tipo":"Prefeitura","orgao":"Prefeitura de Goiatuba","simplificado":"Sim","lido":"Sim","prazo":"120 m","prazo_meses":120,"margem":"35%","margem_pct":35,"averbadora":"Consiglog","banco":"Daycoval","pagina":""}""")!;
+        var script = Pontual.Server.Data.DbInitializer.AgreementToScript(row, new DateTime(2026, 11, 25, 12, 0, 0, DateTimeKind.Utc))!;
+
+        Assert.Equal("Daycoval - Prefeitura de Goiatuba (GO)", script.Title);
+        Assert.Equal("Daycoval", script.Bank);
+        Assert.Equal("GO", script.Uf);
+        Assert.Contains("Prazo máximo: 120 m", script.Content);
+        Assert.Contains("Averbadora: Consiglog", script.Content);
+        Assert.DoesNotContain("estado", script.Content);
+        var details = Agreements.Parse(script.DetailsJson);
+        Assert.Equal("120", details["prazo_meses"]);
+        Assert.False(details.ContainsKey("uf"));
+        Assert.Contains("prazo 120 meses, margem 35%", script.Description);
+
+        // Sem leitura do roteiro, o texto avisa a IA para não inventar regra.
+        row["lido"] = JsonSerializer.SerializeToElement("Não");
+        Assert.Contains("ainda não foi lido", Pontual.Server.Data.DbInitializer.AgreementToScript(row, DateTime.UtcNow)!.Content);
+        row.Remove("orgao");
+        Assert.Null(Pontual.Server.Data.DbInitializer.AgreementToScript(row, DateTime.UtcNow));
     }
 
     [Fact]
