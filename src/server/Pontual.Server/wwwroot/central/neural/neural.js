@@ -75,7 +75,7 @@ const TIPOS = {
   system: { um: 'Aprendizado sobre os sistemas', varios: 'Sistemas da Pontual', cor: MAPA_CORES.system },
   attendant: { um: 'Atendente', varios: 'Atendentes', cor: MAPA_CORES.attendant },
   suggestion: { um: 'Sugestão pendente', varios: 'Aprendizado', cor: MAPA_CORES.suggestion },
-  siape: { um: 'Margem liberada', varios: 'Margem liberada (SIAPE)', cor: MAPA_CORES.siape },
+  siape: { um: 'Valor liberado', varios: 'Valor liberado (SIAPE)', cor: MAPA_CORES.siape },
   manual: { um: 'Manual de comunicação', varios: 'Manual de comunicação', cor: MAPA_CORES.manual },
 };
 const SUGESTOES = { correction: 'Correção de atendente', gap: 'Lacuna de conhecimento', new_info: 'Informação nova', review: 'Conteúdo a revisar' };
@@ -93,7 +93,7 @@ const VISTAS = {
   aprovar: ['Mensagens para aprovar', 'As respostas que a IA escreveu para os clientes do CRM, separadas por atendente. Tudo o que você aprova vira exemplo para a IA.'],
   crm: ['Clientes do CRM', 'A IA escreve a resposta para os clientes do sistema interno; nada vai ao cliente sem a sua aprovação.'],
   nexus: ['Consulta no Nexus', 'A atendente manda o CPF no chat da IA e vê em qual banco o cliente passa, pelo roteiro do Nexus.'],
-  siape: ['Margem liberada (SIAPE)', 'Todo mês a Central lê a base de margens do SIAPE, a IA escreve para quem ganhou margem e a mensagem sai pelo CRM depois de aprovada.'],
+  siape: ['Valor liberado (SIAPE)', 'Todo mês a Central lê a base do SIAPE, a IA escreve para quem está com valor liberado acima do mínimo e a mensagem sai pelo CRM depois de aprovada.'],
   base: ['Base de Conhecimento', 'Tudo o que a IA possui, em um só lugar.'],
   visao: ['Visão Geral', 'Os números reais do cérebro da IA.'],
 };
@@ -232,6 +232,12 @@ function grafo() {
     for (const i of itens) {
       nos.push({ id: i.id, pai: agrupar ? `g:${tipo}:${i.bank || ''}` : ramo, tipo, rotulo: i.title, sub: i.bank, estado: estadoDe(i), novo: recente(i.updatedAt) });
     }
+    // O Agente RH: um círculo à parte, ligado ao núcleo por API, entre Documentos e Conhecimentos (desenho do dono).
+    // Só o superadministrador vê. Dele pende a atendente ideal (os pontos fortes de todas num perfil só).
+    if (tipo === 'document' && d.rh) {
+      nos.push({ id: 'rh', pai: 'ia', tipo: 'agente', ramo: 'agente', rotulo: 'Agente RH', via: 'api' });
+      nos.push({ id: 'a:ideal', pai: 'rh', tipo: 'rh', ramo: 'agente', rotulo: 'Atendente ideal', estado: d.ideal?.generated ? 'active' : 'pending' });
+    }
   }
   nos.push({ id: 'r:attendant', pai: 'ia', tipo: 'ramo', ramo: 'attendant', rotulo: 'Atendentes', n: d.attendants.length });
   // Computadores e celulares em grupos separados dentro do ramo Atendentes.
@@ -253,10 +259,10 @@ function grafo() {
   const manual = Boolean(d.settings.manual);
   nos.push({ id: 'r:manual', pai: 'ia', tipo: 'ramo', ramo: 'manual', rotulo: 'Manual de comunicação', n: manual ? 1 : 0 });
   nos.push({ id: 'm:manual', pai: 'r:manual', tipo: 'manual', ramo: 'manual', rotulo: 'Comportamento e comunicação com o cliente', estado: manual ? 'active' : 'disabled' });
-  // Margem liberada do SIAPE: a base no SQL e as mensagens que a IA escreveu neste mês, por situação.
+  // Valor liberado do SIAPE: a base no SQL e as mensagens que a IA escreveu neste mês, por situação.
   const sp = d.siape || { month: [] }, mes = sp.month || [];
-  nos.push({ id: 'r:siape', pai: 'ia', tipo: 'ramo', ramo: 'siape', rotulo: 'Margem liberada', n: mes.length + 1 });
-  nos.push({ id: 'z:base', pai: 'r:siape', tipo: 'siape', ramo: 'siape', rotulo: 'Base de margens do SIAPE (SQL)', estado: sp.configured ? (sp.enabled ? 'active' : 'pending') : 'disabled' });
+  nos.push({ id: 'r:siape', pai: 'ia', tipo: 'ramo', ramo: 'siape', rotulo: 'Valor liberado', n: mes.length + 1 });
+  nos.push({ id: 'z:base', pai: 'r:siape', tipo: 'siape', ramo: 'siape', rotulo: 'Base do SIAPE (SQL)', estado: sp.configured ? (sp.enabled ? 'active' : 'pending') : 'disabled' });
   const grupoDe = (m) => (m.status === 'pending' || m.status === 'failed' ? 'pending' : m.status === 'sent' ? 'sent' : 'other');
   for (const [g, rotulo] of [['pending', 'Esperando aprovação'], ['sent', 'Enviadas este mês'], ['other', 'Recusadas e outras']]) {
     const n = mes.filter((m) => grupoDe(m) === g).length;
@@ -308,10 +314,12 @@ function dicaDoNo(no, x, y) {
   const linhas = [];
   if (no.tipo === 'nucleo') linhas.push('O núcleo: a assistente da Pontual.', 'Clique para ver como ela lê a base.');
   else if (no.tipo === 'ramo' || no.tipo === 'grupo') linhas.push(`${plural(no.n ?? no.filhos.length, 'item', 'itens')}. Clique para ${E.mapa.recolhidos.has(no.id) ? 'abrir' : 'fechar'}.`);
+  else if (no.tipo === 'agente') linhas.push('Agente ligado à Central Neural por API', 'Só o superadministrador vê. Clique para abrir.');
+  else if (no.id === 'a:ideal') linhas.push('Os pontos fortes de todas as atendentes num perfil só', no.estado === 'active' ? 'Perfil montado pela IA' : 'Ainda não montado');
   else if (no.tipo === 'attendant') linhas.push('Atendente', no.estado === 'active' ? 'Perfil montado pela IA' : no.estado === 'pending' ? 'Tem conversas ainda sem análise' : 'Ainda sem conversas para analisar');
   else if (no.tipo === 'suggestion') linhas.push('Sugestão pendente de aprovação');
   else if (no.tipo === 'manual') linhas.push('Como a IA se comporta e escreve para o cliente', no.estado === 'active' ? 'Escrito e em uso em toda resposta' : 'Ainda não escrito');
-  else if (no.tipo === 'siape') linhas.push(no.id === 'z:base' ? 'A base de margens no SQL Server da Kamila' : 'Mensagem de margem liberada', no.id === 'z:base' ? (no.estado === 'active' ? 'Ligada: a busca roda todo mês' : no.estado === 'pending' ? 'Configurada, busca mensal desligada' : 'Ligação ainda não configurada') : no.estado === 'pending' ? 'Esperando aprovação' : no.estado === 'active' ? 'Enviada pelo CRM' : 'Recusada ou não enviada');
+  else if (no.tipo === 'siape') linhas.push(no.id === 'z:base' ? 'A base do SIAPE no SQL Server da Kamila' : 'Mensagem de valor liberado', no.id === 'z:base' ? (no.estado === 'active' ? 'Ligada: a busca roda todo mês' : no.estado === 'pending' ? 'Configurada, busca mensal desligada' : 'Ligação ainda não configurada') : no.estado === 'pending' ? 'Esperando aprovação' : no.estado === 'active' ? 'Enviada pelo CRM' : 'Recusada ou não enviada');
   else linhas.push(`${TIPOS[no.tipo].um}${no.sub ? ` · ${no.sub}` : ''}`, `${ESTADOS[no.estado] || ''}${no.novo ? ' · atualizado nos últimos 7 dias' : ''}`);
   dica.replaceChildren(el('b', { textContent: no.rotulo }), ...linhas.filter(Boolean).map((l) => el('span', { textContent: l })));
   dica.hidden = false;
@@ -325,6 +333,8 @@ function aoSelecionarNo(no) {
   if (!no) { fecharGaveta(); return; }
   if (no.tipo === 'nucleo') gavetaNucleo();
   else if (no.tipo === 'ramo' || no.tipo === 'grupo') gavetaRamo(no);
+  else if (no.tipo === 'agente') gavetaAgenteRh();
+  else if (no.id === 'a:ideal') gavetaIdeal();
   else if (no.tipo === 'attendant') gavetaAtendente(no.id.slice(2));
   else if (no.tipo === 'suggestion') gavetaSugestao(no.id.slice(2));
   else if (no.tipo === 'manual') gavetaManual();
@@ -386,8 +396,8 @@ function gavetaRamo(no) {
   if (novo) { acao = botao(novo === 'document' ? 'Enviar documento' : `Novo ${TIPOS[novo].um.toLowerCase()}`, novo === 'document' ? 'enviar' : 'mais', 'btn mini'); acao.onclick = () => (novo === 'document' ? escolherArquivo(null) : abrirFormulario(null, novo)); }
   if (no.id === 'r:suggestion') { acao = botao('Abrir o aprendizado', 'aprender', 'btn mini'); acao.onclick = () => ir('aprendizado'); }
   if (no.id === 'r:manual') { acao = botao(E.d.settings.manual ? 'Editar o manual' : 'Escrever o manual', 'editar', 'btn mini'); acao.onclick = abrirManual; }
-  if (no.id === 'r:siape' || no.id.startsWith('g:siape:')) { acao = botao(no.id === 'g:siape:pending' ? 'Aprovar as mensagens' : 'Abrir Margem liberada', 'raio', 'btn mini'); acao.onclick = () => ir(no.id === 'g:siape:pending' ? 'aprovar' : 'siape'); }
-  const vazios = { 'r:script': 'Nenhum roteiro cadastrado.', 'r:document': 'Nenhum documento enviado ainda.', 'r:knowledge': 'Nenhum conhecimento operacional cadastrado ainda.', 'r:system': 'Nenhum aprendizado sobre os sistemas da Pontual ainda. Cole aqui o resumo de como funciona cada sistema (Terminal, Central, IA) para a IA saber explicar.', 'r:attendant': 'Nenhuma máquina aprovada ainda.', 'r:suggestion': 'Nenhuma sugestão pendente. Elas aparecem quando uma atendente corrige uma resposta ou quando a IA analisa as conversas.', 'r:manual': 'O manual ainda não foi escrito.', 'r:siape': 'Nenhuma mensagem de margem liberada neste mês.' };
+  if (no.id === 'r:siape' || no.id.startsWith('g:siape:')) { acao = botao(no.id === 'g:siape:pending' ? 'Aprovar as mensagens' : 'Abrir Valor liberado', 'raio', 'btn mini'); acao.onclick = () => ir(no.id === 'g:siape:pending' ? 'aprovar' : 'siape'); }
+  const vazios = { 'r:script': 'Nenhum roteiro cadastrado.', 'r:document': 'Nenhum documento enviado ainda.', 'r:knowledge': 'Nenhum conhecimento operacional cadastrado ainda.', 'r:system': 'Nenhum aprendizado sobre os sistemas da Pontual ainda. Cole aqui o resumo de como funciona cada sistema (Terminal, Central, IA) para a IA saber explicar.', 'r:attendant': 'Nenhuma máquina aprovada ainda.', 'r:suggestion': 'Nenhuma sugestão pendente. Elas aparecem quando uma atendente corrige uma resposta ou quando a IA analisa as conversas.', 'r:manual': 'O manual ainda não foi escrito.', 'r:siape': 'Nenhuma mensagem de valor liberado neste mês.' };
   gaveta(no.id,
     topoGaveta(selo(`${no.ramo} liso`, no.tipo === 'ramo' ? 'Ramo' : 'Grupo')),
     el('h2', { textContent: no.rotulo }),
@@ -396,10 +406,10 @@ function gavetaRamo(no) {
     lista.length ? el('div', { className: 'lista-simples' }, ...lista) : el('p', { className: 'nota', textContent: vazios[no.id] || 'Nada aqui com os filtros atuais.' }));
 }
 
-// Uma mensagem de margem liberada do SIAPE (ou a própria base): o resumo e o atalho para a aba.
+// Uma mensagem de valor liberado do SIAPE (ou a própria base): o resumo e o atalho para a aba.
 function gavetaMargem(id) {
   const sp = E.d.siape || { month: [] };
-  const abrir = botao('Abrir Margem liberada', 'raio', 'btn mini'); abrir.onclick = () => ir('siape');
+  const abrir = botao('Abrir Valor liberado', 'raio', 'btn mini'); abrir.onclick = () => ir('siape');
   if (id === 'base') {
     gaveta('z:base', topoGaveta(selo('siape liso', 'Base')), el('h2', { textContent: 'Base de margens do SIAPE' }),
       el('p', { className: 'frase', textContent: 'O SQL Server da Kamila com a base de margens dos servidores federais. Todo mês a Central lê a base nova, compara com a anterior e a IA escreve para quem ganhou margem.' }),
@@ -411,7 +421,7 @@ function gavetaMargem(id) {
   if (!m) { fecharGaveta(); return; }
   const [rotulo, classe] = SITUACAO_CRM[m.status] || [m.status, 'liso'];
   const aprovar = botao('Aprovar na fila', 'balao', 'btn mini'); aprovar.onclick = () => ir('aprovar');
-  gaveta(`z:${id}`, topoGaveta(selo('siape liso', 'Margem liberada'), selo(classe, rotulo)), el('h2', { textContent: m.contact || m.phone }),
+  gaveta(`z:${id}`, topoGaveta(selo('siape liso', 'Valor liberado'), selo(classe, rotulo)), el('h2', { textContent: m.contact || m.phone }),
     el('p', { className: 'frase', textContent: m.phone }),
     el('dl', { className: 'dados' }, dado('Escrita', quando(m.createdAt)), dado('Enviada', m.sentAt ? quando(m.sentAt) : 'Ainda não')),
     secao('Dados da base do SIAPE', el('p', { className: 'citacao', style: 'white-space:pre-wrap', textContent: m.incoming })),
@@ -719,6 +729,90 @@ async function analisarAtendente(deviceId, nome, alvo) {
   const r = await agir(alvo, () => api('POST', `/neural/attendants/${deviceId}/analyze`),
     (x) => (x.messagesRead || x.conversationsRead || x.crmRead ? `Perfil de ${nome} atualizado: ${plural(x.conversationsRead, 'conversa de WhatsApp lida', 'conversas de WhatsApp lidas')}, ${plural(x.crmRead || 0, 'conversa do CRM lida', 'conversas do CRM lidas')}, ${plural(x.messagesRead, 'fala com a assistente', 'falas com a assistente')}, ${plural(x.newSuggestions, 'sugestão nova', 'sugestões novas')}${x.more ? '. Ainda há material na fila; rode de novo para continuar' : ''}.` : `${nome} não tem nada novo para analisar.`));
   if (r && E.gaveta === `a:${deviceId}`) gavetaAtendente(deviceId);
+}
+
+// ------------------------------------------------- Agente RH
+// Um agente dentro da Central, só para o superadministrador. Lê a Central pela API interna dela; não atende clientes.
+async function gavetaAgenteRh() {
+  const pronta = Boolean(E.d.ideal?.generated), sobre = 'Um agente ligado à Central Neural por API. Ele enxerga o que a Central sabe, e o assunto dele são as atendentes: parte dos pontos fortes de cada uma para montar a referência da equipe. Não atende clientes e não decide contratação: quem decide é o RH.';
+  const topo = () => topoGaveta(selo('liso', 'Agente'), selo('liso', 'Só superadministrador'));
+  gaveta('rh', topo(), el('h2', { textContent: 'Agente RH' }), el('p', { className: 'frase', textContent: sobre }), el('p', { className: 'nota', textContent: 'Conferindo a ligação com a IA Pontual…' }));
+  let r = null, erro = '';
+  try { r = await api('GET', '/rh'); } catch (e) { erro = e.message; }
+  if (E.gaveta !== 'rh') return;
+  const ver = botao('Abrir a atendente ideal', 'abrir', 'btn mini'); ver.onclick = () => verNoMapa('a:ideal');
+  const caso = botao('Ver um caso anônimo', 'abrir'); caso.disabled = !r || !r.cases; caso.title = 'Abre o atendimento mais recente como o agente o recebe: sem nome, CPF, telefone nem contrato.';
+  caso.onclick = () => agir(caso, async () => {
+    const lista = await api('GET', '/rh/cases?limit=1');
+    if (!lista.length) throw new Error('Nenhum atendimento disponível como caso.');
+    const c = await api('GET', `/rh/cases/${lista[0].id}`);
+    $('texto-titulo').textContent = `Caso anônimo ${c.id}`; $('texto-sub').textContent = `${plural(c.lines, 'fala', 'falas')}. É assim que o Agente RH recebe o atendimento. Esta leitura ficou registrada na auditoria.`;
+    $('texto-corpo').textContent = c.text; $('dlg-texto').showModal();
+  });
+  const linha = (nome, situacao, classe) => el('div', {}, el('i', { className: 'ponto', style: `--c:${MAPA_CORES.agente}` }), el('span', { className: 'nome', textContent: nome }), selo(`${classe} liso`, situacao));
+  gaveta('rh', topo(),
+    el('h2', { textContent: 'Agente RH' }),
+    el('p', { className: 'frase', textContent: sobre }),
+    r ? secao('Ligação com a IA Pontual (api)',
+      el('p', { className: 'frase', textContent: 'Funcionando. É por aqui que o agente lê a Central; ele não acessa o banco direto.' }),
+      el('dl', { className: 'dados' },
+        dado('Atendentes com pontos fortes', mil(r.attendants)), dado('Pontos fortes', mil(r.strengths)),
+        dado('Conhecimentos da base', mil(r.knowledge)), dado('Casos de atendimento (anônimos)', mil(r.cases))),
+      el('p', { className: 'nota', textContent: 'Os casos são as conversas do CRM dos últimos 30 dias e chegam ao agente sem nome, CPF, telefone nem número de contrato. Conhecimento marcado como "só para atendentes" (logins e senhas) não passa.' }))
+      : el('p', { className: 'erro', textContent: `A ligação com a IA Pontual não respondeu: ${erro}` }),
+    el('div', { className: 'botoes' }, ver, caso),
+    secao('O que ele tem', el('div', { className: 'lista-simples' },
+      linha('Ligação com a Central (api)', r ? 'Funcionando' : 'Sem resposta', r ? 'active' : 'error'),
+      linha('Atendente ideal (soma dos pontos fortes)', pronta ? 'Pronta' : 'Aguardando perfis', pronta ? 'active' : 'pending'),
+      linha('Persona por competências, com versões', 'A construir', 'disabled'),
+      linha('Roteiro de entrevista', 'A construir', 'disabled'),
+      linha('Teste situacional e simulação', 'A construir', 'disabled'),
+      linha('Nota final e decisão do RH', 'A construir', 'disabled'),
+      linha('Mapa de forças e lacunas da equipe', 'A construir', 'disabled'))),
+    el('p', { className: 'nota', textContent: 'Este círculo só aparece para o superadministrador.' }));
+}
+
+// ------------------------------------------------- atendente ideal
+// A IA soma o que cada atendente faz de melhor num perfil só. Nasce e se atualiza sozinha (junto da análise diária); o botão refaz na hora.
+async function gavetaIdeal() {
+  const chave = 'a:ideal', titulo = 'Atendente ideal';
+  gaveta(chave, topoGaveta(selo('attendant', 'Referência da equipe')), el('h2', { textContent: titulo }), el('p', { className: 'nota', textContent: 'Carregando…' }));
+  let r;
+  try { r = await api('GET', '/neural/ideal'); } catch (e) { if (E.gaveta === chave) gaveta(chave, topoGaveta(), el('h2', { textContent: titulo }), el('p', { className: 'erro', textContent: e.message })); return; }
+  if (E.gaveta !== chave) return;
+  const p = r.profile, nomes = (lista) => (lista && lista.length ? lista.join(', ') : '—');
+  const montar = botao(p ? 'Atualizar agora' : 'Montar agora', 'raio', 'btn mini');
+  montar.disabled = !r.canGenerate || !E.d.settings.hasKey;
+  montar.onclick = () => montarIdeal(montar);
+  const aviso = !E.d.settings.hasKey ? 'Sem a chave da IA não há como montar o perfil.'
+    : !r.canGenerate ? `É preciso ter o perfil de pelo menos ${r.minProfiles} atendentes. Hoje há ${r.profiles.length}: analise as conversas das outras primeiro.`
+      : p && r.news ? `${plural(r.news, 'perfil novo ou atualizado', 'perfis novos ou atualizados')} desde a última montagem. A IA refaz sozinha em até um dia; o botão refaz agora.` : null;
+
+  gaveta(chave,
+    topoGaveta(selo('attendant', 'Referência da equipe'), selo(p ? 'active' : 'pending', p ? 'Montado' : 'Ainda não montado')),
+    el('h2', { textContent: titulo }),
+    el('p', { className: 'frase', textContent: 'A atendente criada pela IA com a soma dos pontos fortes de todas as atendentes. Entram só os pontos fortes; as dificuldades de cada uma ficam de fora. Ela ainda não atende clientes.' }),
+    el('dl', { className: 'dados' },
+      dado('Atendentes com perfil', mil(r.profiles.length)), dado('Montado em', p ? quando(r.generatedAt) : 'Ainda não'),
+      p ? dado('Montado por', r.by) : null, p ? dado('Perfis usados', mil(r.sources.length)) : null),
+    el('div', { className: 'botoes' }, montar),
+    aviso ? el('p', { className: 'aviso', textContent: aviso }) : null,
+    p ? null : vazio('Perfil ainda não montado', r.canGenerate ? `A IA cria sozinha em alguns minutos, com os perfis de: ${nomes(r.profiles)}. O botão cria agora.` : 'Ela nasce quando pelo menos duas atendentes tiverem perfil.'),
+    p ? secao('Retrato', el('p', { className: 'frase', textContent: p.resumo })) : null,
+    p && p.atendimento ? secao('Como ela atende, do começo ao fim', el('p', { className: 'frase', textContent: p.atendimento })) : null,
+    p && p.qualidades && p.qualidades.length ? secao('Pontos fortes somados', ...p.qualidades.flatMap((q) => [
+      el('h4', { textContent: q.titulo }),
+      el('p', { className: 'frase', textContent: q.descricao }),
+      q.atendentes && q.atendentes.length ? el('div', { className: 'marcas' }, ...q.atendentes.map((n) => el('span', { textContent: n }))) : null,
+    ])) : null,
+    p && p.destaques && p.destaques.length ? secao('O que vem de cada atendente', el('ul', { className: 'pontos' }, ...p.destaques.map((x) => el('li', {}, el('b', { textContent: `${x.atendente}: ` }), x.ponto_forte)))) : null,
+    p ? el('p', { className: 'nota', textContent: `Montado pela IA a partir dos perfis de ${nomes(r.sources)}. Atualizado sozinho quando o perfil de alguma atendente muda. Ainda não é usada no atendimento. Esta leitura ficou registrada na auditoria.` }) : null);
+}
+
+async function montarIdeal(alvo) {
+  recado('Juntando os pontos fortes de todas as atendentes… pode levar até um minuto.');
+  const r = await agir(alvo, () => api('POST', '/neural/ideal/generate'), (x) => `Perfil da atendente ideal montado com os perfis de ${plural(x.sources.length, 'atendente', 'atendentes')}.`);
+  if (r && E.gaveta === 'a:ideal') gavetaIdeal();
 }
 
 async function buscarSugestoes() {
@@ -1096,12 +1190,16 @@ function desenharAprendizado() {
       el('div', { className: 'botoes' }, falta, analisar, ver));
   });
 
+  // A atendente ideal é do Agente RH: o atalho só aparece para o superadministrador.
+  const verIdeal = d.rh ? botao('Atendente ideal', 'raio') : null;
+  if (verIdeal) { verIdeal.title = 'Os pontos fortes de todas as atendentes num perfil só.'; verIdeal.onclick = () => verNoMapa('a:ideal'); }
+
   alvo.replaceChildren(numeros,
     el('div', { className: 'cartao' },
       el('div', { className: 'cartao-topo' }, el('div', {}, el('h2', { textContent: 'Sugestões de conhecimento' }), el('p', { textContent: 'Correções enviadas pelas atendentes e lacunas que a IA encontrou nas conversas. Você revisa, edita e decide.' })), segmento),
       fila),
     el('div', { className: 'cartao' },
-      el('div', { className: 'cartao-topo' }, el('div', {}, el('h2', { textContent: 'Perfil de cada atendente' }), el('p', { textContent: 'A IA lê as conversas de cada atendente com os clientes no WhatsApp e no CRM e as perguntas que ela faz à assistente, atualiza o perfil de atendimento e aponta o que falta na base.' }))),
+      el('div', { className: 'cartao-topo' }, el('div', {}, el('h2', { textContent: 'Perfil de cada atendente' }), el('p', { textContent: 'A IA lê as conversas de cada atendente com os clientes no WhatsApp e no CRM e as perguntas que ela faz à assistente, atualiza o perfil de atendimento e aponta o que falta na base.' })), verIdeal),
       el('div', { className: 'cartao-corpo', style: 'display:grid;gap:16px' },
         el('div', { className: 'linha-opcao' }, el('div', {}, el('b', { textContent: 'Aprender com o WhatsApp' }),
           el('small', { textContent: 'O Terminal (versão 2.4.0 ou mais nova) registra cada conversa que a atendente abre no WhatsApp. A conversa fica no servidor só até ser analisada e depois é apagada; o que não for analisado em 7 dias também.' })), zap),

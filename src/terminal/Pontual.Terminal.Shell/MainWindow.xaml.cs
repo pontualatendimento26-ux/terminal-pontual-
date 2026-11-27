@@ -1163,6 +1163,7 @@ public partial class MainWindow : Window
                 OnSiteNavigationStarting(tab, args);
             };
             core.NewWindowRequested += (_, args) => OnSiteNewWindow(tab, core, args);
+            WireSiteKeys(tab.View);
             await AllowNexusDownloadsAsync(tab);
             if (tab.IsClosed)
             {
@@ -1212,6 +1213,13 @@ public partial class MainWindow : Window
             default:
                 args.Cancel = true;
                 Record(DeviceEvent.Blocked, tab.Name, decision.Host);
+                if (tab.Float is not null)
+                {
+                    // Em janela solta não há onde pôr o aviso de tela cheia: a página fica onde estava e sai um aviso rápido.
+                    ShowToast($"Este site não é permitido: {decision.Host}. A tentativa foi registrada" + (_local ? "." : " e o TI foi avisado."));
+                    return;
+                }
+
                 tab.BlockedHost = decision.Host;
                 UpdateLayoutState();
                 return;
@@ -1285,6 +1293,14 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (tab.Float is { } floating)
+        {
+            // Em janela solta: ela vem para a frente (e reaparece, se estava minimizada).
+            floating.BringFront();
+            tab.View.Focus();
+            return;
+        }
+
         if (tab.Monitor != monitor)
         {
             HostOf(tab.Monitor).Children.Remove(tab.View);
@@ -1329,6 +1345,13 @@ public partial class MainWindow : Window
 
         tab.IsClosed = true;
         _tabs.Remove(tab);
+        if (tab.Float is { } floating)
+        {
+            tab.Float = null;
+            floating.Release();
+            floating.Close();
+        }
+
         HostOf(tab.Monitor).Children.Remove(tab.View);
         if (tab.Monitor is { } monitor && monitor.Active == tab)
         {
@@ -1395,6 +1418,11 @@ public partial class MainWindow : Window
             ShowTab(tab, monitor);
         };
         bar.TabCloseClick += CloseTab;
+        bar.TabFloatClick += tab =>
+        {
+            Front();
+            ToggleFloat(tab);
+        };
         bar.WindowClick += window => OtherWindows.BringToFront(window.Handle);
 
         // Pesquisar: só o que está liberado agora; com a tela de bloqueio (manutenção, erro) não lista nem abre nada.
@@ -1665,7 +1693,7 @@ public partial class MainWindow : Window
         // Cada aba aparece só se for a página atual do monitor em que está, e nunca junto com um aviso.
         foreach (var tab in _tabs)
         {
-            var current = tab.Monitor is { } host ? host.Active == tab : _active == tab;
+            var current = tab.Float is { } floating ? floating.IsShown : tab.Monitor is { } host ? host.Active == tab : _active == tab;
             tab.IsSelected = current;
             tab.View.Visibility = current && overlay is null && tab.BlockedHost is null ? Visibility.Visible : Visibility.Collapsed;
             TrackRest(tab);

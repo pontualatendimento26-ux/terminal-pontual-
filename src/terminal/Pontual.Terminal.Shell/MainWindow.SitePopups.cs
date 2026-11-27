@@ -78,6 +78,7 @@ public partial class MainWindow
             var loaded = false;
 
             ApplySettings(popup, isHome: false, openPdfs: false);
+            WireSiteKeys(view);
             popup.NavigationStarting += (_, e) =>
             {
                 if (!IsAllowedBlob(e.Uri))

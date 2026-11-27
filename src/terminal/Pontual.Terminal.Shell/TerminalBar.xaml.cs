@@ -35,6 +35,9 @@ public partial class TerminalBar : UserControl
 
     internal event Action<SiteTab>? TabCloseClick;
 
+    /// <summary>Botão de janela da aba: solta o site numa janela comum, ou devolve à tela inteira.</summary>
+    internal event Action<SiteTab>? TabFloatClick;
+
     internal event Action<OpenWindow>? WindowClick;
 
     /// <summary>Item escolhido na pesquisa. Quem abre (e decide se pode abrir) é a <see cref="MainWindow"/>.</summary>
@@ -216,6 +219,14 @@ public partial class TerminalBar : UserControl
         if ((sender as FrameworkElement)?.DataContext is SiteTab tab)
         {
             TabCloseClick?.Invoke(tab);
+        }
+    }
+
+    private void OnTabFloat(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is SiteTab tab)
+        {
+            TabFloatClick?.Invoke(tab);
         }
     }
 
@@ -419,7 +430,8 @@ public partial class TerminalBar : UserControl
             Color = tab.Color;
             Initials = tab.Initials;
             Logo = tab.Logo;
-            Detail = tab.IsSelected ? "Página do Terminal · na tela agora"
+            Detail = tab.IsFloating ? (tab.IsSelected ? "Página do Terminal · em janela" : "Página do Terminal · em janela (minimizada)")
+                : tab.IsSelected ? "Página do Terminal · na tela agora"
                 : tab.Monitor is not null ? "Página do Terminal · no outro monitor"
                 : "Página do Terminal";
             Weight = tab.IsSelected ? FontWeights.SemiBold : FontWeights.Medium;

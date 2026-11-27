@@ -7,7 +7,7 @@ using Pontual.Server.Data;
 namespace Pontual.Server.Api;
 
 /// <summary>
-/// Margem liberada do SIAPE na Central Neural (ver <see cref="SiapeMargin"/>): a ligação com o SQL da base, como escolher
+/// Valor liberado do SIAPE na Central Neural (ver <see cref="SiapeMargin"/>): a ligação com o SQL da base, como escolher
 /// os clientes, a rotina mensal e o que a IA já escreveu. As mensagens esperam aprovação em Mensagens para aprovar.
 /// </summary>
 public static class SiapeEndpoints
@@ -152,7 +152,7 @@ public static class SiapeEndpoints
         await SetAsync(db, TextSetting.SiapeEnabled, enabled ? "1" : "0", ct);
         await SetAsync(db, TextSetting.SiapeAutoSend, autoSend ? "1" : "0", ct);
         await audit.SaveAsync(db, AuditInfo.By(admin, "siape.settings",
-            $"{admin.Name} salvou a margem liberada do SIAPE ({(enabled ? "busca mensal ligada" : "busca mensal desligada")}, {(autoSend ? "envio direto pelo CRM" : "com aprovação")}, até {max} por mês)"), cancellationToken: ct);
+            $"{admin.Name} salvou o valor liberado do SIAPE ({(enabled ? "busca mensal ligada" : "busca mensal desligada")}, {(autoSend ? "envio direto pelo CRM" : "com aprovação")}, até {max} por mês)"), cancellationToken: ct);
         return await OverviewAsync(db, source, crm, time, ct);
     }
 
@@ -193,7 +193,7 @@ public static class SiapeEndpoints
         var admin = context.Admin();
         var result = await SiapeMarginWorker.RunAsync(scopes, time, logger, force: true, ct);
         await audit.SaveAsync(db, AuditInfo.By(admin, "siape.scan",
-            $"{admin.Name} rodou a busca de margem liberada do SIAPE: {result.Checked} servidor(es) lido(s), {result.Created} mensagem(ns)"), cancellationToken: ct);
+            $"{admin.Name} rodou a busca de valor liberado do SIAPE: {result.Checked} servidor(es) lido(s), {result.Created} mensagem(ns)"), cancellationToken: ct);
         return Results.Ok(new { result.Checked, result.Created, result.Sent, message = result.Note });
     }
 }

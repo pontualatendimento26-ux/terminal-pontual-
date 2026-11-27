@@ -160,7 +160,8 @@ function PoliticasDoBloqueio([string]$Comando) {
         @($explorer, 'NoWinKeys', 1),
         @($explorer, 'NoControlPanel', 1),
         @($explorer, 'NoDriveTypeAutoRun', 255),
-        # Edge: nenhum site e bloqueado (decisao do dono, 24/11/2026). O "*" das versoes antigas e apagado em GravarBloqueio.
+        # Edge: bloqueia so o que o TI bloqueou na Central, igual ao Chrome (decisao do dono, 27/11/2026). A lista e gravada
+        # pelo Terminal; o "*" das versoes antigas e apagado em GravarBloqueio.
         @('Software\Policies\Microsoft\Edge', 'HideFirstRunExperience', 1),
         @('Software\Policies\Microsoft\Edge\URLAllowlist', '1', 'file://*'),
         @('Software\Policies\Microsoft\Edge', 'InPrivateModeAvailability', 1),
@@ -219,7 +220,8 @@ function GravarBloqueio([string]$Raiz, [string]$Comando, [string[]]$ProgramasExt
         finally { $chave.Close() }
     }
 
-    # Edge sem nenhum site bloqueado: apaga a lista antiga (o "*"). A chave vazia e recriada em LiberarListasDosNavegadores.
+    # Edge: apaga a lista antiga (o "*"). A chave vazia e recriada em LiberarListasDosNavegadores e o Terminal grava nela,
+    # em ate 30 segundos, os sites que o TI bloqueou.
     $usuarios.DeleteSubKeyTree("$Raiz\Software\Policies\Microsoft\Edge\URLBlocklist", $false)
 
     $usuarios.DeleteSubKeyTree("$Raiz\$ChaveRestrictRun", $false)

@@ -76,6 +76,29 @@ internal sealed class SiteTab(ConfigItem item, WebView2 view) : INotifyPropertyC
     /// <summary>Janela do monitor secundário em que a aba está; nulo quando está na janela principal.</summary>
     public MonitorWindow? Monitor { get; set; }
 
+    /// <summary>Janela solta em que a aba está (MainWindow.Float.cs); nulo quando ocupa a tela inteira de um monitor.</summary>
+    public FloatWindow? Float
+    {
+        get => _float;
+        set
+        {
+            if (!ReferenceEquals(_float, value))
+            {
+                _float = value;
+                OnPropertyChanged(nameof(IsFloating));
+                OnPropertyChanged(nameof(FloatLabel));
+            }
+        }
+    }
+
+    private FloatWindow? _float;
+
+    public bool IsFloating => _float is not null;
+
+    public string FloatLabel => IsFloating
+        ? $"Voltar {Name} para a tela inteira"
+        : $"Abrir {Name} em janela (dá para mover e mudar o tamanho)";
+
     /// <summary>Modo leve: desde quando a aba não está na tela; nulo enquanto aparece em algum monitor.</summary>
     public DateTime? HiddenSince { get; set; }
 

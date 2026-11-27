@@ -39,9 +39,9 @@ public partial class MainWindow
 
         var list = blocked.Select(HostPolicy.NormalizeHost).OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
 
-        // Decisão do dono (24/11/2026): nenhum site é bloqueado no Edge. A lista dele fica sempre vazia (o que apaga o "*"
-        // gravado por instalações antigas) e a aba nunca é desviada (ChromeReader.Scan).
-        _browserLists = (list, [], [.. BrowserPolicy.FirefoxPatterns(list)]);
+        // Decisão do dono (27/11/2026): o Edge obedece aos bloqueios do TI, igual ao Chrome (de 24/11 a 27/11 a lista
+        // dele ficava vazia). Gravar a lista também apaga o "*" deixado por instalações antigas.
+        _browserLists = (list, list, [.. BrowserPolicy.FirefoxPatterns(list)]);
         ApplyBrowserPolicies();
     }
 

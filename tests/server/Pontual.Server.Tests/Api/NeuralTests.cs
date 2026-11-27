@@ -151,7 +151,7 @@ public sealed class NeuralTests
         await AskAsync(terminal, "Como respondo um cliente confuso?");
         Assert.Contains("A voz é da atendente, a dose é do cliente.", Assert.Single(model.Requests).SharedInstructions);
 
-        var tooLong = await owner.PutAsJsonAsync("/api/v1/neural/settings", new { manual = new string('a', 8001) });
+        var tooLong = await owner.PutAsJsonAsync("/api/v1/neural/settings", new { manual = new string('a', 30001) });
         Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
         Assert.Contains("alterou o manual de comunicação", (await owner.GetAsync("/api/v1/audit").Json()).GetRawText());
     }

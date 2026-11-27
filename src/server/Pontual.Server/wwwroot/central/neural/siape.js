@@ -1,4 +1,4 @@
-// Central Neural — aba Margem liberada (SIAPE). Todo começo de mês a Central lê a base de margens do SIAPE (SQL Server
+// Central Neural — aba Valor liberado (SIAPE). Todo começo de mês a Central lê a base do SIAPE (SQL Server
 // na máquina da Kamila), acha quem tem valor liberado total acima de R$ 1.000 e positivação "NÃO", a IA escreve como a atendente e
 // ela sai pelo CRM: por padrão depois de aprovada em Mensagens para aprovar. Usa as funções e o estado de neural.js e
 // aprovar.js (carregados antes). Mesmas regras: nada do servidor entra como HTML.
@@ -117,7 +117,7 @@ async function salvarSiape(alvo, extra = {}) {
     ...extra,
   };
   if (alvo) alvo.disabled = true;
-  try { E.siape = await api('PUT', '/neural/siape/settings', corpo); recado('Margem liberada do SIAPE salva.'); desenharSiape(); return true; }
+  try { E.siape = await api('PUT', '/neural/siape/settings', corpo); recado('Valor liberado do SIAPE salvo.'); desenharSiape(); return true; }
   catch (e) { recado(e.message, true); return false; }
   finally { if (alvo && alvo.isConnected) alvo.disabled = false; }
 }
@@ -219,7 +219,7 @@ function cartaoComoFuncionaSiape() {
       el('ul', { className: 'pontos' },
         el('li', { textContent: 'A Kamila sobe a base nova no SQL todo mês. A Central escolhe sozinha a tabela mais nova que tem telefone, valor liberado e positivação (dá para escolher à mão).' }),
         el('li', { textContent: 'Entra quem está com "NÃO" na positivação e tem valor liberado total acima do mínimo (R$ 1.000). Só celulares; um por CPF; do maior valor para o menor; quem já recebeu oferta nos últimos cinco meses fica de fora.' }),
-        el('li', { textContent: 'A IA escreve a primeira mensagem como a atendente: se apresenta pela Pontual, conta que ele está com valor liberado (margem liberada) e convida para uma simulação. Nunca inventa parcela ou taxa.' }),
+        el('li', { textContent: 'A IA escreve a primeira mensagem como a atendente: se apresenta pela Pontual, escreve o nome do cliente, o valor liberado em cada banco, o total liberado e o reembolso (como estão na base) e convida para uma simulação. Nunca inventa parcela ou taxa.' }),
         el('li', { textContent: 'A mensagem sai pela tela de conversa do CRM, na linha escolhida, e o cliente ganha a etiqueta "Atendida pela IA". Quando ele responder, a conversa segue no CRM como as outras.' })))), 'siape-como');
 }
 
@@ -230,8 +230,8 @@ function cartaoMensagensSiape(s) {
   const ver = pendentes.length ? botao('Ver na fila', 'balao') : null;
   if (ver) ver.onclick = () => ir('aprovar');
   return el('div', { className: 'cartao' },
-    el('div', { className: 'cartao-topo' }, el('div', {}, el('h2', { textContent: 'Últimas mensagens de margem' }),
-      el('p', { textContent: pendentes.length ? `${plural(pendentes.length, 'mensagem espera', 'mensagens esperam')} aprovação na aba Mensagens para aprovar.` : 'O que a IA escreveu para os servidores com margem nova.' })), ver),
+    el('div', { className: 'cartao-topo' }, el('div', {}, el('h2', { textContent: 'Últimas mensagens de valor liberado' }),
+      el('p', { textContent: pendentes.length ? `${plural(pendentes.length, 'mensagem espera', 'mensagens esperam')} aprovação na aba Mensagens para aprovar.` : 'O que a IA escreveu para os servidores com valor liberado.' })), ver),
     el('div', { className: 'cartao-corpo siape-lista' },
       ...(tratadas.length ? tratadas.slice(0, 20).map((r) => cartaoCrm(r, false))
         : [vazio('Nenhuma mensagem tratada ainda', 'As mensagens aprovadas ou recusadas aparecem aqui, com o texto que a IA escreveu.')])));

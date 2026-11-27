@@ -37,8 +37,19 @@ public sealed record SiapeTable(string Name, DateTime CreatedAt, IReadOnlyList<s
     public int? MonthKey => SiapeMargin.MonthOf(Name, CreatedAt);
 }
 
-/// <summary>Um servidor da base do mês com valor liberado para oferecer (<see cref="Liberado"/> = TOTAL_LIBERADO).</summary>
-public sealed record SiapeCandidate(string Cpf, string Name, string Phone, decimal Liberado, decimal Margin, string Organ, int Age, string Uf);
+/// <summary>Um contrato do servidor na base: o banco e o valor liberado nele (colunas <c>banco</c> e <c>VALOR_LIBERADO</c>).</summary>
+public sealed record SiapeContract(string Bank, decimal Liberado);
+
+/// <summary>
+/// Um servidor da base do mês com valor liberado para oferecer (<see cref="Liberado"/> = TOTAL_LIBERADO, <see cref="Refund"/> = REEMBOLSO,
+/// e um contrato por banco em <see cref="Contracts"/>). O dono pediu (26/11/2026) que a mensagem traga nome, valor liberado por banco,
+/// total liberado e reembolso.
+/// </summary>
+public sealed record SiapeCandidate(string Cpf, string Name, string Phone, decimal Liberado, decimal Margin, string Organ, int Age, string Uf,
+    decimal Refund = 0, IReadOnlyList<SiapeContract>? Contracts = null)
+{
+    public IReadOnlyList<SiapeContract> Contracts { get; init; } = Contracts ?? [];
+}
 
 /// <summary>Lê a base do SIAPE. É uma interface para os testes trocarem o SQL Server por uma lista.</summary>
 public interface ISiapeSource
@@ -101,16 +112,20 @@ public sealed class SqlSiapeSource : ISiapeSource
     {
         // O nome vem da lista do próprio servidor (sys.tables), nunca de quem usa a tela; mesmo assim só entra entre colchetes.
         static string Quoted(string name) => "[" + name.Replace("]", "]]") + "]";
-        string Opt(string column, string alias) => current.Has(column) ? $"MAX({Quoted(column)}) AS {alias}" : $"'' AS {alias}";
-        // Uma linha por contrato na base: agrupa por CPF. Só quem está com "NÃO" na positivação (o dono pediu) e liberado acima do mínimo.
+        string Col(string column, string fallback) => current.Has(column) ? Quoted(column) : fallback;
+        // Uma linha por contrato na base (banco + VALOR_LIBERADO); TOTAL_LIBERADO e REEMBOLSO repetem em todas as linhas do CPF.
+        // Primeiro escolhe os CPFs (só quem está com "NÃO" na positivação e liberado acima do mínimo), depois traz os contratos deles.
         var sql = $"""
-            SELECT TOP (@take) cpf, MAX(nome) AS nome, MAX(TELEFONE1) AS telefone, MAX(TOTAL_LIBERADO) AS liberado, {(current.Has("Margem") ? "MAX(Margem)" : "0")} AS margem,
-                {Opt("NOME_ORGAO", "orgao")}, {(current.Has("IDADE") ? "MAX(IDADE)" : "0")} AS idade, {Opt("uf", "uf")}
-            FROM {Quoted(current.Name)}
-            WHERE cpf IS NOT NULL AND cpf <> '' AND TELEFONE1 IS NOT NULL AND LEN(TELEFONE1) >= 10
-                AND UPPER(LTRIM(RTRIM(POSITIVACAO))) IN ('NAO', N'NÃO') AND TOTAL_LIBERADO >= @min
-            GROUP BY cpf
-            ORDER BY MAX(TOTAL_LIBERADO) DESC
+            WITH base AS (
+                SELECT cpf, nome, TELEFONE1, TOTAL_LIBERADO, {Col("Margem", "0")} AS margem, {Col("NOME_ORGAO", "''")} AS orgao, {Col("IDADE", "0")} AS idade, {Col("uf", "''")} AS uf,
+                    {Col("REEMBOLSO", "0")} AS reembolso, {Col("banco", "''")} AS banco, {Col("VALOR_LIBERADO", "0")} AS valor
+                FROM {Quoted(current.Name)}
+                WHERE cpf IS NOT NULL AND cpf <> '' AND TELEFONE1 IS NOT NULL AND LEN(TELEFONE1) >= 10
+                    AND UPPER(LTRIM(RTRIM(POSITIVACAO))) IN ('NAO', N'NÃO') AND TOTAL_LIBERADO >= @min),
+            escolhidos AS (SELECT TOP (@take) cpf, MAX(TOTAL_LIBERADO) AS liberado FROM base GROUP BY cpf ORDER BY MAX(TOTAL_LIBERADO) DESC)
+            SELECT b.cpf, b.nome, b.TELEFONE1, e.liberado, b.margem, b.orgao, b.idade, b.uf, b.reembolso, b.banco, b.valor
+            FROM base b JOIN escolhidos e ON e.cpf = b.cpf
+            ORDER BY e.liberado DESC, b.cpf, b.valor DESC
             """;
         try
         {
@@ -122,16 +137,34 @@ public sealed class SqlSiapeSource : ISiapeSource
             command.Parameters.AddWithValue("@take", Math.Clamp(take, 1, 5000));
             command.Parameters.AddWithValue("@min", minLiberado);
             var list = new List<SiapeCandidate>();
+            var contracts = new List<SiapeContract>();
             await using var reader = await command.ExecuteReaderAsync(ct);
             while (await reader.ReadAsync(ct))
             {
                 static string Text(SqlDataReader r, int i) => r.IsDBNull(i) ? "" : Convert.ToString(r.GetValue(i), CultureInfo.InvariantCulture)?.Trim() ?? "";
                 static decimal Number(SqlDataReader r, int i) => r.IsDBNull(i) ? 0 : Convert.ToDecimal(r.GetValue(i), CultureInfo.InvariantCulture);
-                var age = reader.IsDBNull(6) ? 0 : (int)Math.Clamp(Convert.ToDecimal(reader.GetValue(6), CultureInfo.InvariantCulture), 0, 130);
-                list.Add(new SiapeCandidate(Text(reader, 0), Text(reader, 1), Text(reader, 2), Number(reader, 3), Number(reader, 4), Text(reader, 5), age, Text(reader, 7)));
+                var cpf = Text(reader, 0);
+                if (list.Count == 0 || list[^1].Cpf != cpf)
+                {
+                    contracts = [];
+                    var age = reader.IsDBNull(6) ? 0 : (int)Math.Clamp(Convert.ToDecimal(reader.GetValue(6), CultureInfo.InvariantCulture), 0, 130);
+                    list.Add(new SiapeCandidate(cpf, Text(reader, 1), Text(reader, 2), Number(reader, 3), Number(reader, 4), Text(reader, 5), age, Text(reader, 7), Number(reader, 8), contracts));
+                }
+
+                // Um contrato por linha; só os com valor liberado positivo interessam na mensagem.
+                var value = Number(reader, 10);
+                if (value > 0)
+                {
+                    contracts.Add(new SiapeContract(Text(reader, 9), value));
+                }
             }
 
-            return list;
+            // O mesmo banco costuma ter vários contratos do cliente: na mensagem vai um valor por banco (a soma bate com o TOTAL_LIBERADO).
+            return list.Select(c => c with
+            {
+                Contracts = c.Contracts.GroupBy(x => x.Bank, StringComparer.OrdinalIgnoreCase)
+                    .Select(g => new SiapeContract(g.Key, g.Sum(x => x.Liberado))).OrderByDescending(x => x.Liberado).ToList(),
+            }).ToList();
         }
         catch (SqlException ex)
         {
@@ -151,7 +184,7 @@ public sealed class SqlSiapeSource : ISiapeSource
 }
 
 /// <summary>
-/// Margem liberada do SIAPE (pedido do dono, 26/11/2026): todo começo de mês a Central olha na base do SIAPE quem tem
+/// Valor liberado do SIAPE (pedido do dono, 26/11/2026): todo começo de mês a Central olha na base do SIAPE quem tem
 /// valor liberado total (TOTAL_LIBERADO) acima de R$ 1.000 e ainda está com "NÃO" na positivação; a IA escreve a mensagem
 /// para cada um, como a atendente, e ela sai pelo CRM. Por padrão espera aprovação em Mensagens para aprovar.
 /// </summary>
@@ -293,13 +326,14 @@ public static class SiapeMargin
 
     public const string Rules =
         """
-        MODO MARGEM LIBERADA (SIAPE)
+        MODO VALOR LIBERADO (SIAPE)
 
-        Agora você escreve a PRIMEIRA mensagem para um servidor público federal (SIAPE) que ainda não conversou com a Pontual neste atendimento. A base do mês mostra que ele tem um valor liberado para crédito consignado (margem liberada): é isso que você vai contar. Os dados dele estão em <cliente>.
+        Agora você escreve a PRIMEIRA mensagem para um servidor público federal (SIAPE) que ainda não conversou com a Pontual neste atendimento. A base do mês mostra que ele tem um valor liberado para crédito consignado: é isso que você vai contar. Os dados dele estão em <cliente>.
 
         - Escreva como a atendente indicada em <atendente> (ou no jeito geral da equipe), em primeira pessoa, no WhatsApp: curto (até umas cinco linhas), sem título e sem markdown; para destacar use *asteriscos*.
         - Comece se apresentando pela Pontual (correspondente bancário de crédito consignado) e chame o cliente pelo primeiro nome.
-        - O assunto é a margem liberada: diga que neste mês ele está com um valor liberado para consignado no contracheque e que dá para aproveitar (empréstimo novo, portabilidade com troco ou refinanciamento, conforme a base). Pode citar o valor liberado que está em <cliente>, arredondado para baixo ("mais de R$ 5 mil"); nunca invente valor de parcela, taxa ou prazo.
+        - O assunto é o valor liberado: diga que neste mês ele está com um valor liberado para consignado no contracheque e que dá para aproveitar (empréstimo novo, portabilidade com troco ou refinanciamento, conforme a base).
+        - A mensagem TEM QUE trazer, exatamente como estão em <cliente>: o nome do cliente, cada banco com o valor liberado nele, o total liberado e o reembolso. Copie os valores como estão (R$ com centavos), um banco por linha quando houver mais de um. Fora isso, nunca invente valor de parcela, taxa ou prazo.
         - Termine com um convite simples e uma pergunta só: se ele quer que você faça uma simulação sem compromisso. Não peça documento nem CPF nesta primeira mensagem.
         - Respeito e sem pressa: nada de urgência falsa, promessa, "última chance" ou pressão. Se o cliente for idoso (idade em <cliente>), trate por senhor/senhora.
         - Nunca diga que vai passar para outra pessoa nem fale da atendente em terceira pessoa.
@@ -319,7 +353,7 @@ public static class SiapeMargin
         var settings = Settings.From(values);
         if (!force && !settings.Enabled)
         {
-            return new Result(0, 0, 0, "A busca mensal de margem liberada está desligada.");
+            return new Result(0, 0, 0, "A busca mensal de valor liberado está desligada.");
         }
 
         if (Access(values) is not { } access)
@@ -417,7 +451,7 @@ public static class SiapeMargin
 
         var note = created == 0
             ? checkedCount == 0 ? "Nenhum servidor com positivação \"NÃO\" e valor liberado acima do mínimo (que ainda não recebeu oferta) na base do mês." : "A IA não escreveu mensagem para nenhum dos servidores encontrados."
-            : settings.AutoSend ? $"{sent} de {created} mensagem(ns) enviada(s) pelo CRM." : $"{created} mensagem(ns) de margem liberada esperando aprovação.";
+            : settings.AutoSend ? $"{sent} de {created} mensagem(ns) enviada(s) pelo CRM." : $"{created} mensagem(ns) de valor liberado esperando aprovação.";
         if (failures > 0)
         {
             note += $" {failures} falhou(aram) na IA.";
@@ -430,8 +464,14 @@ public static class SiapeMargin
     {
         var facts = new StringBuilder()
             .Append("Valor liberado total no SIAPE: ").Append(Money(c.Liberado))
-            .Append(c.Margin != 0 ? $" (margem do mês {Money(c.Margin)})" : "").Append(" · positivação: NÃO\n")
-            .Append("CPF ").Append(NexusClient.FormatCpf(c.Cpf));
+            .Append(c.Refund != 0 ? $" · reembolso {Money(c.Refund)}" : "")
+            .Append(c.Margin != 0 ? $" (margem do mês {Money(c.Margin)})" : "").Append(" · positivação: NÃO\n");
+        foreach (var contract in c.Contracts)
+        {
+            facts.Append(contract.Bank.Length > 0 ? contract.Bank : "Banco não informado").Append(": ").Append(Money(contract.Liberado)).Append('\n');
+        }
+
+        facts.Append("CPF ").Append(NexusClient.FormatCpf(c.Cpf));
         if (c.Organ.Length > 0)
         {
             facts.Append(" · ").Append(c.Organ);
@@ -469,7 +509,17 @@ public static class SiapeMargin
             text.Append("Idade: ").Append(c.Age).Append(" anos\n");
         }
 
-        text.Append("Valor liberado para consignado neste mês (margem liberada): ").Append(Money(c.Liberado)).Append('\n');
+        text.Append("Total liberado para consignado neste mês: ").Append(Money(c.Liberado)).Append('\n');
+        text.Append("Reembolso: ").Append(Money(c.Refund)).Append('\n');
+        if (c.Contracts.Count > 0)
+        {
+            text.Append("Valor liberado por banco:\n");
+            foreach (var contract in c.Contracts)
+            {
+                text.Append("- ").Append(contract.Bank.Length > 0 ? Pretty(contract.Bank) : "Banco não informado").Append(": ").Append(Money(contract.Liberado)).Append('\n');
+            }
+        }
+
         if (c.Margin != 0)
         {
             text.Append("Margem consignável do mês: ").Append(Money(c.Margin)).Append('\n');
@@ -509,7 +559,7 @@ public static class SiapeMargin
 }
 
 /// <summary>
-/// Roda a busca de margem liberada uma vez por mês, a partir do dia escolhido (padrão dia 1), das 8h às 18h de
+/// Roda a busca de valor liberado uma vez por mês, a partir do dia escolhido (padrão dia 1), das 8h às 18h de
 /// Brasília, de segunda a sábado, se a rotina estiver ligada. Confere a cada hora se já é a vez.
 /// </summary>
 public sealed class SiapeMarginWorker(IServiceScopeFactory scopes, TimeProvider time, ILogger<SiapeMarginWorker> logger) : BackgroundService
@@ -532,7 +582,7 @@ public sealed class SiapeMarginWorker(IServiceScopeFactory scopes, TimeProvider 
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    logger.LogError(ex, "Falha ao conferir a busca mensal de margem liberada do SIAPE");
+                    logger.LogError(ex, "Falha ao conferir a busca mensal de valor liberado do SIAPE");
                 }
 
                 await Task.Delay(TimeSpan.FromHours(1), time, stoppingToken);
@@ -585,7 +635,7 @@ public sealed class SiapeMarginWorker(IServiceScopeFactory scopes, TimeProvider 
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogError(ex, "Falha na busca de margem liberada do SIAPE");
+                logger.LogError(ex, "Falha na busca de valor liberado do SIAPE");
                 result = new SiapeMargin.Result(0, 0, 0, "A busca falhou por um erro interno; está no registro da Central.");
             }
 

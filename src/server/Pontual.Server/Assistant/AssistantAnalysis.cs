@@ -523,5 +523,10 @@ public sealed class AnalysisWorker(IServiceProvider services, ILogger<AnalysisWo
                 }
             }
         }
+
+        // Com os perfis em dia, a atendente ideal (a soma dos pontos fortes de todas) é criada ou refeita se algo mudou.
+        await IdealAttendant.RunIfStaleAsync(
+            db, scope.ServiceProvider.GetRequiredService<IAssistantModel>(), configuration,
+            scope.ServiceProvider.GetRequiredService<AuditWriter>(), time, ct);
     }
 }

@@ -27,3 +27,16 @@
 2026-11-26 13:55:36.773: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
 2026-11-26 13:55:36.984: [INFO] VisibilityChanged: 0
 2026-11-26 13:55:40.996: [INFO] BookmarksSnapshot Shutdown total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-11-27 19:19:44.952: [INFO] CurrentProfilePath: F:\Projetos\Terminal-Pontual\.rascunho-central-neural\mapa-teste\perfil\Default
+2026-11-27 19:19:44.952: [INFO] Profiles total count: 1
+2026-11-27 19:19:44.952: [INFO] Profile: name=Pessoal path=F:\Projetos\Terminal-Pontual\.rascunho-central-neural\mapa-teste\perfil\Default lastActive=2026-11-27T19:19:44.927Z
+2026-11-27 19:19:44.952: [INFO] LastUsedProfileDir: F:\Projetos\Terminal-Pontual\.rascunho-central-neural\mapa-teste\perfil\Default
+2026-11-27 19:19:44.952: [INFO] MostRecentlyActiveProfile: name=Pessoal path=F:\Projetos\Terminal-Pontual\.rascunho-central-neural\mapa-teste\perfil\Default lastActive=2026-11-27T19:19:44.927Z
+2026-11-27 19:19:44.952: [INFO] OnDoneLoading sync enabled: 1
+2026-11-27 19:19:44.952: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-11-27 19:19:44.952: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-11-27 19:19:44.952: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-11-27 19:19:45.111: [INFO] VisibilityChanged: 0
+2026-11-27 19:19:50.967: [INFO] BookmarkNodeAdded, ABU: 0
+2026-11-27 19:19:52.118: [INFO] Sync initialization duration: 7161ms
+2026-11-27 19:19:53.323: [INFO] BookmarksSnapshot Shutdown total=1 bar=1 other=0 mobile=0 showBar=0 showBarNTP=1

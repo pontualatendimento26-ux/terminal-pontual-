@@ -59,8 +59,7 @@ internal static class ChromeReader
         var redirected = new List<BrowserRedirect>();
         var addresses = ReadAddresses((browser, window, edit, value, text) =>
         {
-            // Decisão do dono (24/11/2026): no Edge nenhum site é bloqueado.
-            if (browser.Process != "msedge" && ChromeWatch.HostFromAddress(text) is { } host && isBlocked(host))
+            if (ChromeWatch.HostFromAddress(text) is { } host && isBlocked(host))
             {
                 if (TryRedirect(browser, window, edit, value, host))
                 {

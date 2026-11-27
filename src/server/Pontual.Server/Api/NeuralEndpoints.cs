@@ -55,6 +55,9 @@ public static class NeuralEndpoints
 
         api.MapGet("/neural/attendants/{deviceId:guid}", AttendantAsync).Panel(Access);
         api.MapPost("/neural/attendants/{deviceId:guid}/analyze", AnalyzeAsync).Panel(Access);
+
+        api.MapGet("/neural/ideal", IdealAsync).Panel(Access);
+        api.MapPost("/neural/ideal/generate", GenerateIdealAsync).Panel(Access);
     }
 
     // ------------------------------------------------------------------ visão geral
@@ -85,7 +88,7 @@ public static class NeuralEndpoints
         details = Agreements.Parse(s.DetailsJson),
     };
 
-    private static async Task<IResult> OverviewAsync(PontualDb db, IConfiguration configuration, TimeProvider time, CancellationToken ct)
+    private static async Task<IResult> OverviewAsync(HttpContext context, PontualDb db, IConfiguration configuration, TimeProvider time, CancellationToken ct)
     {
         var now = time.GetUtcNow().UtcDateTime;
         // Só os campos de cadastro; o texto de cada conhecimento é buscado quando ele é aberto.
@@ -133,7 +136,7 @@ public static class NeuralEndpoints
         var settings = await db.TextSettings.AsNoTracking().ToDictionaryAsync(s => s.Key, s => s.Value, ct);
         var enabledChars = items.Where(i => i.enabled).Sum(i => (long)i.chars);
 
-        // Margem liberada do SIAPE: as mensagens do mês (de Brasília), para o ramo do mapa.
+        // Valor liberado do SIAPE: as mensagens do mês (de Brasília), para o ramo do mapa.
         var local = TimeZoneInfo.ConvertTimeFromUtc(now, AssistantPrompt.BrazilTime);
         var monthStart = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(new DateTime(local.Year, local.Month, 1), DateTimeKind.Unspecified), AssistantPrompt.BrazilTime);
         var siapeMonth = await db.CrmReplies.AsNoTracking().Where(r => r.Kind == SiapeMargin.Kind && r.CreatedAt >= monthStart).OrderByDescending(r => r.CreatedAt).Take(300)
@@ -181,6 +184,10 @@ public static class NeuralEndpoints
             },
             pendingSuggestions = pending,
             feedback = new { helpful, notHelpful },
+            // O Agente RH (e a atendente ideal, que pende dele) só existe no mapa do superadministrador.
+            rh = context.Admin().Role == Role.SuperAdmin,
+            // A atendente ideal: só se já foi montada; o perfil vem em /neural/ideal.
+            ideal = new { generated = IdealAttendant.Read(settings) is not null },
             brain = new
             {
                 // "inline": a IA lê a base inteira a cada pergunta. "index": lê o índice e abre o que precisa.
@@ -1011,5 +1018,39 @@ public static class NeuralEndpoints
         }
 
         return Results.Ok(new { messagesRead = read, conversationsRead = conversations, crmRead = crm, newSuggestions = created, updatedSuggestions = updated, more });
+    }
+
+    // ------------------------------------------------------------------ atendente ideal
+
+    /// <summary>O Agente RH (e a atendente ideal, que é dele) é só do superadministrador: decisão do dono.</summary>
+    private static Admin RhAdmin(HttpContext context) => RhEndpoints.Demand(context);
+
+    /// <summary>O perfil da atendente ideal. Cita o ponto forte de cada uma; a leitura entra na auditoria.</summary>
+    private static async Task<IResult> IdealAsync(HttpContext context, PontualDb db, AuditWriter audit, CancellationToken ct)
+    {
+        var admin = RhAdmin(context);
+        var settings = await db.TextSettings.AsNoTracking().ToDictionaryAsync(s => s.Key, s => s.Value, ct);
+        var stored = IdealAttendant.Read(settings);
+        if (stored is not null)
+        {
+            await audit.SaveAsync(db, AuditInfo.By(admin, "neural.ideal.read", $"{admin.Name} leu o perfil da atendente ideal"), cancellationToken: ct);
+        }
+
+        return Results.Ok(IdealAttendant.View(stored, await IdealAttendant.SourcesAsync(db, settings, ct)));
+    }
+
+    /// <summary>Monta ou refaz o perfil com os perfis de agora: uma chamada à IA, só quando o administrador pede.</summary>
+    private static async Task<IResult> GenerateIdealAsync(
+        HttpContext context, PontualDb db, IAssistantModel model, IConfiguration configuration, AuditWriter audit, TimeProvider time, CancellationToken ct)
+    {
+        var admin = RhAdmin(context);
+        try
+        {
+            return Results.Ok(await IdealAttendant.RunAsync(db, model, configuration, audit, time, admin, ct));
+        }
+        catch (AssistantFailure failure)
+        {
+            throw new ApiError(StatusCodes.Status502BadGateway, failure.Message);
+        }
     }
 }

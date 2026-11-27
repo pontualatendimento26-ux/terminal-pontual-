@@ -326,6 +326,8 @@ public sealed class TextSetting
     public const string AssistantWhatsAppLearning = "assistant.whatsappLearning";
     /// <summary>Perfis montados a partir de históricos de conversas importados: objeto JSON nome da atendente → perfil.</summary>
     public const string AssistantImportedProfiles = "assistant.importedProfiles";
+    /// <summary>Perfil da atendente ideal, montado pela IA com os pontos fortes de todas (ver <c>IdealAttendant</c>).</summary>
+    public const string AssistantIdealProfile = "assistant.idealProfile";
 
     /// <summary>"0" desliga a gravação da tela das atendentes; o padrão é ligada.</summary>
     public const string RecordingEnabled = "recording.enabled";
@@ -355,7 +357,7 @@ public sealed class TextSetting
     /// <summary>Token da Central no Nexus, cifrado como a chave da IA (ver <c>AssistantSecrets</c>).</summary>
     public const string NexusToken = "nexus.token";
 
-    // Margem liberada do SIAPE (ver <c>SiapeMargin</c>): a base do SQL Server na máquina da Kamila.
+    // Valor liberado do SIAPE (ver <c>SiapeMargin</c>): a base do SQL Server na máquina da Kamila.
     /// <summary>Servidor SQL, no formato IP,porta (ex.: 192.168.0.160,1433).</summary>
     public const string SiapeServer = "siape.server";
     public const string SiapeDatabase = "siape.database";

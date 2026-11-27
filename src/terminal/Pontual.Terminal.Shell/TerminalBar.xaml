@@ -297,6 +297,15 @@
                                                 <TextBlock x:Name="Rotulo" Text="{Binding Name}" Margin="8,0,0,0" MaxWidth="170" TextTrimming="CharacterEllipsis" FontWeight="Medium" Foreground="{StaticResource Suave}" VerticalAlignment="Center" />
                                             </StackPanel>
                                         </Button>
+                                        <!-- Janela: solta o site numa janela comum (mover, aumentar, diminuir); de novo, volta à tela inteira. -->
+                                        <Button Style="{StaticResource BotaoLimpo}" Padding="4,0,4,0" Height="40" Click="OnTabFloat" AutomationProperties.Name="{Binding FloatLabel}" ToolTip="{Binding FloatLabel}">
+                                            <Viewbox Width="16" Height="16">
+                                                <Canvas Width="24" Height="24">
+                                                    <Rectangle x:Name="JanelaTras" Canvas.Left="8" Canvas.Top="4" Width="12" Height="12" RadiusX="2" RadiusY="2" Stroke="{StaticResource Apagado}" StrokeThickness="2" />
+                                                    <Rectangle x:Name="JanelaFrente" Canvas.Left="4" Canvas.Top="8" Width="12" Height="12" RadiusX="2" RadiusY="2" Stroke="{StaticResource Apagado}" StrokeThickness="2" Fill="White" />
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Button>
                                         <Button Style="{StaticResource BotaoLimpo}" Padding="4,0,12,0" Height="40" Click="OnTabClose" AutomationProperties.Name="{Binding CloseLabel}" ToolTip="{Binding CloseLabel}">
                                             <Viewbox Width="16" Height="16">
                                                 <Canvas Width="24" Height="24">
@@ -311,6 +320,12 @@
                                         <Setter TargetName="Pilula" Property="Background" Value="{StaticResource Azul50}" />
                                         <Setter TargetName="Pilula" Property="BorderBrush" Value="{StaticResource Azul100}" />
                                         <Setter TargetName="Rotulo" Property="Foreground" Value="{StaticResource Azul900}" />
+                                    </DataTrigger>
+                                    <!-- Em janela solta: o ícone fica azul, para mostrar que o botão agora devolve à tela inteira. -->
+                                    <DataTrigger Binding="{Binding IsFloating}" Value="True">
+                                        <Setter TargetName="JanelaTras" Property="Stroke" Value="{StaticResource Azul500}" />
+                                        <Setter TargetName="JanelaFrente" Property="Stroke" Value="{StaticResource Azul500}" />
+                                        <Setter TargetName="JanelaFrente" Property="Fill" Value="{StaticResource Azul100}" />
                                     </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>

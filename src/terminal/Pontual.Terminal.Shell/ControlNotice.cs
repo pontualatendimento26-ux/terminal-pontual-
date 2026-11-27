@@ -33,16 +33,17 @@ internal sealed class ControlNotice : Window
         var texto = string.IsNullOrWhiteSpace(viewer) ? "TI controlando" : $"{viewer} (TI) controlando";
         var corpo = new Border
         {
-            // Cor de atenção, mas plaquinha pequena: letra miúda, cantos arredondados, bem no canto da tela.
-            Background = new SolidColorBrush(Color.FromArgb(0xE0, 0xB4, 0x23, 0x18)),
-            CornerRadius = new CornerRadius(0, 0, 0, 8),
-            Padding = new Thickness(10, 4, 10, 5),
+            // Bem sutil: vermelho clarinho e quase transparente, letra miúda, bem no canto da tela.
+            Background = new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0xB3, 0xB3)),
+            CornerRadius = new CornerRadius(0, 0, 0, 6),
+            Padding = new Thickness(6, 1, 6, 2),
+            Opacity = 0.85,
             Child = new TextBlock
             {
                 Text = texto,
-                Foreground = Brushes.White,
-                FontSize = 11,
-                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromArgb(0xB0, 0x9A, 0x2A, 0x2A)),
+                FontSize = 9,
+                FontWeight = FontWeights.Normal,
             },
         };
         Content = corpo;

@@ -5,15 +5,18 @@
 //
 // Um nó: { id, pai, tipo, rotulo, sub, estado, novo }
 //   tipo: 'nucleo' | 'ramo' | 'grupo' | 'script' | 'document' | 'knowledge' | 'system' | 'attendant' | 'suggestion' | 'manual'
+//         'agente' (um agente ligado à Central por API: círculo grande à parte, com 'via' escrito na linha) | 'rh' (o que pende do Agente RH)
 //   estado: 'active' | 'disabled' | 'pending' | 'error'
 'use strict';
 
 // Raio do núcleo (o "cérebro" do centro). Grande o bastante para continuar visível com o zoom bem reduzido.
 const NUCLEO_R = 180;
+// Um agente ligado à Central (o Agente RH) é desenhado como um núcleo menor, igual ao da IA Pontual.
+const AGENTE_R = 120;
 
 const MAPA_CORES = {
   nucleo: '#4fd8ff', script: '#4fd8ff', document: '#5b8cff', knowledge: '#9b8cff', system: '#ffd76a',
-  attendant: '#3ddc97', suggestion: '#ffb454', manual: '#ff8fb8', siape: '#7be0d6', erro: '#ff6b7d',
+  attendant: '#3ddc97', suggestion: '#ffb454', manual: '#ff8fb8', siape: '#7be0d6', agente: '#4fd8ff', erro: '#ff6b7d',
 };
 
 class MapaNeural {
@@ -78,7 +81,7 @@ class MapaNeural {
 
   setFiltro(fn) { this.filtro = fn || (() => true); this.organizar(); }
   no(id) { return this.nos.get(id) || null; }
-  ehFolha(no) { return !['nucleo', 'ramo', 'grupo'].includes(no.tipo); }
+  ehFolha(no) { return !['nucleo', 'ramo', 'grupo', 'agente'].includes(no.tipo); }
 
   // ------------------------------------------------------------- organização
   // Árvore em cachos em volta do núcleo.
@@ -100,7 +103,7 @@ class MapaNeural {
     // Cada nó abre o que tem para fora: pontas numa coluna, grupos num arco.
     // O núcleo reparte a volta em fatias (maiores para ramos com mais coisa) e põe cada ramo perto dele;
     // os grupos de um ramo abrem só dentro da fatia dele. A conferência de colisão, mais abaixo, afasta só o que encostar.
-    const raioDe = (no) => (no.tipo === 'nucleo' ? NUCLEO_R : no.tipo === 'ramo' ? 24 : no.tipo === 'grupo' ? 14 : no.tipo === 'attendant' ? 11 : 8.5);
+    const raioDe = (no) => (no.tipo === 'nucleo' ? NUCLEO_R : no.tipo === 'agente' ? AGENTE_R : no.tipo === 'ramo' ? 24 : no.tipo === 'grupo' ? 14 : no.tipo === 'attendant' || no.tipo === 'rh' ? 11 : 8.5);
     const pontas = (no) => { const fs = mostrados(no); return fs.length ? fs.reduce((s, f) => s + pontas(f), 0) : 1; };
     const medir = (no, abre = Math.PI) => {
       no.r = raioDe(no);
@@ -115,7 +118,8 @@ class MapaNeural {
         let t = 0;
         fs.forEach((f, i) => {
           medir(f, Math.min(Math.max(fatias[i] * 1.6, 1.2), Math.PI * 1.15));
-          no.plano.push({ f, d: (NUCLEO_R + 320) * (f.multAnel || 1), t: t + fatias[i] / 2 - fatias[0] / 2 });
+          // Um agente fica bem mais longe que os ramos: é outro sistema, ligado ao núcleo por uma linha comprida.
+          no.plano.push({ f, d: (NUCLEO_R + (f.tipo === 'agente' ? 1150 : 320)) * (f.multAnel || 1), t: t + fatias[i] / 2 - fatias[0] / 2 });
           t += fatias[i];
         });
         no.C = Math.max(...no.plano.map((item) => item.d + item.f.C));
@@ -125,7 +129,7 @@ class MapaNeural {
       if (fs.every((f) => this.ehFolha(f))) {
         // Pontas em coluna, uma embaixo da outra, do lado de fora do nó (o nome de cada uma sai para fora e
         // não cai em cima de outra). Coluna levemente arqueada; com muitas pontas, mais colunas lado a lado.
-        const passo = fs.some((f) => f.tipo === 'attendant') ? 44 : 40, porColuna = 16, entreColunas = 360;
+        const passo = fs.some((f) => f.tipo === 'attendant' || f.tipo === 'rh') ? 44 : 40, porColuna = 16, entreColunas = 360;
         const colunas = Math.ceil(fs.length / porColuna), cada = Math.ceil(fs.length / colunas);
         let alto = 0;
         for (let c = 0; c < colunas; c++) {
@@ -253,7 +257,7 @@ class MapaNeural {
 
   lerPosicoes() {
     try {
-      const lido = JSON.parse(localStorage.getItem('neural.mapa.posicoes.v4') || '{}');
+      const lido = JSON.parse(localStorage.getItem('neural.mapa.posicoes.v5') || '{}');
       return lido && typeof lido === 'object' && !Array.isArray(lido) ? lido : {};
     } catch { return {}; }
   }
@@ -261,7 +265,7 @@ class MapaNeural {
   guardarPosicoes() {
     this.posicoes = {};
     for (const no of this.nos.values()) if (no.dx || no.dy || no.giro) this.posicoes[no.id] = [Math.round(no.dx), Math.round(no.dy), Math.round((no.giro || 0) * 1000) / 1000];
-    try { localStorage.setItem('neural.mapa.posicoes.v4', JSON.stringify(this.posicoes)); } catch { /* sem armazenamento: vale só até recarregar */ }
+    try { localStorage.setItem('neural.mapa.posicoes.v5', JSON.stringify(this.posicoes)); } catch { /* sem armazenamento: vale só até recarregar */ }
   }
 
   // Desfaz os arrastos: cada círculo volta ao lugar calculado, e o mapa é enquadrado.
@@ -386,7 +390,7 @@ class MapaNeural {
       if (moveuNo || girou) this.guardarPosicoes();
       if (!foiClique || e.type === 'pointercancel') return;
       const p = local(e), no = this.noEm(p.x, p.y);
-      if (no && !this.ehFolha(no) && no.tipo !== 'nucleo') this.alternar(no.id);
+      if (no && !this.ehFolha(no) && no.tipo !== 'nucleo' && no.tipo !== 'agente') this.alternar(no.id);
       this.sel = no ? no.id : null;
       this.aoSelecionar(no);
     };
@@ -487,8 +491,8 @@ class MapaNeural {
       if (!pai) continue;
       const cor = this.cor(no), forte = aceso.has(no.id) && aceso.has(pai.id), apagado = no.estado === 'disabled';
       ctx.beginPath(); ctx.moveTo(pai.x, pai.y); ctx.lineTo(no.x, no.y);
-      ctx.strokeStyle = cor; ctx.globalAlpha = forte ? 0.95 : apagado ? 0.1 : no.prof === 1 ? 0.42 : 0.2;
-      ctx.lineWidth = (forte ? 2 : no.prof === 1 ? 1.5 : 1) / Math.max(z, 0.5);
+      ctx.strokeStyle = cor; ctx.globalAlpha = forte ? 0.95 : apagado ? 0.1 : no.tipo === 'agente' ? 0.8 : no.prof === 1 ? 0.42 : 0.2;
+      ctx.lineWidth = (forte || no.tipo === 'agente' ? 2 : no.prof === 1 ? 1.5 : 1) / Math.max(z, 0.5);
       ctx.stroke();
       // Pulso: um ponto de luz que corre do centro para a ponta.
       if (!this.calmo && !apagado && (no.prof <= 2 || forte) && pulsos < 140) {
@@ -527,12 +531,42 @@ class MapaNeural {
       const p = this.paraTela(no.x, no.y), r = no.r * z + 3;
       ocupados.push([p.x - r, p.y - r, p.x + r, p.y + r]);
     }
-    const ordem = (no) => (no.id === this.sel || no.id === this.sobre ? 0 : no.tipo === 'ramo' ? 1 : no.tipo === 'grupo' ? 2 : 3);
+    const ordem = (no) => (no.id === this.sel || no.id === this.sobre ? 0 : no.tipo === 'ramo' || no.tipo === 'agente' ? 1 : no.tipo === 'grupo' ? 2 : 3);
     for (const no of this.visiveis.slice().sort((a, b) => ordem(a) - ordem(b))) {
       if (no.tipo === 'nucleo') continue;
+      if (no.tipo === 'agente') {
+        // No meio da linha que vem do núcleo vai escrito por onde ele conversa com a Central; o nome fica embaixo da esfera.
+        const pai = this.nos.get(no.pai);
+        if (pai && no.via) {
+          const dist = Math.hypot(no.x - pai.x, no.y - pai.y) || 1, meio = ((pai.r || 0) + 90 + dist - no.r * 1.45) / 2 / dist;
+          const m = this.paraTela(pai.x + (no.x - pai.x) * meio, pai.y + (no.y - pai.y) * meio);
+          ctx.font = '600 13px Sora, Inter, system-ui, sans-serif';
+          const lv = ctx.measureText(no.via).width, cv = [m.x - lv / 2 - 10, m.y - 11, m.x + lv / 2 + 10, m.y + 11];
+          ocupados.push(cv);
+          ctx.shadowBlur = 0; ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(cv[0], cv[1], cv[2] - cv[0], 22, 11); else ctx.rect(cv[0], cv[1], cv[2] - cv[0], 22);
+          ctx.fillStyle = 'rgba(6, 10, 20, 0.92)'; ctx.fill();
+          ctx.strokeStyle = this.cor(no); ctx.globalAlpha = 0.6; ctx.lineWidth = 1; ctx.stroke(); ctx.globalAlpha = 1;
+          ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.fillText(no.via, m.x, m.y + 0.5);
+          ctx.shadowBlur = 8;
+        }
+        {
+          const p = this.paraTela(no.x, no.y), nome = no.rotulo.toUpperCase(), ny = p.y + no.r * 1.45 * z + 18;
+          ctx.font = '600 13.5px Sora, Inter, system-ui, sans-serif';
+          const ln = ctx.measureText(nome).width, cn = [p.x - ln / 2 - 11, ny - 12, p.x + ln / 2 + 11, ny + 12];
+          ocupados.push(cn);
+          ctx.shadowBlur = 0; ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(cn[0], cn[1], cn[2] - cn[0], 24, 12); else ctx.rect(cn[0], cn[1], cn[2] - cn[0], 24);
+          ctx.fillStyle = 'rgba(6, 10, 20, 0.9)'; ctx.fill();
+          ctx.strokeStyle = this.cor(no); ctx.globalAlpha = 0.7; ctx.lineWidth = 1; ctx.stroke(); ctx.globalAlpha = 1;
+          ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.fillText(nome, p.x, ny + 0.5);
+          ctx.shadowBlur = 8;
+        }
+        continue;
+      }
       const forte = no.id === this.sel || no.id === this.sobre || (this.destaque && this.destaque.id === no.id);
       const vizinho = no.pai === this.sel || no.pai === this.sobre;
-      const mostra = no.tipo === 'ramo' || forte || (no.tipo === 'grupo' ? z >= 0.34 : z >= zFolha || (vizinho && z >= 0.4));
+      const mostra = no.tipo === 'ramo' || no.tipo === 'rh' || forte || (no.tipo === 'grupo' ? z >= 0.34 : z >= zFolha || (vizinho && z >= 0.4));
       if (!mostra) continue;
       const p = this.paraTela(no.x, no.y), direita = Math.cos(no.ang) >= 0, folga = no.r * z + 9;
       let rotulo = no.rotulo.length > 30 ? `${no.rotulo.slice(0, 29)}…` : no.rotulo;
@@ -541,7 +575,7 @@ class MapaNeural {
         rotulo = rotulo.toUpperCase();
       } else {
         ctx.font = `${forte ? '600' : '500'} 12px Inter, system-ui, sans-serif`;
-        ctx.fillStyle = forte ? '#ffffff' : no.estado === 'disabled' ? '#5f6f8c' : '#a9b9d4';
+        ctx.fillStyle = forte || no.tipo === 'rh' ? '#ffffff' : no.estado === 'disabled' ? '#5f6f8c' : '#a9b9d4';
       }
       const largura = ctx.measureText(rotulo).width;
       if (!this.ehFolha(no)) {
@@ -579,6 +613,14 @@ class MapaNeural {
   desenharNo(no) {
     const { ctx } = this, z = this.cam.z, cor = this.cor(no), r = no.r;
     const apagado = no.estado === 'disabled', escolhido = no.id === this.sel, sobre = no.id === this.sobre;
+    if (no.tipo === 'agente') {
+      this.desenharNucleo(no);
+      if (this.destaque && this.destaque.id === no.id && !this.calmo) {
+        const t = (this.tempo * 0.0016) % 1;
+        ctx.globalAlpha = 1 - t; ctx.beginPath(); ctx.arc(no.x, no.y, r * 1.45 + t * 40, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.strokeStyle = '#ffffff'; ctx.stroke(); ctx.globalAlpha = 1;
+      }
+      return;
+    }
     ctx.globalAlpha = apagado ? 0.4 : 1;
     if (!apagado) { const b = r * (escolhido || sobre ? 4.4 : 3.2); ctx.drawImage(this.brilho(cor), no.x - b, no.y - b, b * 2, b * 2); }
 
@@ -613,15 +655,19 @@ class MapaNeural {
     ctx.globalAlpha = 1;
   }
 
-  desenharNucleo() {
-    const { ctx } = this, t = this.tempo, R = NUCLEO_R, cor = MAPA_CORES.nucleo, z = this.cam.z;
+  // A esfera viva: o núcleo da IA Pontual (no centro) ou um agente (no lugar dele, menor e em outro compasso).
+  desenharNucleo(no = null) {
+    const { ctx } = this, R = no ? no.r : NUCLEO_R, k = R / NUCLEO_R, cor = MAPA_CORES.nucleo, z = this.cam.z;
+    const t = this.tempo + (no ? 91000 : 0), id = no ? no.id : 'ia';
     const minimo = (v) => Math.max(v, v / Math.max(z, 0.05) * 0.55);   // traço nunca fica mais fino que ~metade de um pixel de tela
-    const escolhido = this.sel === 'ia' || this.sobre === 'ia';
+    const escolhido = this.sel === id || this.sobre === id;
+    ctx.save();
+    if (no) ctx.translate(no.x, no.y);
     ctx.drawImage(this.brilho(cor), -R * 3.4, -R * 3.4, R * 6.8, R * 6.8);
     ctx.drawImage(this.brilho('#9b8cff'), -R * 2.2, -R * 2.2, R * 4.4, R * 4.4);
 
     // Anéis que giram em velocidades e sentidos diferentes.
-    const aneis = [[R + 24, 0.00022, [80, 24], minimo(2), 0.75], [R + 46, -0.00013, [6, 14], minimo(1.5), 0.5], [R + 70, 0.00007, [160, 100], minimo(1.3), 0.3]];
+    const aneis = [[R + 24 * k, 0.00022, [80 * k, 24 * k], minimo(2 * k), 0.75], [R + 46 * k, -0.00013, [6 * k, 14 * k], minimo(1.5 * k), 0.5], [R + 70 * k, 0.00007, [160 * k, 100 * k], minimo(1.3 * k), 0.3]];
     for (const [raio, vel, traco, largura, alfa] of aneis) {
       ctx.save(); ctx.rotate(t * vel);
       ctx.beginPath(); ctx.arc(0, 0, raio, 0, Math.PI * 2);
@@ -631,14 +677,14 @@ class MapaNeural {
     ctx.setLineDash([]);
 
     // Esfera de pontos: gira no eixo vertical, levemente inclinada.
-    const giro = t * 0.00028, inclina = 0.42, raio = R - 20;
+    const giro = t * 0.00028, inclina = 0.42, raio = R - 20 * k;
     const cg = Math.cos(giro), sg = Math.sin(giro), ci = Math.cos(inclina), si = Math.sin(inclina);
     const proj = this.esfera.pontos.map((p) => {
       const x = p.x * cg + p.z * sg, z1 = -p.x * sg + p.z * cg;
       const y = p.y * ci - z1 * si, zf = p.y * si + z1 * ci;
       return { x: x * raio, y: y * raio, z: zf };
     });
-    ctx.lineWidth = minimo(1);
+    ctx.lineWidth = minimo(k);
     for (const [a, b] of this.esfera.elos) {
       const pa = proj[a], pb = proj[b], fundo = (pa.z + pb.z) / 2;
       ctx.globalAlpha = 0.1 + (fundo + 1) * 0.2;
@@ -648,13 +694,14 @@ class MapaNeural {
     for (const p of proj) {
       ctx.globalAlpha = 0.25 + (p.z + 1) * 0.375;
       ctx.fillStyle = p.z > 0.2 ? '#e8fbff' : cor;
-      ctx.beginPath(); ctx.arc(p.x, p.y, minimo(1.4 + (p.z + 1) * 1.1), 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, minimo((1.4 + (p.z + 1) * 1.1) * k), 0, Math.PI * 2); ctx.fill();
     }
     // Batimento do centro.
     const bate = this.calmo ? 0.5 : (Math.sin(t * 0.0021) + 1) / 2;
-    const miolo = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.34 + bate * 8);
+    const miolo = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.34 + bate * 8 * k);
     miolo.addColorStop(0, 'rgba(232, 251, 255, 0.9)'); miolo.addColorStop(0.4, 'rgba(79, 216, 255, 0.35)'); miolo.addColorStop(1, 'rgba(79, 216, 255, 0)');
-    ctx.globalAlpha = 0.75; ctx.fillStyle = miolo; ctx.beginPath(); ctx.arc(0, 0, R * 0.42 + bate * 8, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.75; ctx.fillStyle = miolo; ctx.beginPath(); ctx.arc(0, 0, R * 0.42 + bate * 8 * k, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 1;
+    ctx.restore();
   }
 }

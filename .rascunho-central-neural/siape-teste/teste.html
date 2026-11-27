@@ -34,7 +34,7 @@
       <button type="button" data-ir="horarios"><i data-ic="relogio"></i><span>Horários da IA</span></button>
       <button type="button" data-ir="crm"><i data-ic="enviar"></i><span>Clientes do CRM</span></button>
       <button type="button" data-ir="nexus"><i data-ic="lupa"></i><span>Consulta no Nexus</span></button>
-      <button type="button" data-ir="siape"><i data-ic="raio"></i><span>Margem liberada</span><em class="alerta" id="n-siape" hidden></em></button>
+      <button type="button" data-ir="siape"><i data-ic="raio"></i><span>Valor liberado</span><em class="alerta" id="n-siape" hidden></em></button>
       <button type="button" data-ir="base"><i data-ic="base"></i><span>Base de Conhecimento</span><em id="n-base"></em></button>
       <button type="button" data-ir="visao"><i data-ic="visao"></i><span>Visão Geral</span></button>
     </nav>
@@ -201,8 +201,8 @@
     month: window.__cenario==='vazio' ? {created:0,pending:0,sent:0,rejected:0} : {created:12,pending:5,sent:6,rejected:1},
     total:{created:12,sent:6},
     recent: window.__cenario==='vazio' ? [] : [
-      {id:1,kind:'margem',status:'sent',contact:'José Carlos Almeida',phone:'(81) 99999-1111',attendant:'Kamila',incoming:'Margem liberada: R$ 412,30 (ganhou R$ 180,00 em relação a outubro). Órgão: Ministério da Saúde.',reply:'Oi, José! Aqui é a Kamila, da Pontual. Vi que sua margem consignável acabou de aumentar e quis te avisar. Quer que eu faça uma simulação sem compromisso?',createdAt:'2026-11-26T11:12:00-03:00',sentAt:'2026-11-26T11:40:00-03:00',decision:'ia'},
-      {id:2,kind:'margem',status:'rejected',contact:'Maria das Graças Silva',phone:'(81) 98888-2222',attendant:'Kamila',incoming:'Margem liberada: R$ 305,10 (ganhou R$ 95,00).',reply:'Oi, Maria! Aqui é a Kamila, da Pontual. Sua margem liberou um valor novo este mês. Posso te mostrar uma simulação?',createdAt:'2026-11-26T11:12:00-03:00',decision:'ia'}]
+      {id:1,kind:'margem',status:'sent',contact:'José Carlos Almeida',phone:'(81) 99999-1111',attendant:'Kamila',incoming:'Valor liberado: R$ 412,30 (ganhou R$ 180,00 em relação a outubro). Órgão: Ministério da Saúde.',reply:'Oi, José! Aqui é a Kamila, da Pontual. Vi que sua margem consignável acabou de aumentar e quis te avisar. Quer que eu faça uma simulação sem compromisso?',createdAt:'2026-11-26T11:12:00-03:00',sentAt:'2026-11-26T11:40:00-03:00',decision:'ia'},
+      {id:2,kind:'margem',status:'rejected',contact:'Maria das Graças Silva',phone:'(81) 98888-2222',attendant:'Kamila',incoming:'Valor liberado: R$ 305,10 (ganhou R$ 95,00).',reply:'Oi, Maria! Aqui é a Kamila, da Pontual. Sua margem liberou um valor novo este mês. Posso te mostrar uma simulação?',createdAt:'2026-11-26T11:12:00-03:00',decision:'ia'}]
   };
   const rotas = {
     '/auth/me': {role:'admin', name:'Teste do desenho'},

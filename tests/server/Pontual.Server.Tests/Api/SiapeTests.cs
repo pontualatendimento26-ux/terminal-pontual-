@@ -7,7 +7,7 @@ using Pontual.Server.Assistant;
 
 namespace Pontual.Server.Tests.Api;
 
-/// <summary>Margem liberada do SIAPE: a base é uma lista de mentira; a IA e o CRM também.</summary>
+/// <summary>Valor liberado do SIAPE: a base é uma lista de mentira; a IA e o CRM também.</summary>
 public sealed class SiapeTests
 {
     private const string Key = "sk-ant-chave-de-teste-0123456789";
@@ -18,7 +18,7 @@ public sealed class SiapeTests
         public List<AssistantJsonRequest> Requests { get; } = [];
 
         public Task<string?> AskAsync(AssistantRequest request, Func<string, Task> onText, CancellationToken ct) =>
-            throw new NotSupportedException("A margem liberada não usa o chat.");
+            throw new NotSupportedException("O valor liberado não usa o chat.");
 
         public Task<string> AskJsonAsync(AssistantJsonRequest request, CancellationToken ct)
         {
@@ -54,7 +54,7 @@ public sealed class SiapeTests
     {
         public List<SiapeTable> Tables { get; } =
         [
-            new("COMPLETA_NOVEMBRO_CORRIGIDA", new DateTime(2026, 11, 25), ["banco", "nome", "cpf", "Margem", "TELEFONE1", "NOME_ORGAO", "IDADE", "uf", "TOTAL_LIBERADO", "POSITIVACAO"]),
+            new("COMPLETA_NOVEMBRO_CORRIGIDA", new DateTime(2026, 11, 25), ["banco", "nome", "cpf", "Margem", "TELEFONE1", "NOME_ORGAO", "IDADE", "uf", "TOTAL_LIBERADO", "POSITIVACAO", "VALOR_LIBERADO", "REEMBOLSO"]),
             new("COMPLETA_OUTUBRO_REFEITA", new DateTime(2026, 11, 11), ["banco", "nome", "cpf", "Margem", "NOME_ORGAO", "IDADE", "TOTAL_LIBERADO", "POSITIVACAO"]),
             new("MARGENS_NOVEMBRO", new DateTime(2026, 11, 25), ["Matricula", "CPF", "Margem"]),
             new("TAXAS 2026", new DateTime(2026, 11, 25), ["BANCO1", "PRAZO", "TAXA"]),
@@ -143,7 +143,7 @@ public sealed class SiapeTests
         using var _app = app;
         siape.Candidates.AddRange(
         [
-            new("65500000001", "LUCINEA FERREIRA", "24999999967", 18500m, 900m, "MINISTERIO DA SAUDE", 52, "RJ"),
+            new("65500000001", "LUCINEA FERREIRA", "24999999967", 18500m, 900m, "MINISTERIO DA SAUDE", 52, "RJ", 1234.56m, [new("BANCO DO BRASIL", 12000m), new("FINANCEIRA BRB", 6500m)]),
             new("65500000002", "JOAO FIXO", "2133334444", 15000m, 200m, "INSS", 60, "SP"), // telefone fixo: fora
             new("65500000003", "ANA NOVA", "61982378969", 2300m, 0m, "", 0, "DF"),
             new("65500000004", "POUCO", "61982378900", 800m, 0m, "", 0, "DF"), // abaixo de R$ 1.000: fora
@@ -160,13 +160,18 @@ public sealed class SiapeTests
         var asked = Assert.Single(siape.Asked);
         Assert.Equal(("COMPLETA_NOVEMBRO_CORRIGIDA", 1000m), (asked.Current, asked.Min));
 
-        // A IA viu os dados do servidor, a atendente e o modo margem liberada.
+        // A IA viu os dados do servidor, a atendente e o modo valor liberado.
         Assert.Equal(2, model.Requests.Count);
         Assert.Contains("<atendente>Kamila</atendente>", model.Requests[0].Input);
         Assert.Contains("Nome: Lucinea Ferreira", model.Requests[0].Input);
-        Assert.Contains("Valor liberado para consignado neste mês (margem liberada): R$ 18.500,00", model.Requests[0].Input.Replace(' ', ' '));
+        var input = model.Requests[0].Input.Replace(' ', ' ');
+        Assert.Contains("Total liberado para consignado neste mês: R$ 18.500,00", input);
+        Assert.Contains("Reembolso: R$ 1.234,56", input);
+        Assert.Contains("- Banco do Brasil: R$ 12.000,00", input);
+        Assert.Contains("- Financeira Brb: R$ 6.500,00", input);
+        Assert.Contains(model.Requests[0].CachedInstructions!, i => i.Contains("cada banco com o valor liberado nele, o total liberado e o reembolso"));
         Assert.Contains("Ainda não foi positivado", model.Requests[1].Input);
-        Assert.Contains(model.Requests[0].CachedInstructions!, i => i.Contains("MODO MARGEM LIBERADA"));
+        Assert.Contains(model.Requests[0].CachedInstructions!, i => i.Contains("MODO VALOR LIBERADO"));
 
         // Nada saiu ainda: as duas esperam em Mensagens para aprovar, com a marca de margem e os dados do SIAPE.
         Assert.DoesNotContain(crm.Calls, c => c.Path == "/api/chat/send");
@@ -175,7 +180,9 @@ public sealed class SiapeTests
         var lucinea = pending.Single(p => p.GetProperty("contact").GetString() == "Lucinea Ferreira");
         Assert.Equal("margem", lucinea.GetProperty("kind").GetString());
         Assert.Equal("5524999999967", lucinea.GetProperty("phone").GetString());
-        Assert.Contains("Valor liberado total no SIAPE: R$ 18.500,00", lucinea.GetProperty("incoming").GetString()!.Replace(' ', ' '));
+        var incoming = lucinea.GetProperty("incoming").GetString()!.Replace(' ', ' ');
+        Assert.Contains("Valor liberado total no SIAPE: R$ 18.500,00 · reembolso R$ 1.234,56", incoming);
+        Assert.Contains("BANCO DO BRASIL: R$ 12.000,00", incoming);
         Assert.Contains("MINISTERIO DA SAUDE", lucinea.GetProperty("incoming").GetString());
 
         // Aprovada: sai pela tela de conversa do CRM, na linha escolhida, e ganha a etiqueta.

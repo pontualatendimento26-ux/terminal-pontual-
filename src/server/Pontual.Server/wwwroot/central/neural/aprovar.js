@@ -40,7 +40,7 @@ function desenharAprovar() {
   const numeros = el('div', { className: 'numeros' },
     tile(c.pending.length, 'Esperando aprovação', c.pending.length ? 'Confira, corrija e aprove para enviar' : 'Nada na fila agora', c.pending.length > 0),
     tile(perdidos, 'Clientes perdidos na fila', 'Retomadas escritas pela IA'),
-    tile(margens, 'Margem liberada na fila', 'Primeiras mensagens do SIAPE'),
+    tile(margens, 'Valor liberado na fila', 'Primeiras mensagens do SIAPE'),
     tile(totalAprendido, 'Respostas aprovadas', totalAprendido ? 'Cada uma vira exemplo para a IA' : 'A primeira já começa a ensinar'),
     tile(totalCorrigido, 'Corrigidas por você', 'A IA aprende o jeito certo'));
 
@@ -218,7 +218,7 @@ function cartaoCrm(r, editavel) {
   const tempo = r.sentAt ? `enviada ${quando(r.sentAt)}` : r.waitingSince ? `sem resposta desde ${quando(r.waitingSince)}` : `escrita ${quando(r.createdAt)}`;
   const margem = r.kind === 'margem';
   const selos = el('div', { className: 'msg-selos' },
-    r.kind === 'perdido' ? selo('pending', 'Cliente perdido') : margem ? selo('system', 'Margem liberada') : null,
+    r.kind === 'perdido' ? selo('pending', 'Cliente perdido') : margem ? selo('system', 'Valor liberado') : null,
     editavel && r.waitingSince ? selo('error liso', `esperando ${espera(r.waitingSince)}`) : selo(classe, rotulo),
     el('small', { textContent: tempo }));
   const partes = [

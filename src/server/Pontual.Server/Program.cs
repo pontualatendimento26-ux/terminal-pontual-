@@ -45,12 +45,14 @@ builder.Services.AddSingleton<Pontual.Server.Assistant.AssistantUsageLog>();
 builder.Services.AddSingleton<Pontual.Server.Assistant.IAssistantModel, Pontual.Server.Assistant.ClaudeAssistantModel>();
 // Lê as conversas novas das atendentes de tempos em tempos (perfil de atendimento e sugestões para a base).
 builder.Services.AddHostedService<Pontual.Server.Assistant.AnalysisWorker>();
+// Agente RH: a porta por onde ele lê a Central Neural (pontos fortes, conhecimento e casos anônimos).
+builder.Services.AddScoped<Pontual.Server.Rh.IRhCentral, Pontual.Server.Rh.RhCentral>();
 // Clientes do CRM: o webhook recebe as mensagens, o worker pede a resposta à IA, a Central Neural aprova e envia.
 builder.Services.AddSingleton<CrmQueue>();
 builder.Services.AddSingleton(services => new Pontual.Server.Assistant.CrmClient(services.GetRequiredService<TimeProvider>()));
 builder.Services.AddHostedService<CrmWorker>();
 builder.Services.AddHostedService<Pontual.Server.Assistant.CrmLostWorker>();
-// Margem liberada do SIAPE: todo mês a Central lê a base no SQL da Kamila, a IA escreve e a mensagem sai pelo CRM.
+// Valor liberado do SIAPE: todo mês a Central lê a base no SQL da Kamila, a IA escreve e a mensagem sai pelo CRM.
 builder.Services.AddSingleton<Pontual.Server.Assistant.ISiapeSource, Pontual.Server.Assistant.SqlSiapeSource>();
 builder.Services.AddHostedService<Pontual.Server.Assistant.SiapeMarginWorker>();
 // Consulta de CPF no Nexus pelo chat da IA (a Central chama a API de integração do Nexus).
@@ -261,6 +263,7 @@ RecordingEndpoints.Map(api);
 SharedPhoneEndpoints.Map(api);
 AssistantEndpoints.Map(api);
 NeuralEndpoints.Map(api);
+RhEndpoints.Map(api);
 CoverageEndpoints.Map(api);
 CrmEndpoints.Map(api);
 NexusEndpoints.Map(api);

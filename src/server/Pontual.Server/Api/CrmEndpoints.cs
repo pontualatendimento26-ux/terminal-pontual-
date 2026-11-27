@@ -515,7 +515,7 @@ public static class CrmEndpoints
 
         var now = time.GetUtcNow().UtcDateTime;
         var lost = reply.Kind == CrmLost.Kind;
-        // Margem liberada (SIAPE): primeira mensagem para o cliente, pela linha escolhida; não há conversa para conferir.
+        // Valor liberado (SIAPE): primeira mensagem para o cliente, pela linha escolhida; não há conversa para conferir.
         var chat = lost || reply.Kind == SiapeMargin.Kind;
         if (!chat)
         {
